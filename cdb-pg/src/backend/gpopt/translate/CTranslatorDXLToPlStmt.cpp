@@ -2063,14 +2063,33 @@ CTranslatorDXLToPlStmt::PnljFromDXLNLJ
 	// because inner child depends on variables coming from outer child
 	pj->prefetch_inner = !pdxlnlj->FIndexNLJ();
 
-	Plan *pplanLeft = PplFromDXL(pdxlnLeft, &dxltrctxLeft, pplan, pdrgpdxltrctxPrevSiblings);
-
 	DrgPdxltrctx *pdrgpdxltrctxWithSiblings = New(m_pmp) DrgPdxltrctx(m_pmp);
-	pdrgpdxltrctxWithSiblings->Append(&dxltrctxLeft);
-	pdrgpdxltrctxWithSiblings->AppendArray(pdrgpdxltrctxPrevSiblings);
+	Plan *pplanLeft = NULL;
+	Plan *pplanRight = NULL;
+	if (pdxlnlj->FIndexNLJ())
+	{
+		// right child (the index scan side) has references to left child's columns,
+		// we need to translate left child first to load its columns into translation context
+		pplanLeft = PplFromDXL(pdxlnLeft, &dxltrctxLeft, pplan, pdrgpdxltrctxPrevSiblings);
 
-	Plan *pplanRight = PplFromDXL(pdxlnRight, &dxltrctxRight, pplan, pdrgpdxltrctxWithSiblings);
+		pdrgpdxltrctxWithSiblings->Append(&dxltrctxLeft);
+		 pdrgpdxltrctxWithSiblings->AppendArray(pdrgpdxltrctxPrevSiblings);
 
+		 // translate right child after left child translation is complete
+		pplanRight = PplFromDXL(pdxlnRight, &dxltrctxRight, pplan, pdrgpdxltrctxWithSiblings);
+	}
+	else
+	{
+		// left child may include a PartitionSelector with references to right child's columns,
+		// we need to translate right child first to load its columns into translation context
+		pplanRight = PplFromDXL(pdxlnRight, &dxltrctxRight, pplan, pdrgpdxltrctxPrevSiblings);
+
+		pdrgpdxltrctxWithSiblings->Append(&dxltrctxRight);
+		pdrgpdxltrctxWithSiblings->AppendArray(pdrgpdxltrctxPrevSiblings);
+
+		// translate left child after right child translation is complete
+		pplanLeft = PplFromDXL(pdxlnLeft, &dxltrctxLeft, pplan, pdrgpdxltrctxWithSiblings);
+	}
 	DrgPdxltrctx *pdrgpdxltrctx = New(m_pmp) DrgPdxltrctx(m_pmp);
 	pdrgpdxltrctx->Append(&dxltrctxLeft);
 	pdrgpdxltrctx->Append(&dxltrctxRight);

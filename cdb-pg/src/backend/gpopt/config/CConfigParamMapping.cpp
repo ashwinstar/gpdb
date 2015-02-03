@@ -301,8 +301,14 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		&optimizer_remove_order_below_dml,
 		false,  // m_fNegate
 		GPOS_WSZ_LIT("Remove OrderBy below a DML operation")
-		}
+		},
 
+		{
+		EopttraceDisableReplicateInnerNLJOuterChild,
+		&optimizer_enable_broadcast_nestloop_outer_child,
+		true,  // m_fNegate
+		GPOS_WSZ_LIT("Enable plan alternatives where NLJ's outer child is replicated")
+		}
 };
 
 //---------------------------------------------------------------------------

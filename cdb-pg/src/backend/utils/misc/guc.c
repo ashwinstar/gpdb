@@ -747,6 +747,7 @@ bool        optimizer_enable_space_pruning;
 bool        optimizer_prefer_multistage_agg;
 bool		optimizer_direct_dispatch;
 bool		optimizer_enable_hashjoin_redistribute_broadcast_children;
+bool		optimizer_enable_broadcast_nestloop_outer_child;
 bool		optimizer_enable_assert_maxonerow;
 bool		optimizer_enumerate_plans;
 bool		optimizer_sample_plans;
@@ -4063,6 +4064,15 @@ static struct config_bool ConfigureNamesBool[] =
                 },
                 &optimizer_enable_hashjoin_redistribute_broadcast_children,
                 false, NULL, NULL
+        },
+        {
+        		{"optimizer_enable_broadcast_nestloop_outer_child", PGC_USERSET, DEVELOPER_OPTIONS,
+                         gettext_noop("Enable nested loops join plans with replicated outer child in the optimizer."),
+                         NULL,
+                         GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                 },
+                 &optimizer_enable_broadcast_nestloop_outer_child,
+                 false, NULL, NULL
         },
         {
                 {"optimizer_enable_assert_maxonerow", PGC_USERSET, DEVELOPER_OPTIONS,
