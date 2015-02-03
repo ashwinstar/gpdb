@@ -30,6 +30,7 @@ extern apr_thread_mutex_t *logfile_mutex;
 #define LOCK_STDOUT if (logfile_mutex) { apr_thread_mutex_lock(logfile_mutex); }
 #define UNLOCK_STDOUT if (logfile_mutex) { apr_thread_mutex_unlock(logfile_mutex); }
 #define META_LEN 100
+#define READ_BUF_SIZE 100
 
 inline void gp_smon_to_mmon_set_header(gp_smon_to_mmon_packet_t* pkt, apr_int16_t pkttype)
 {
@@ -246,6 +247,22 @@ int gpmon_warningx(const char* fline, int e, const char* fmt, ...)
 	return 0;
 }
 
+void gpmon_print_file(const char* header_line, FILE* fp)
+{
+	char buffer[READ_BUF_SIZE];
+	int len;
+
+	LOCK_STDOUT
+	fprintf(stdout, "%s|:-WARNING: [%s] \n", datetime(), header_line);
+	while ((len = fread(buffer, 1, sizeof(buffer) - 1, fp)) != 0)
+	{
+		buffer[len] = 0;
+		fprintf(stdout, "%s", buffer);
+	}
+	fprintf(stdout, "\n");
+
+	UNLOCK_STDOUT
+}
 
 const char* gpmon_qlog_status_string(int gpmon_qlog_status)
 {

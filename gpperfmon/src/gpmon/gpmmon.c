@@ -8,6 +8,7 @@
 #include <netdb.h>
 #include <sys/stat.h>
 #include <sys/param.h>
+#include <errno.h>
 #include <signal.h>
 #include <string.h>
 #include "apr_atomic.h"
@@ -596,14 +597,14 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 					}
 
 					if (h->smon_bin_location) { //if this if filled, then use it as the directory for smon istead of the default
-						snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-								" %s %s -m %" FMT64 " %s -t %" FMT64 " -l %s%s -v %d %s%d ",
-								active_hostname, h->smon_bin_location, opt.max_log_size, ignore_qexec_packet, smon_terminate_timeout, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
+						snprintf(line, line_size, "ssh -v -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
+								" %s 'echo -e \"%" APR_INT64_T_FMT "\\n\\n\" | %s -m %" FMT64 " %s -t %" FMT64 " -l %s%s -v %d %s%d' 2>&1",
+								active_hostname, ax.signature, h->smon_bin_location, opt.max_log_size, ignore_qexec_packet, smon_terminate_timeout, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
 								((opt.iterator_aggregate)?"-a ":""), ax.port);
 					} else {
-						snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-								" %s %s/bin/gpsmon -m %" FMT64 " %s -t %" FMT64 " -l %s%s -v %d %s%d ",
-								active_hostname, ax.gphome, opt.max_log_size, ignore_qexec_packet, smon_terminate_timeout, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
+						snprintf(line, line_size, "ssh -v -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
+								" %s 'echo -e \"%" APR_INT64_T_FMT "\\n\\n\" | %s/bin/gpsmon -m %" FMT64 " %s -t %" FMT64 " -l %s%s -v %d %s%d' 2>&1",
+								active_hostname, ax.signature, ax.gphome, opt.max_log_size, ignore_qexec_packet, smon_terminate_timeout, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
 								((opt.iterator_aggregate)?"-a ":""), ax.port);
 					}
 
@@ -618,18 +619,21 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 					h->ever_connected = 1;
 
 					TR1(("%s\n", line));
-					fp[j] = popen(line, "w");
+					fp[j] = popen(line, "r");
 					if (fp[j])
 					{
 						SET_MAXFD(fileno(fp[j]));
-						fprintf(fp[j], "%" APR_INT64_T_FMT "\n\n", ax.signature);
+					}
+					else
+					{
+						TR0(("Call popen failed due to %s\n", strerror(errno)));
 					}
 				}
 				for (j = 0; j < 8; j++)
 				{
 					if (fp[j])
 					{
-						fflush(fp[j]);
+						TR1_FILE(("Debugging logs of ssh", fp[j]));
 						pclose(fp[j]);
 					}
 				}

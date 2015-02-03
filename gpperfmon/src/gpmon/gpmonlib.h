@@ -51,6 +51,7 @@ extern int verbose;
 #define TR0(x) gpmon_print x
 #define TR1(x) if (verbose == 1) gpmon_print x
 #define TR2(x) if (verbose == 2) gpmon_print x
+#define TR1_FILE(x) if (verbose == 1) gpmon_print_file x
 
 /* Architecture specific limits for metrics */
 #if defined(osx104_x86) || defined(osx105_x86) || defined(rhel4_x86_32) || defined(rhel5_x86_32)
@@ -70,6 +71,7 @@ extern int gpmon_fatal(const char* fline, const char* fmt, ...);
 extern int gpmon_fatalx(const char* fline, int e, const char* fmt, ...);
 extern int gpmon_warning(const char* fline, const char* fmt, ...);
 extern int gpmon_warningx(const char* fline, int e, const char* fmt, ...);
+extern void gpmon_print_file(const char* header_line, FILE* fp);
 
 // fatal messages for smon -- go to stdout only
 extern int gpsmon_fatal(const char* fline, const char* fmt, ...);
