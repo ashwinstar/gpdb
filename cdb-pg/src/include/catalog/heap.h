@@ -96,9 +96,6 @@ extern void UpdateGpRelationNodeTuple(
 		int32		segmentFileNum,
 		ItemPointer persistentTid,
 		int64		persistentSerialNum);
-extern void DeleteGpRelationNodeTuple(
-		Relation 	relation,
-		int32		segmentFileNum);
 
 extern List *AddRelationRawConstraints(Relation rel,
 						  List *rawColDefaults,

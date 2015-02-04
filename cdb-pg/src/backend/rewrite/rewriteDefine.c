@@ -484,6 +484,7 @@ DefineQueryRewrite(RuleStmt *stmt)
 			relNodeRelation = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
 			GpRelationNodeBeginScan(
+							SnapshotNow,
 							relNodeRelation,
 							event_relation->rd_id,
 							event_relation->rd_rel->relfilenode,

@@ -25,6 +25,7 @@
 #include "storage/lmgr.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
+#include "utils/relationnode.h"
 #include "utils/tqual.h"
 
 /* in common/heaptuple.c */

@@ -16,7 +16,9 @@
 #include "miscadmin.h"
 #include "access/heapam.h"
 #include "access/genam.h"
+#include "access/aocssegfiles.h"
 #include "access/aosegfiles.h"
+#include "access/appendonlytid.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_proc.h"
 #include "catalog/dependency.h"
@@ -31,7 +33,6 @@
 #include "utils/syscache.h"
 #include "utils/fmgroids.h"
 #include "utils/numeric.h"
-#include "access/aocssegfiles.h"
 
 static Datum ao_compression_ratio_internal(Oid relid);
 static void UpdateFileSegInfo_internal(Relation parentrel,
@@ -43,6 +44,15 @@ static void UpdateFileSegInfo_internal(Relation parentrel,
 				  int64 varblocks_added,
 				  int64 modcount_added,
 				  FileSegInfoState newState);
+
+static void PrintPgaosegAndGprelationNodeEntries(FileSegInfo **allseginfo,
+												int totalsegs,
+												bool *segmentFileNumMap);
+
+static void CheckAOConsistencyWithGpRelationNode(Snapshot snapshot,
+												Relation rel,
+												int totalsegs,
+												FileSegInfo ** allseginfo);
 
 /* ------------------------------------------------------------------------
  *
@@ -300,6 +310,11 @@ FileSegInfo **GetAllFileSegInfo(Relation parentrel,
 									totalsegs);
 	
 	heap_close(pg_aoseg_rel, AccessShareLock);
+
+	CheckAOConsistencyWithGpRelationNode(appendOnlyMetaDataSnapshot,
+						parentrel,
+						*totalsegs,
+						result);
 
 	return result;
 }
@@ -2106,3 +2121,155 @@ FreeAllSegFileInfo(FileSegInfo **allSegInfo, int totalSegFiles)
 		pfree(allSegInfo[file_no]);
 	}
 }
+
+
+void
+PrintPgaosegAndGprelationNodeEntries(FileSegInfo **allseginfo, int totalsegs, bool *segmentFileNumMap)
+{
+	char segnumArray[1000];
+	char delimiter[5] = " ";
+	char tmp[10] = {0};
+	memset(segnumArray, 0, sizeof(segnumArray));
+
+	for (int i = 0 ; i < totalsegs && allseginfo; i++)
+	{
+		snprintf(tmp, sizeof(tmp), "%d:%jd", allseginfo[i]->segno, allseginfo[i]->eof);
+
+		if (strlen(segnumArray) + strlen(tmp) + strlen(delimiter) >= 1000)
+		{
+			break;
+		}
+
+		strncat(segnumArray, tmp, sizeof(tmp));
+		strncat(segnumArray, delimiter, sizeof(delimiter));
+	}
+	elog(LOG, "pg_aoseg segno:eof entries: %s", segnumArray);
+
+	memset(segnumArray, 0, sizeof(segnumArray));
+
+	for (int i = 0; i < AOTupleId_MaxSegmentFileNum; i++)
+	{
+		if (segmentFileNumMap[i] == true)
+		{
+			snprintf(tmp, sizeof(tmp), "%d", i);
+
+			if (strlen(segnumArray) + strlen(tmp) + strlen(delimiter) >= 1000)
+			{
+				break;
+			}
+
+			strncat(segnumArray, tmp, sizeof(tmp));
+			strncat(segnumArray, delimiter, sizeof(delimiter));
+		}
+	}
+	elog(LOG, "gp_relation_node segno entries: %s", segnumArray);
+}
+
+
+void
+CheckAOConsistencyWithGpRelationNode( Snapshot snapshot, Relation rel, int totalsegs, FileSegInfo ** allseginfo)
+{
+	GpRelationNodeScan gpRelationNodeScan;
+	int segmentFileNum = 0;
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum = 0;
+	int segmentCount = 0;
+	Relation gp_relation_node;
+	/* 
+	 * gp_relation_node alway has a zero. Hence we use Max segment file number plus 1 in order
+	 * to accomodate the zero
+	 */
+	const int num_gp_relation_node_entries = AOTupleId_MaxSegmentFileNum + 1;
+	bool *segmentFileNumMap = (bool*) palloc0( sizeof(bool) * num_gp_relation_node_entries);
+	int i = 0;
+	int j = 0;
+
+	gp_relation_node = heap_open(GpRelationNodeRelationId, AccessShareLock);
+	GpRelationNodeBeginScan(
+					snapshot,
+					gp_relation_node,
+					rel->rd_id,
+					rel->rd_rel->relfilenode,
+					&gpRelationNodeScan);
+	while ((NULL != GpRelationNodeGetNext(
+						&gpRelationNodeScan,
+						&segmentFileNum,
+						&persistentTid,
+						&persistentSerialNum)))
+	{
+		if (segmentFileNumMap[segmentFileNum] != true)
+		{
+			segmentFileNumMap[segmentFileNum] = true;
+			segmentCount++;
+		}
+
+		if (segmentCount > totalsegs + 1)
+		{
+			PrintPgaosegAndGprelationNodeEntries(allseginfo, totalsegs, segmentFileNumMap);
+			elog(ERROR, "gp_relation_node (%d) has more entries than pg_aoseg (%d) for relation %s",
+				segmentCount,
+				totalsegs,
+				RelationGetRelationName(rel));
+		}
+	}
+
+	GpRelationNodeEndScan(&gpRelationNodeScan);
+	heap_close(gp_relation_node, AccessShareLock);
+
+	if (totalsegs > 0)
+	{
+		if (allseginfo[0]->segno == 0)
+		{
+			i++;
+		}
+	}
+
+	for (j = 1; j < num_gp_relation_node_entries; j++)
+	{
+		if (segmentFileNumMap[j] == true)
+		{
+			while(i < totalsegs && allseginfo[i]->segno != j)
+			{
+
+				if (allseginfo[i]->eof != 0 && segmentFileNumMap[allseginfo[i]->segno] == false)
+				{
+					PrintPgaosegAndGprelationNodeEntries(allseginfo, totalsegs, segmentFileNumMap);
+					elog(ERROR, "Missing pg_aoseg entry %d in gp_relation_node for %s",
+							allseginfo[i]->segno, RelationGetRelationName(rel));
+				}
+				i++;
+			}
+
+			if (i < totalsegs && allseginfo[i]->segno == j)
+			{
+				i++;
+				continue;
+			}
+
+			if (i == totalsegs)
+			{
+				PrintPgaosegAndGprelationNodeEntries(allseginfo, totalsegs, segmentFileNumMap);
+				elog(ERROR, "Missing gp_relation_node entry %d in pg_aoseg for %s",
+							j, RelationGetRelationName(rel));
+			}
+		}
+	}
+
+	/*
+	 * Check for any extra entries in pg_aoseg which are not present in gp_relation_node
+	 */
+	while (i < totalsegs)
+	{
+		Assert(segmentFileNumMap[allseginfo[i]->segno] == false);
+		if (allseginfo[i]->eof != 0)
+		{
+			PrintPgaosegAndGprelationNodeEntries(allseginfo, totalsegs, segmentFileNumMap);
+			elog(ERROR, "Missing pg_aoseg entry %d in gp_relation_node for %s",
+					allseginfo[i]->segno, RelationGetRelationName(rel));
+		}
+		i++;
+	}
+
+	pfree(segmentFileNumMap);
+}
+

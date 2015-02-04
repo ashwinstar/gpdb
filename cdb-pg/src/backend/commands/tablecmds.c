@@ -11137,6 +11137,7 @@ ATExecSetTableSpace_AppendOnly(
 	 *    Schedule old segment file for drop under transaction,
 	 */
 	GpRelationNodeBeginScan(
+					SnapshotNow,
 					gp_relation_node,
 					tableOid,
 					rel->rd_rel->relfilenode,

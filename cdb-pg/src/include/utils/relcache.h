@@ -55,64 +55,6 @@ extern void RelationSetIndexList(Relation relation,
 
 extern void RelationInitIndexAccessInfo(Relation relation);
 
-typedef struct GpRelationNodeScan
-{
-	Relation 		gp_relation_node;
-
-	Oid				relationId;
-
-	Oid				relfilenode;
-
-	ScanKeyData     scankey[1];
-	
-	struct SysScanDescData  *scan;
-} GpRelationNodeScan;
-
-extern void
-GpRelationNodeBeginScan(
-	Relation 			gp_relation_node,
-
-	Oid					relationId,
-
-	Oid 				relfilenode,
-
-	GpRelationNodeScan 	*gpRelationNodeScan);
-
-extern HeapTuple
-GpRelationNodeGetNext(
-	GpRelationNodeScan 	*gpRelationNodeScan,
-
-	int32				*segmentFileNum,
-
-	ItemPointer			persistentTid,
-
-	int64				*persistentSerialNum);
-
-extern void
-GpRelationNodeEndScan(
-	GpRelationNodeScan 	*gpRelationNodeScan);
-
-extern HeapTuple ScanGpRelationNodeTuple(
-	Relation 	gp_relation_node,
-	Oid 		relationNode,
-	int32		segmentFileNum);
-extern HeapTuple FetchGpRelationNodeTuple(
-	Relation 		gp_relation_node,
-	Oid 			relationNode,
-	int32			segmentFileNum,
-	ItemPointer		persistentTid,
-	int64			*persistentSerialNum);
-extern bool ReadGpRelationNode(
-	Oid 			relfilenode,
-	int32			segmentFileNum,
-	ItemPointer		persistentTid,
-	int64			*persistentSerialNum);
-extern void DeleteGpRelationNode(
-	Oid             relfilenode,
-	int32           segmentFileNum);
-extern void RelationFetchSegFile0GpRelationNode(Relation relation);
-extern void RelationFetchGpRelationNodeForXLog_Index(Relation relation);
-
 /*
  * Routines for backend startup
  */

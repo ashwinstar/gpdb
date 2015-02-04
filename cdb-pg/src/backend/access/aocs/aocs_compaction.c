@@ -73,7 +73,7 @@ AOCSCompaction_DropSegmentFile(Relation aorel,
 				&persistentTid,
 				persistentSerialNum);
 
-		DeleteGpRelationNode(aorel->rd_node.relNode,
+		DeleteGpRelationNodeTuple(aorel,
 				pseudoSegNo);
 	}
 }

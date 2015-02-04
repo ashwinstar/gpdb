@@ -68,6 +68,7 @@
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
+#include "utils/relationnode.h"
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
@@ -302,12 +303,10 @@ ScanPgRelation(Oid targetRelId, bool indexOK, Relation *pg_class_relation)
 
 void
 GpRelationNodeBeginScan(
-	Relation 			gp_relation_node,
-
-	Oid					relationId,
-
-	Oid 				relfilenode,
-
+	Snapshot	snapshot,
+	Relation 	gp_relation_node,
+	Oid		relationId,
+	Oid 		relfilenode,
 	GpRelationNodeScan 	*gpRelationNodeScan)
 {
 	Assert (relfilenode != 0);
@@ -343,7 +342,7 @@ GpRelationNodeBeginScan(
 	gpRelationNodeScan->scan = \
 		systable_beginscan(gp_relation_node, GpRelationNodeOidIndexId,
 						   /* indexOK */ true,
-						   SnapshotNow,
+						   snapshot,
 						   /* nKeys */ 1, 
 						   gpRelationNodeScan->scankey);
 
@@ -525,36 +524,30 @@ FetchGpRelationNodeTuple(
  * given segment file.
  */ 
 void
-DeleteGpRelationNode(
-	Oid             relfilenode,
-	int32           segmentFileNum)
+DeleteGpRelationNodeTuple(
+	Relation 	relation,
+	int32		segmentFileNum)
 {
-	Relation gp_relation_node;
-	HeapTuple tuple;
+	Relation	gp_relation_node;
+	HeapTuple	tuple;
 
-	ItemPointerData persistentTid;
-	int64 persistentSerialNum;
+	Assert(relation->rd_segfile0_relationnodeinfo.isPresent);
 
+	/* Grab an appropriate lock on the pg_class relation */
 	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
-	tuple = FetchGpRelationNodeTuple(
+	tuple = ScanGpRelationNodeTuple(
 						gp_relation_node,
-						relfilenode,
-						segmentFileNum,
-						&persistentTid,
-						&persistentSerialNum);
-
-	/*
-	 * if no such tuple exists, return NULL
-	 */
+						relation->rd_rel->relfilenode,
+						segmentFileNum);
 	if (!HeapTupleIsValid(tuple))
-	{
-		elog(ERROR, "Failed to find gp_relation_node for "
-				"rel file node %d, segno %d", relfilenode, segmentFileNum);
-	}
+		elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d",
+			 RelationGetRelid(relation),
+			 relation->rd_rel->relfilenode,
+			 segmentFileNum);
 
+	/* delete the relation tuple from pg_class, and finish up */
 	simple_heap_delete(gp_relation_node, &tuple->t_self);
-
 	heap_freetuple(tuple);
 
 	heap_close(gp_relation_node, RowExclusiveLock);
