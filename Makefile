@@ -1551,7 +1551,6 @@ INSTALLCHECK_GPPKG_SOURCES = \
 	cdb-pg/contrib/pgcrypto \
 	cdb-pg/contrib/postgis-2.0.3 \
 	cdb-pg/src/pl/plperl \
-	cdb-pg/src/bin/pg_dump/cdb/ddboost \
 	$(NULL)
 
 installcheck-gppkg:
