@@ -1519,3 +1519,92 @@ from gp_configuration)) i order by 1;
 (16 rows)
 
 reset optimizer_segments;
+--
+-- apply parallelization for subplan MPP-24563
+--
+create table t1_mpp_24563 (id int, value int) distributed by (id);
+insert into t1_mpp_24563 values (1, 3);
+create table t2_mpp_24563 (id int, value int, seq int) distributed by (id);
+insert into t2_mpp_24563 values (1, 7, 5);
+explain select row_number() over (order by seq asc) as id, foo.cnt
+from
+(select seq, (select count(*) from t1_mpp_24563 t1 where t1.id = t2.id) cnt from
+	t2_mpp_24563 t2 where value = 7) foo;
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ Window  (cost=1.02..2.10 rows=1 width=8)
+   Order By: t2.seq
+   ->  Gather Motion 1:1  (slice2; segments: 1)  (cost=1.02..1.05 rows=1 width=8)
+         Merge Key: t2.seq
+         ->  Sort  (cost=1.02..1.03 rows=1 width=8)
+               Sort Key: t2.seq
+               ->  Seq Scan on t2_mpp_24563 t2  (cost=0.00..1.01 rows=1 width=8)
+                     Filter: value = 7
+   SubPlan 1
+     ->  Aggregate  (cost=1.04..1.05 rows=1 width=8)
+           ->  Result  (cost=1.01..1.02 rows=1 width=0)
+                 Filter: t1.id = $0
+                 ->  Materialize  (cost=1.01..1.02 rows=1 width=0)
+                       ->  Gather Motion 1:1  (slice1; segments: 1)  (cost=0.00..1.01 rows=1 width=0)
+                             ->  Seq Scan on t1_mpp_24563 t1  (cost=0.00..1.01 rows=1 width=0)
+(15 rows)
+
+drop table t1_mpp_24563;
+drop table t2_mpp_24563;
+--
+-- MPP-20470 update the flow of node after parallelizing subplan.
+--
+CREATE TABLE t_mpp_20470 (
+    col_date timestamp without time zone,
+    col_name character varying(6),
+    col_expiry date
+) DISTRIBUTED BY (col_date) PARTITION BY RANGE(col_date)
+(
+START ('2013-05-10 00:00:00'::timestamp without time zone) END ('2013-05-11
+	00:00:00'::timestamp without time zone) WITH (tablename='t_mpp_20470_ptr1', appendonly=false ),
+START ('2013-05-24 00:00:00'::timestamp without time zone) END ('2013-05-25
+	00:00:00'::timestamp without time zone) WITH (tablename='t_mpp_20470_ptr2', appendonly=false )
+);
+NOTICE:  CREATE TABLE will create partition "t_mpp_20470_ptr1" for table "t_mpp_20470"
+NOTICE:  CREATE TABLE will create partition "t_mpp_20470_ptr2" for table "t_mpp_20470"
+COPY t_mpp_20470 from STDIN delimiter '|' null '';
+create view v1_mpp_20470 as
+SELECT
+CASE
+	WHEN  b.col_name::text = 'FUTCUR'::text
+	THEN  ( SELECT count(a.col_expiry) AS count FROM t_mpp_20470 a WHERE
+		a.col_name::text = b.col_name::text)::text
+	ELSE 'Q2'::text END  AS  cc,  1 AS nn
+FROM t_mpp_20470 b;
+explain SELECT  cc, sum(nn) over() FROM v1_mpp_20470;
+                                                    QUERY PLAN
+------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=81.92..12932.78 rows=934 width=28)
+   ->  Aggregate  (cost=41.63..41.64 rows=1 width=0)
+         ->  Shared Scan (share slice:id 0:0)  (cost=40.29..41.63 rows=934 width=28)
+               ->  Materialize  (cost=30.95..40.29 rows=934 width=28)
+                     ->  Gather Motion 1:1  (slice3; segments: 1)  (cost=0.00..30.02 rows=934 width=28)
+                           ->  Append  (cost=0.00..11.34 rows=934 width=28)
+                                 ->  Seq Scan on t_mpp_20470_ptr1 b  (cost=0.00..5.67 rows=467 width=28)
+                                 ->  Seq Scan on t_mpp_20470_ptr2 b  (cost=0.00..5.67 rows=467 width=28)
+   ->  Subquery Scan coplan  (cost=40.29..50.97 rows=934 width=28)
+         ->  Window  (cost=40.29..41.63 rows=934 width=28)
+               ->  Shared Scan (share slice:id 0:0)  (cost=40.29..41.63 rows=934 width=28)
+   SubPlan 1
+     ->  Aggregate  (cost=13.72..13.73 rows=1 width=8)
+           ->  Result  (cost=0.00..13.68 rows=2 width=4)
+                 ->  Append  (cost=0.00..13.68 rows=2 width=4)
+                       ->  Result  (cost=6.84..6.85 rows=1 width=4)
+                             Filter: a.col_name::text = $0::text
+                             ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
+                                   ->  Gather Motion 1:1  (slice1; segments: 1)  (cost=0.00..6.84 rows=1 width=4)
+                                         ->  Seq Scan on t_mpp_20470_ptr1 a  (cost=0.00..6.84 rows=1 width=4)
+                       ->  Result  (cost=6.84..6.85 rows=1 width=4)
+                             Filter: a.col_name::text = $0::text
+                             ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
+                                   ->  Gather Motion 1:1  (slice2; segments: 1)  (cost=0.00..6.84 rows=1 width=4)
+                                         ->  Seq Scan on t_mpp_20470_ptr2 a  (cost=0.00..6.84 rows=1 width=4)
+(25 rows)
+
+drop view v1_mpp_20470;
+drop table t_mpp_20470;
