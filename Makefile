@@ -1547,11 +1547,17 @@ else
 endif
 endif
 
+ifneq "$(findstring $(BLD_ARCH),suse11_x86_64)" ""
+INSTALLCHECK_GPPKG_SOURCES = \
+	cdb-pg/src/pl/plperl \
+	$(NULL)
+else
 INSTALLCHECK_GPPKG_SOURCES = \
 	cdb-pg/contrib/pgcrypto \
 	cdb-pg/contrib/postgis-2.0.3 \
 	cdb-pg/src/pl/plperl \
 	$(NULL)
+endif
 
 installcheck-gppkg:
 	touch installcheck-gppkg.log
