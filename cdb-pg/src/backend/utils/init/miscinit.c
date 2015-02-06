@@ -830,22 +830,66 @@ CreateLockFile(const char *filename, bool amPostmaster,
 				(errno != ESRCH && errno != EPERM))
 			{
 				/* lockfile belongs to a live process */
-				ereport(FATAL,
-						(errcode(ERRCODE_LOCK_FILE_EXISTS),
-						 errmsg("lock file \"%s\" already exists",
-								filename),
-						 isDDLock ?
-						 (encoded_pid < 0 ?
-						  errhint("Is another postgres (PID %d) running in data directory \"%s\"?",
-								  (int) other_pid, refName) :
-						  errhint("Is another postmaster (PID %d) running in data directory \"%s\"?",
-								  (int) other_pid, refName)) :
-						 (encoded_pid < 0 ?
-						  errhint("Is another postgres (PID %d) using socket file \"%s\"?",
-								  (int) other_pid, refName) :
-						  errhint("Is another postmaster (PID %d) using socket file \"%s\"?",
-								  (int) other_pid, refName)),
-						  errOmitLocation(true)));
+				/* Check /proc/<pid>/cmdline to see if it is a postmaster process 
+				 * We check if it is a postmaster process by checking for 
+				 * the string "bin/postgres -D <data_directory>". If it is present
+				 * in the /proc file, then it is probably a postmaster. Otherwise
+				 * we just ignore this and proceed to next step.
+				 * */
+#if defined(__linux__)
+				char pid_proc_file[255];
+				char proc_buffer[MAXPGPATH + 100];
+				char target_cmdline[MAXPGPATH + 100];
+				bool can_read_proc_file = false;
+
+				memset(pid_proc_file, 0, sizeof(pid_proc_file));
+				memset(proc_buffer, 0, sizeof(proc_buffer));
+				memset(target_cmdline, 0, sizeof(target_cmdline));
+
+				snprintf(pid_proc_file, sizeof(pid_proc_file), "/proc/%d/cmdline", (int)other_pid); 
+				snprintf(target_cmdline, sizeof(target_cmdline), "bin/postgres -D %s", refName);
+
+				int fp = open(pid_proc_file, O_RDONLY, 0600);
+
+				if (fp > 0)
+				{
+					if ((len = read(fp, proc_buffer, sizeof(proc_buffer) - 1)) < 0)
+					{
+						ereport(WARNING,
+						(errcode_for_file_access(),
+						errmsg("could not read proc file \"%s\": %m",
+						pid_proc_file)));
+					}
+					else
+					{
+						proc_buffer[len] = '\0';
+						can_read_proc_file = true;
+					}
+					close(fp);
+				}
+
+				if ( !can_read_proc_file || (strstr(proc_buffer, target_cmdline) != NULL))
+				{
+#endif
+					ereport(FATAL,
+							(errcode(ERRCODE_LOCK_FILE_EXISTS),
+						 	errmsg("lock file \"%s\" already exists",
+									filename),
+						 	isDDLock ?
+						 	(encoded_pid < 0 ?
+						  	errhint("Is another postgres (PID %d) running in data directory \"%s\"?",
+								  	(int) other_pid, refName) :
+						  	errhint("Is another postmaster (PID %d) running in data directory \"%s\"?",
+								  	(int) other_pid, refName)) :
+						 	(encoded_pid < 0 ?
+						  	errhint("Is another postgres (PID %d) using socket file \"%s\"?",
+								  	(int) other_pid, refName) :
+						  	errhint("Is another postmaster (PID %d) using socket file \"%s\"?",
+								  	(int) other_pid, refName)),
+						  	errOmitLocation(true)));
+#if defined(__linux__)
+				}
+#endif
 			}
 		}
 
