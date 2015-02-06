@@ -1314,7 +1314,11 @@ CTranslatorScalarToDXL::PdxlnScAggrefFromAggref
 			);
 	}
 
-	GPOS_ASSERT(0 == paggref->agglevelsup);
+	if (0 != paggref->agglevelsup)
+	{
+		// TODO: raghav, Feb 05 2015, remove temporary fix to avoid erroring out during execution
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLError, GPOS_WSZ_LIT("Aggregate functions with outer references"));
+	}
 
 	IMDId *pmdidRetType = CScalarAggFunc::PmdidLookupReturnType(pmdidAgg, (EdxlaggstageNormal == edxlaggstage), m_pmda);
 	IMDId *pmdidResolvedRetType = NULL;
