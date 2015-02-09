@@ -383,6 +383,7 @@ define BUILD_STEPS
 	@$(MAKE) loaders INSTLOC=$(INSTLOC) LOADERSINSTLOC=$(LOADERSINSTLOC)
 	@$(MAKE) set_scripts_version INSTLOC=$(LOADERSINSTLOC)
 	@$(MAKE) gppkg INSTLOC=$(INSTLOC) GPPKGINSTLOC=$(GPPKGINSTLOC)
+	@$(MAKE) embed_GPPKG_CONTENTS INSTLOC=$(INSTLOC)
 endef
 
 ifeq "$(BLD_GPDB_BUILDSET)" "aix_subset"
@@ -1225,13 +1226,13 @@ copy-rsa-libs:
 		cp -fp $(BLD_THIRDPARTY_LIB_DIR)/libccme_* $(INSTLOC)/lib/; \
 	fi
 	# Copy rsa lockbox libs - supported only on rhel
-ifneq "$(findstring $(BLD_ARCH),rhel5_x86_64 rhel6_x86_64)" ""
+ifeq "$(BLD_ARCH)" "rhel5_x86_64"
 	cp -fpr $(BLD_THIRDPARTY_LIB_DIR)/rsa_csp $(INSTLOC)/lib/;
 endif
 
 copy-nbu-libs:
 	#Copy NetBackup libs
-ifneq "$(findstring $(BLD_ARCH),rhel5_x86_64 rhel6_x86_64)" ""
+ifeq "$(BLD_ARCH)" "rhel5_x86_64"
 	rm -f $(INSTLOC)/lib/libxbsa64.so;
 	rm -f $(INSTLOC)/lib/libnbclientcST.so;
 	rm -f $(INSTLOC)/lib/libnbbasecST.so;
@@ -1318,7 +1319,7 @@ endif
 endif
 	# Copy glider stack trace capture tool
 	-cp -rp $(BLD_THIRDPARTY_BIN_DIR)/glider $(INSTLOC)/sbin/
-
+	
 ifneq "$(BLD_GPDB_BUILDSET)" "partial"
 	# Copy GP Optimizer libraries 
 	echo "Copying Orca libraries";
@@ -1331,11 +1332,11 @@ ifneq "$(BLD_GPDB_BUILDSET)" "partial"
 	cp $(LIBGPOS_LIBDIR)/libgpos.$(LDSFX) $(INSTLOC)/lib;
 	rm -f $(INSTLOC)/lib/libxerces-c-3.1.$(LDSFX);
 	cp $(XERCES_LIBDIR)/libxerces-c-3.1.$(LDSFX) $(INSTLOC)/lib;
-
+	
 	# Copy DXL translators library
 	echo "Copy DXL translators library";	
 	cp $(BLD_TOP)/cdb-pg/src/backend/gpopt/libdxltranslators.$(LDSFX) $(INSTLOC)/lib;
-
+	
 	cd $(LIBSTDC++_LIBDIR); tar cvf - * | (cd $(INSTLOC)/lib; tar xfp -)
 
 	# Create GP Optimizer UDFs library  
@@ -1498,7 +1499,7 @@ authlibs:
 
 ## ----------------------------------------------------------------------
 
-ifneq "$(findstring $(BLD_ARCH),suse11_x86_64)" ""
+ifeq ($(BLD_ARCH),$(filter $(BLD_ARCH),rhel6_x86_64 suse11_x86_64))
 GPPKG_SOURCES = \
 	cdb-pg/src/pl/plperl \
 	$(NULL)
@@ -1580,6 +1581,57 @@ else
 	done
 endif
 endif
+
+embed_GPPKG_CONTENTS:
+ifeq "$(EMBED_GPPKG_CONTENTS)" "true"
+	@echo "======================================================================"
+	@echo "Embedding GPPKG contents (pgcrypto, plr, madlib) is enabled."
+	@echo "Update greenplum_path.sh for PLR package."
+	@echo "----------------------------------------------------------------------"
+	cd $(GPPGDIR)/contrib/pgcrypto && $(MAKE) prefix=$(INSTLOC) install
+	rm -rf plr-staging
+	mkdir plr-staging
+	pushd plr-staging; \
+	tar xvf $(INSTLOC)/../plr-2.1-rhel5-x86_64.gppkg; \
+	rpm2cpio *.rpm | cpio -idm; \
+	rpm2cpio deps/*.rpm | cpio -idm; \
+	rsync -auv temp/* $(INSTLOC); \
+	popd
+	echo '' >> $(INSTLOC)/greenplum_path.sh
+	echo 'export R_HOME=$$GPHOME/ext/R-3.1.0/lib64/R' >> $(INSTLOC)/greenplum_path.sh
+	echo 'export LD_LIBRARY_PATH=$$GPHOME/ext/R-3.1.0/lib64/R/lib:$$LD_LIBRARY_PATH' >> $(INSTLOC)/greenplum_path.sh
+	scp -oStrictHostKeyChecking=no build@build-prod.dh.greenplum.com:/var/www/html/releases/MADlib/v1.4.1/madlib-ossv1.4.1_pv1.8.1_gpdb4.3-rhel5-x86_64.gppkg.tgz .
+	tar zxvf madlib-ossv1.4.1_pv1.8.1_gpdb4.2-rhel5-x86_64.gppkg.tgz -C $(INSTLOC)
+	@echo "======================================================================"
+else
+	@echo "Embedding GPPKG contents is disabled"
+endif
+
+## ----------------------------------------------------------------------
+## Target to install GPDB udfs. Currently, this only works on Mac OSX 
+## and Linux
+## ----------------------------------------------------------------------
+
+create_orca_installer:
+	rm -rf $(BLD_TOP)/orca_tmp
+	mkdir -p $(BLD_TOP)/orca_tmp
+	for b in libnaucrates libgpdbcost libgpopt; do \
+		cp $(OPTIMIZER)/$$b/$(OBJDIR_DEFAULT)/$$b.$(LDSFX) $(BLD_TOP)/orca_tmp; \
+	done
+	cp $(LIBGPOS_LIBDIR)/libgpos.$(LDSFX)  $(BLD_TOP)/orca_tmp
+	cp $(XERCES_LIBDIR)/libxerces-c-3.1.$(LDSFX) $(BLD_TOP)/orca_tmp
+	tar zcvf $(BLD_TOP)/orca.tgz -C $(BLD_TOP)/orca_tmp .
+	sed \
+	  -e "s|%%BUILD_NUMBER%%|$${BUILD_NUMBER:=99999}|g" \
+	  -e "s|%%PULSE_BUILD_TIMESTAMP%%|$${PULSE_BUILD_TIMESTAMP:=n/a}|g" \
+	  -e "s|%%GPDB_VER%%|$(VERSION)|g" \
+	  -e "s|%%OPTIMIZER_VER%%|$(OPTIMIZER_VER)|g" \
+	  -e "s|%%LIBGPOS_VER%%|$(LIBGPOS_VER)|g" \
+	  -e "s|%%XERCES_VER%%|$(XERCES_VER)|g" \
+	  $(BLD_TOP)/releng/bin/orca_installer_hdr.sh > $(BLD_TOP)/releng/bin/orca_installer_hdr.sh.out
+	cat $(BLD_TOP)/releng/bin/orca_installer_hdr.sh.out $(BLD_TOP)/orca.tgz > $(BLD_TOP)/gpdb-orca-$(MPP_ARCH).sh
+	chmod a+x $(BLD_TOP)/gpdb-orca-$(MPP_ARCH).sh
+	rm -rf $(BLD_TOP)/orca_tmp
 
 ## ----------------------------------------------------------------------
 

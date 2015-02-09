@@ -12,7 +12,7 @@ Provides:       plperl = %{plperl_ver}
 %description
 The PL/Perl package provides Procedural language implementation of Perl for Greenplum Database.
 
-%build
+%install
 mkdir -p %{buildroot}/temp
 make -C %{plperl_dir} install prefix=%{buildroot}/temp
 

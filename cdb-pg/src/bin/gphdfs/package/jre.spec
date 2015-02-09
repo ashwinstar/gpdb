@@ -12,7 +12,7 @@ Provides:       jre = %{jre_ver}, /bin/sh
 %description
 This package provides JRE %{jre_ver}.
 
-%build
+%install
 mkdir -p %{buildroot}/temp/ext/jre-%{jre_ver}
 cp -r %{jre_dir}/* %{buildroot}/temp/ext/jre-%{jre_ver}
 

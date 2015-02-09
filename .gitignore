@@ -35,6 +35,3 @@ Linux GCC
 Linux\ GCC
 *.swp
 *.pyc
-greenplum-db-devel/*
-*.class
-gpdemo/datadirs/*

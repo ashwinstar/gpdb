@@ -29,9 +29,9 @@ override CFLAGS += -I$(top_builddir)/../ext/$(BLD_ARCH)/include/rsa_csp -I$(top_
 endif
 
 ifeq ($(enable_netbackup), yes)
-NETBACKUPLIB75 += -L../../../../../ext/$(BLD_ARCH)/Netbackup/nbu75/lib -lxbsa64 -lnbclientcST -lnbbasecST -lvxcPBXST
-NETBACKUPLIB71 += -L../../../../../ext/$(BLD_ARCH)/Netbackup/nbu71/lib -lxbsa64 -lnbclientcST -lnbbasecST -lvxcPBXST
-GPBSALIB += -L$(top_builddir)/src/bin/pg_dump/cdb -lgpbsa -Wl,-rpath-link,'../../../../../ext/$(BLD_ARCH)/Netbackup/nbu75/lib'
+NETBACKUPLIB75 += -L../../../../../ext/rhel5_x86_64/Netbackup/nbu75/lib -lxbsa64 -lnbclientcST -lnbbasecST -lvxcPBXST
+NETBACKUPLIB71 += -L../../../../../ext/rhel5_x86_64/Netbackup/nbu71/lib -lxbsa64 -lnbclientcST -lnbbasecST -lvxcPBXST
+GPBSALIB += -L$(top_builddir)/src/bin/pg_dump/cdb -lgpbsa -Wl,-rpath-link,'../../../../../ext/rhel5_x86_64/Netbackup/nbu75/lib'
 override CFLAGS += -I$(top_builddir)/../ext/$(BLD_ARCH)/Netbackup/nbu75/include
 endif
 
