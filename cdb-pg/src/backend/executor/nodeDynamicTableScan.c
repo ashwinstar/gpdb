@@ -31,7 +31,7 @@ CleanupOnePartition(ScanState *scanState);
 DynamicTableScanState *
 ExecInitDynamicTableScan(DynamicTableScan *node, EState *estate, int eflags)
 {
-	Assert((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) == 0);
+	Assert((eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) == 0);
 
 	DynamicTableScanState *state = makeNode(DynamicTableScanState);
 	
@@ -155,6 +155,11 @@ initNextTableToScan(DynamicTableScanState *node)
 			MemoryContextSwitchTo(oldCxt);
 		}
 
+		if (attMap)
+		{
+			pfree(attMap);
+		}
+
 		ExecAssignScanProjectionInfo(scanState);
 		
 		scanState->tableType = getTableType(scanState->ss_currentRelation);
@@ -263,8 +268,12 @@ CleanupOnePartition(ScanState *scanState)
 	}
 }
 
-void
-ExecEndDynamicTableScan(DynamicTableScanState *node)
+/*
+ * DynamicTableScanEndCurrentScan
+ *		Cleans up any ongoing scan.
+ */
+static void
+DynamicTableScanEndCurrentScan(DynamicTableScanState *node)
 {
 	CleanupOnePartition((ScanState*)node);
 
@@ -272,16 +281,54 @@ ExecEndDynamicTableScan(DynamicTableScanState *node)
 	{
 		hash_seq_term(&node->pidStatus);
 	}
+}
+
+/*
+ * ExecEndDynamicTableScan
+ *		Ends the scanning of this DynamicTableScanNode and frees
+ *		up all the resources.
+ */
+void
+ExecEndDynamicTableScan(DynamicTableScanState *node)
+{
+	DynamicTableScanEndCurrentScan(node);
 
 	/* We do not close the relation. We closed it in DynamicScan_CleanupOneRelation. */
 	FreeScanRelationInternal((ScanState *)node, false /* closeCurrentRelation */);
 	EndPlanStateGpmonPkt(&node->tableScanState.ss.ps);
 }
 
+/*
+ * ExecDynamicTableReScan
+ *		Prepares the internal states for a rescan.
+ */
 void
 ExecDynamicTableReScan(DynamicTableScanState *node, ExprContext *exprCtxt)
 {
-	ReScanRelation((ScanState *)node);
+	DynamicTableScanEndCurrentScan(node);
+
+	/* Force reloading the partition hash table */
+	node->pidIndex = NULL;
+
+	ExprContext *econtext = node->tableScanState.ss.ps.ps_ExprContext;
+
+	if (econtext)
+	{
+		/*
+		 * If we are being passed an outer tuple, save it for any expression
+		 * evaluation that may refer to the outer tuple.
+		 */
+		if (exprCtxt != NULL)
+		{
+			econtext->ecxt_outertuple = exprCtxt->ecxt_outertuple;
+		}
+
+		/*
+		 * Reset the expression context so we don't leak memory as each outer
+		 * tuple is scanned.
+		 */
+		ResetExprContext(econtext);
+	}
 
 	Gpmon_M_Incr(GpmonPktFromDynamicTableScanState(node), GPMON_DYNAMICTABLESCAN_RESCAN);
 	CheckSendPlanStateGpmonPkt(&node->tableScanState.ss.ps);
