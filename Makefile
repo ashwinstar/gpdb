@@ -1513,6 +1513,18 @@ GPPKG_SOURCES = \
 	cdb-pg/src/bin/gphdfs \
 	cdb-pg/src/bin/pg_dump/cdb/ddboost \
 	$(NULL)
+	ifneq ($(wildcard cdb-pg/contrib/pgpool),)
+		GPPKG_SOURCES := cdb-pg/contrib/pgpool $(GPPKG_SOURCES)
+	endif
+	ifneq ($(wildcard cdb-pg/contrib/dtm),)
+		GPPKG_SOURCES := cdb-pg/contrib/dtm $(GPPKG_SOURCES)
+	endif
+	ifneq ($(wildcard cdb-pg/contrib/pg_arcgis),)
+		GPPKG_SOURCES := cdb-pg/contrib/pg_arcgis $(GPPKG_SOURCES)
+	endif
+	ifneq ($(wildcard cdb-pg/contrib/pg_osm),)
+		GPPKG_SOURCES := cdb-pg/contrib/pg_osm $(GPPKG_SOURCES)
+	endif
 endif
 
 ## ----------------------------------------------------------------------
