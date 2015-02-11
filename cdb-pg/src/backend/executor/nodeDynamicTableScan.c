@@ -280,6 +280,7 @@ DynamicTableScanEndCurrentScan(DynamicTableScanState *node)
 	if (node->shouldCallHashSeqTerm)
 	{
 		hash_seq_term(&node->pidStatus);
+		node->shouldCallHashSeqTerm = false;
 	}
 }
 
