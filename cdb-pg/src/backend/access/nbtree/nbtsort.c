@@ -331,13 +331,20 @@ _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 	 * index, because there's no need for smgr to schedule an fsync for this
 	 * write; we'll do it ourselves before ending the build.
 	 */
-	smgrwrite(wstate->index->rd_smgr, blkno, (char *) page, true);
-	
+	if (blkno == wstate->btws_pages_written)
+	{
+		/* extending the file ... */
+		smgrextend(wstate->index->rd_smgr, blkno, (char *) page, true);
+		wstate->btws_pages_written++;
+	}
+	else
+	{
+		/* overwriting a block we zero-filled before */
+		smgrwrite(wstate->index->rd_smgr, blkno, (char *) page, true);
+	}
+
 	LWLockRelease(MirroredLock);
 	// -------- MirroredLock ----------
-
-	if (blkno == wstate->btws_pages_written)
-		wstate->btws_pages_written++;
 
 	pfree(page);
 }
