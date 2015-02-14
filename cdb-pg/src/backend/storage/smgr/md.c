@@ -667,7 +667,16 @@ mdcreatedbdir(
 					dbDirNode->database);
 
 		if (mkdir(dbPath, 0700) < 0)
-			*primaryError = errno;
+		{
+			if (ignoreAlreadyExists && (errno == EEXIST))
+			{
+				elog(LOG, "Directory already exists %s", dbPath);
+			}
+			else
+			{
+				*primaryError = errno;
+			}
+		}
 	}
 	
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&

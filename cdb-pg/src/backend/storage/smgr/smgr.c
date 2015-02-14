@@ -727,7 +727,7 @@ smgrcreatedbdirjustintime(
 	mdcreatedbdir(
 				justInTimeDbDirNode,
 				mirrorMode,
-				/* ignoreAlreadyExists */ false,
+				/* ignoreAlreadyExists */ true,
 				primaryError,
 				mirrorDataLossOccurred);
 	if (*primaryError != 0)
