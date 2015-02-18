@@ -240,7 +240,7 @@ static void ATRewriteCatalogs(List **wqueue);
 static void ATAddToastIfNeeded(List **wqueue, 
 							   int oidInfoCount,TableOidInfo * oidInfo, List **poidmap);
 static void ATExecCmd(List **wqueue,
-					  AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd);
+					  AlteredTableInfo *tab, Relation *rel, AlterTableCmd *cmd);
 static void ATRewriteTables(List **wqueue, 
 							int oidInfoCount, TableOidInfo * oidInfo, List **poidmap);
 static void ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap);
@@ -340,7 +340,7 @@ static void ATPExecPartRename(Relation rel,
 static void ATPExecPartSetTemplate(AlteredTableInfo *tab,   /* Set */
 								   Relation rel,            /* Subpartition */
                                    AlterPartitionCmd *pc);	/* Template */
-static void ATPExecPartSplit(Relation rel,
+static void ATPExecPartSplit(Relation *relp,
                              AlterPartitionCmd *pc);		/* Split */
 static List *
 atpxTruncateList(Relation rel, PartitionNode *pNode);
@@ -5321,7 +5321,7 @@ ATRewriteCatalogs(List **wqueue)
 			{
 				AlterTableCmd *atc = lfirst(lcmd);
 
-				ATExecCmd(wqueue, tab, rel, atc);
+				ATExecCmd(wqueue, tab, &rel, atc);
 
 				/*
 				 * SET DISTRIBUTED BY() calls RelationForgetRelation(),
@@ -5457,68 +5457,68 @@ ATAddToastIfNeeded(List **wqueue,
  * ATExecCmd: dispatch a subcommand to appropriate execution routine
  */
 static void
-ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
+ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *rel, AlterTableCmd *cmd)
 {
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:		/* ADD COLUMN */
 		case AT_AddColumnRecurse:
-			ATExecAddColumn(tab, rel, (ColumnDef *) cmd->def);
+			ATExecAddColumn(tab, *rel, (ColumnDef *) cmd->def);
 			break;
 		case AT_ColumnDefault:	/* ALTER COLUMN DEFAULT */
-			ATExecColumnDefault(rel, cmd->name, cmd->def);
+			ATExecColumnDefault(*rel, cmd->name, cmd->def);
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
-			ATExecDropNotNull(rel, cmd->name);
+			ATExecDropNotNull(*rel, cmd->name);
 			break;
 		case AT_SetNotNull:		/* ALTER COLUMN SET NOT NULL */
-			ATExecSetNotNull(tab, rel, cmd->name);
+			ATExecSetNotNull(tab, *rel, cmd->name);
 			break;
 		case AT_SetStatistics:	/* ALTER COLUMN STATISTICS */
-			ATExecSetStatistics(rel, cmd->name, cmd->def);
+			ATExecSetStatistics(*rel, cmd->name, cmd->def);
 			break;
 		case AT_SetStorage:		/* ALTER COLUMN STORAGE */
-			ATExecSetStorage(rel, cmd->name, cmd->def);
+			ATExecSetStorage(*rel, cmd->name, cmd->def);
 			break;
 		case AT_DropColumn:		/* DROP COLUMN */
-			ATExecDropColumn(wqueue, rel, cmd->name, cmd->behavior, false, false);
+			ATExecDropColumn(wqueue, *rel, cmd->name, cmd->behavior, false, false);
 			break;
 		case AT_DropColumnRecurse:		/* DROP COLUMN with recursion */
-			ATExecDropColumn(wqueue, rel, cmd->name, cmd->behavior, true, false);
+			ATExecDropColumn(wqueue, *rel, cmd->name, cmd->behavior, true, false);
 			break;
 		case AT_AddIndex:		/* ADD INDEX */
-			ATExecAddIndex(tab, rel, (IndexStmt *) cmd->def, false,
+			ATExecAddIndex(tab, *rel, (IndexStmt *) cmd->def, false,
 						   cmd->part_expanded);
 			break;
 		case AT_ReAddIndex:		/* ADD INDEX */
-			ATExecAddIndex(tab, rel, (IndexStmt *) cmd->def, true,
+			ATExecAddIndex(tab, *rel, (IndexStmt *) cmd->def, true,
 						   cmd->part_expanded);
 			break;
 		case AT_AddConstraint:	/* ADD CONSTRAINT */
-			ATExecAddConstraint(tab, rel, cmd->def, false);
+			ATExecAddConstraint(tab, *rel, cmd->def, false);
 			break;
 		case AT_AddConstraintRecurse: /* ADD CONSTRAINT with recursion: internal */
-			ATExecAddConstraint(tab, rel, cmd->def, true);
+			ATExecAddConstraint(tab, *rel, cmd->def, true);
 			break;
 		case AT_DropConstraint:	/* DROP CONSTRAINT */
-			ATExecDropConstraint(rel, cmd->name, cmd->behavior, false);
+			ATExecDropConstraint(*rel, cmd->name, cmd->behavior, false);
 			break;
 		case AT_DropConstraintQuietly:	/* DROP CONSTRAINT for child */
-			ATExecDropConstraint(rel, cmd->name, cmd->behavior, true);
+			ATExecDropConstraint(*rel, cmd->name, cmd->behavior, true);
 			break;
 		case AT_AlterColumnType:		/* ALTER COLUMN TYPE */
-			ATExecAlterColumnType(tab, rel, cmd->name, (TypeName *) cmd->def);
+			ATExecAlterColumnType(tab, *rel, cmd->name, (TypeName *) cmd->def);
 			break;
 		case AT_ChangeOwner:	/* ALTER OWNER */
-			ATExecChangeOwner(RelationGetRelid(rel),
+			ATExecChangeOwner(RelationGetRelid(*rel),
 							  get_roleid_checked(cmd->name),
 							  false);
 			break;
 		case AT_ClusterOn:		/* CLUSTER ON */
-			ATExecClusterOn(rel, cmd->name);
+			ATExecClusterOn(*rel, cmd->name);
 			break;
 		case AT_DropCluster:	/* SET WITHOUT CLUSTER */
-			ATExecDropCluster(rel);
+			ATExecDropCluster(*rel);
 			break;
 		case AT_DropOids:		/* SET WITHOUT OIDS */
 
@@ -5534,75 +5534,81 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd
 			 */
 			break;
 		case AT_SetRelOptions:	/* SET (...) */
-			ATExecSetRelOptions(rel, (List *) cmd->def, false);
+			ATExecSetRelOptions(*rel, (List *) cmd->def, false);
 			break;
 		case AT_ResetRelOptions:		/* RESET (...) */
-			ATExecSetRelOptions(rel, (List *) cmd->def, true);
+			ATExecSetRelOptions(*rel, (List *) cmd->def, true);
 			break;
 		case AT_EnableTrig:		/* ENABLE TRIGGER name */
-			ATExecEnableDisableTrigger(rel, cmd->name, true, false);
+			ATExecEnableDisableTrigger(*rel, cmd->name, true, false);
 			break;
 		case AT_DisableTrig:	/* DISABLE TRIGGER name */
-			ATExecEnableDisableTrigger(rel, cmd->name, false, false);
+			ATExecEnableDisableTrigger(*rel, cmd->name, false, false);
 			break;
 		case AT_EnableTrigAll:	/* ENABLE TRIGGER ALL */
-			ATExecEnableDisableTrigger(rel, NULL, true, false);
+			ATExecEnableDisableTrigger(*rel, NULL, true, false);
 			break;
 		case AT_DisableTrigAll:	/* DISABLE TRIGGER ALL */
-			ATExecEnableDisableTrigger(rel, NULL, false, false);
+			ATExecEnableDisableTrigger(*rel, NULL, false, false);
 			break;
 		case AT_EnableTrigUser:	/* ENABLE TRIGGER USER */
-			ATExecEnableDisableTrigger(rel, NULL, true, true);
+			ATExecEnableDisableTrigger(*rel, NULL, true, true);
 			break;
 		case AT_DisableTrigUser:		/* DISABLE TRIGGER USER */
-			ATExecEnableDisableTrigger(rel, NULL, false, true);
+			ATExecEnableDisableTrigger(*rel, NULL, false, true);
 			break;
 		case AT_AddInherit:
-			ATExecAddInherit(rel, (Node *) cmd->def);
+			ATExecAddInherit(*rel, (Node *) cmd->def);
 			break;
 		case AT_DropInherit:
-			ATExecDropInherit(rel, (RangeVar *) cmd->def, false);
+			ATExecDropInherit(*rel, (RangeVar *) cmd->def, false);
 			break;
 		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
-			ATExecSetDistributedBy(rel, (Node *) cmd->def, cmd);
+			ATExecSetDistributedBy(*rel, (Node *) cmd->def, cmd);
 			break;
 			/* CDB: Partitioned Table commands */
 		case AT_PartAdd:				/* Add */
-			ATPExecPartAdd(tab, rel, (AlterPartitionCmd *) cmd->def,
+			ATPExecPartAdd(tab, *rel, (AlterPartitionCmd *) cmd->def,
 						   cmd->subtype);
             break;
 		case AT_PartAlter:				/* Alter */
-            ATPExecPartAlter(wqueue, tab, rel, (AlterPartitionCmd *) cmd->def);
+            ATPExecPartAlter(wqueue, tab, *rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartCoalesce:			/* Coalesce */
-            ATPExecPartCoalesce(rel, (AlterPartitionCmd *) cmd->def);
+            ATPExecPartCoalesce(*rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartDrop:				/* Drop */
-            ATPExecPartDrop(rel, (AlterPartitionCmd *) cmd->def);
+            ATPExecPartDrop(*rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartExchange:			/* Exchange */
-            ATPExecPartExchange(tab, rel, (AlterPartitionCmd *) cmd->def);
+            ATPExecPartExchange(tab, *rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartMerge:				/* Merge */
-            ATPExecPartMerge(rel, (AlterPartitionCmd *) cmd->def);
+            ATPExecPartMerge(*rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartModify:				/* Modify */
-            ATPExecPartModify(rel, (AlterPartitionCmd *) cmd->def);
+            ATPExecPartModify(*rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartRename:				/* Rename */
-            ATPExecPartRename(rel, (AlterPartitionCmd *) cmd->def);
+            ATPExecPartRename(*rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartSetTemplate:		/* Set Subpartition Template */
-			ATPExecPartSetTemplate(tab, rel, (AlterPartitionCmd *) cmd->def);
+			ATPExecPartSetTemplate(tab, *rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartSplit:				/* Split */
+			/*
+			 * We perform heap_open and heap_close several times on
+			 * the relation object referenced by rel in this
+			 * method. After the method returns, we expect to
+			 * reference a valid relcache object through rel.
+			 */
             ATPExecPartSplit(rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartTruncate:			/* Truncate */
-			ATPExecPartTruncate(rel, (AlterPartitionCmd *) cmd->def);
+			ATPExecPartTruncate(*rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartAddInternal:
-			ATExecPartAddInternal(rel, cmd->def);
+			ATExecPartAddInternal(*rel, cmd->def);
 			break;
 		default:				/* oops */
 			elog(ERROR, "unrecognized alter table type: %d",
@@ -14491,7 +14497,7 @@ ATPExecPartAlter(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		bPartitionCmd = false;
 	}
 	/* execute the command */
-	ATExecCmd(wqueue, tab, rel2, atc);
+	ATExecCmd(wqueue, tab, &rel2, atc);
 
 	if (!bPartitionCmd)
 	{
@@ -16112,7 +16118,7 @@ make_orientation_options(Relation rel)
 }
 
 static void
-ATPExecPartSplit(Relation rel,
+ATPExecPartSplit(Relation *rel,
                  AlterPartitionCmd *pc)
 {
 	Relation temprel = NULL;
@@ -16140,9 +16146,9 @@ ATPExecPartSplit(Relation rel,
 		DropStmt *ds = makeNode(DropStmt);
 		List *parsetrees;
 		Query *q;
-		char *nspname = get_namespace_name(RelationGetNamespace(rel));
-		char *relname = get_rel_name(RelationGetRelid(rel));
-		Oid relid = RelationGetRelid(rel);
+		char *nspname = get_namespace_name(RelationGetNamespace(*rel));
+		char *relname = get_rel_name(RelationGetRelid(*rel));
+		Oid relid = RelationGetRelid(*rel);
 		RangeVar *rva = NULL;
 		RangeVar *rvb = NULL;
 		int into_exists = 0; /* which into partition exists? */
@@ -16161,7 +16167,7 @@ ATPExecPartSplit(Relation rel,
 		List *orient = NIL;
 
 		/* Get target meta data */
-		prule = get_part_rule(rel, pid, true, true,
+		prule = get_part_rule(*rel, pid, true, true,
 							  CurrentMemoryContext, NULL, false);
 		/*
 		 * In order to implement SPLIT, we do the following:
@@ -16217,7 +16223,7 @@ ATPExecPartSplit(Relation rel,
 								(errcode(ERRCODE_UNDEFINED_OBJECT),
 								 errmsg("relation \"%s\" does not have a "
 										"default partition",
-										RelationGetRelationName(rel)),
+										RelationGetRelationName(*rel)),
 												   errOmitLocation(true)));
 
 					foreach(rc, prule->pNode->rules)
@@ -16247,7 +16253,7 @@ ATPExecPartSplit(Relation rel,
 			else /* not a AT_AP_IDRule */
 			{
 				PgPartRule *tmprule;
-				tmprule = get_part_rule(rel, (AlterPartitionId *)pc2->partid,
+				tmprule = get_part_rule(*rel, (AlterPartitionId *)pc2->partid,
 										false, false, CurrentMemoryContext,
 										NULL, false);
 				if (tmprule)
@@ -16304,7 +16310,7 @@ ATPExecPartSplit(Relation rel,
 								(errcode(ERRCODE_UNDEFINED_OBJECT),
 								 errmsg("relation \"%s\" does not have a "
 										"default partition",
-										RelationGetRelationName(rel)),
+										RelationGetRelationName(*rel)),
 												   errOmitLocation(true)));
 
 					foreach(rc, prule->pNode->rules)
@@ -16335,7 +16341,7 @@ ATPExecPartSplit(Relation rel,
 			else
 			{
 				PgPartRule *tmprule;
-				tmprule = get_part_rule(rel, (AlterPartitionId *)pc2->arg1,
+				tmprule = get_part_rule(*rel, (AlterPartitionId *)pc2->arg1,
 										false, false, CurrentMemoryContext,
 										NULL, false);
 				if (tmprule)
@@ -16393,7 +16399,7 @@ ATPExecPartSplit(Relation rel,
 		tmprv = makeRangeVar(nspname, tmpname, -1);
 		ct->relation = tmprv;
 		ct->relKind = RELKIND_RELATION;
-		ct->ownerid = rel->rd_rel->relowner;
+		ct->ownerid = (*rel)->rd_rel->relowner;
 		ct->is_split_part = true;
 		parsetrees = parse_analyze((Node *)ct, NULL, NULL, 0);
 
@@ -16408,7 +16414,7 @@ ATPExecPartSplit(Relation rel,
 
 		/* get the oid of the temporary table */
 		temprelid = get_relname_relid(tmpname,
-									  RelationGetNamespace(rel));
+									  RelationGetNamespace(*rel));
 
 		if (pid->idtype == AT_AP_IDRule)
 		{
@@ -16442,14 +16448,14 @@ ATPExecPartSplit(Relation rel,
 		Assert(list_length(parsetrees) == 1);
 		q = (Query *)linitial(parsetrees);
 
-		heap_close(rel, NoLock);
+		heap_close(*rel, NoLock);
 		ProcessUtility((Node *)q->utilityStmt,
 					   synthetic_sql,
 					   NULL, 
 					   false, /* not top level */
 					   dest, 
 					   NULL);
-		rel = heap_open(relid, AccessExclusiveLock);
+		*rel = heap_open(relid, AccessExclusiveLock);
 		CommandCounterIncrement();
 
 		/* 3) drop the old partition */
@@ -16471,7 +16477,7 @@ ATPExecPartSplit(Relation rel,
 		else
 		{
 			/* refresh prule, out of date due to EXCHANGE */
-			prule = get_part_rule(rel, pid, true, true,
+			prule = get_part_rule(*rel, pid, true, true,
 								  CurrentMemoryContext, NULL, false);
 			idpid = makeNode(AlterPartitionId);
 			idpid->idtype = AT_AP_IDRule;
@@ -16497,7 +16503,7 @@ ATPExecPartSplit(Relation rel,
 
 		cmd->def = (Node *)mypc;
 		parsetrees = parse_analyze((Node *)ats, NULL, NULL, 0);
-		heap_close(rel, NoLock);
+		heap_close(*rel, NoLock);
 
 		/* 
 		 * Might have expanded to multiple statements if, for example, the
@@ -16515,7 +16521,7 @@ ATPExecPartSplit(Relation rel,
 						   NULL);
 		}
 
-		rel = heap_open(relid, AccessExclusiveLock);
+		*rel = heap_open(relid, AccessExclusiveLock);
 		CommandCounterIncrement();
 
 		/*
@@ -16863,14 +16869,14 @@ ATPExecPartSplit(Relation rel,
 			Assert(list_length(parsetrees) == 1);
 			q = (Query *)linitial(parsetrees);
 
-			heap_close(rel, NoLock);
+			heap_close(*rel, NoLock);
 			ProcessUtility((Node *)q->utilityStmt, 
 						   synthetic_sql,
 						   NULL, 
 						   false, /* not top level */
 						   dest, 
 						   NULL);
-			rel = heap_open(relid, AccessExclusiveLock);
+			*rel = heap_open(relid, AccessExclusiveLock);
 
 			/* make our change visible */
 			CommandCounterIncrement();
@@ -16909,7 +16915,7 @@ ATPExecPartSplit(Relation rel,
 			else
 			{
 				PgPartRule *tmprule;
-				tmprule = get_part_rule(rel, mypid, true, true,
+				tmprule = get_part_rule(*rel, mypid, true, true,
 									    CurrentMemoryContext, NULL, false);
 				newchildrelid = tmprule->topRule->parchildrelid;
 			}
@@ -16950,7 +16956,7 @@ ATPExecPartSplit(Relation rel,
 
 		/* MPP-6929: metadata tracking */
 		MetaTrackUpdObject(RelationRelationId,
-						   RelationGetRelid(rel),
+						   RelationGetRelid(*rel),
 						   GetUserId(),
 						   "PARTITION", "SPLIT"
 				);
