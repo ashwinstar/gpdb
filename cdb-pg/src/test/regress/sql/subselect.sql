@@ -705,9 +705,6 @@ except
 select i, relname, relowner from pg_class, generate_series(-1, (select max(content) 
 from gp_configuration)) i order by 1;
 
-reset optimizer_segments;
-<<<<<<< HEAD
-
 --
 -- apply parallelization for subplan MPP-24563
 --
@@ -760,4 +757,5 @@ explain SELECT  cc, sum(nn) over() FROM v1_mpp_20470;
 
 drop view v1_mpp_20470;
 drop table t_mpp_20470;
+reset optimizer_segments;
 reset optimizer_nestloop_factor;

@@ -1516,8 +1516,6 @@ from gp_configuration)) i order by 1;
  Settings:  optimizer_segments=3
 (16 rows)
 
-reset optimizer_segments;
-<<<<<<< HEAD
 --
 -- apply parallelization for subplan MPP-24563
 --
@@ -1546,7 +1544,8 @@ from
                  ->  Materialize  (cost=1.01..1.02 rows=1 width=0)
                        ->  Gather Motion 1:1  (slice1; segments: 1)  (cost=0.00..1.01 rows=1 width=0)
                              ->  Seq Scan on t1_mpp_24563 t1  (cost=0.00..1.01 rows=1 width=0)
-(15 rows)
+ Settings:  optimizer_segments=3
+(16 rows)
 
 drop table t1_mpp_24563;
 drop table t2_mpp_24563;
@@ -1603,8 +1602,10 @@ explain SELECT  cc, sum(nn) over() FROM v1_mpp_20470;
                              ->  Materialize  (cost=6.84..6.85 rows=1 width=4)
                                    ->  Gather Motion 1:1  (slice2; segments: 1)  (cost=0.00..6.84 rows=1 width=4)
                                          ->  Seq Scan on t_mpp_20470_ptr2 a  (cost=0.00..6.84 rows=1 width=4)
-(25 rows)
+ Settings:  optimizer_segments=3
+(26 rows)
 
 drop view v1_mpp_20470;
 drop table t_mpp_20470;
+reset optimizer_segments;
 reset optimizer_nestloop_factor;

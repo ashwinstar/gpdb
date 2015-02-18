@@ -312,7 +312,7 @@ create table ao11 (a int, b int) with (compresstype=none, compresslevel=2)
 \d ao11
 set gp_default_storage_options='compresstype=none,compresslevel=2';
 show gp_default_storage_options;
-create table ao12 (a int, b int) with (appendonly=true);
+create table ao12 (a int, b int) with (appendonly=true) distributed by (a);
 \d ao12
 
 -- cleanup
