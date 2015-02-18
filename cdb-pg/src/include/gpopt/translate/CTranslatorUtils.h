@@ -437,6 +437,10 @@ namespace gpdxl
 			static 
 			void CheckRTEPermissions(List *plRangeTable);
 
+			// check if an aggregate window function has either prelim or inverse prelim func
+			static
+			void CheckAggregateWindowFn(Node *pnode);
+
 			// check if given column ids are outer references in the tree rooted by given node
                         static
 			void MarkOuterRefs(ULONG *pulColId, BOOL *pfOuterRef, ULONG ulColumns, CDXLNode *pdxlnode);

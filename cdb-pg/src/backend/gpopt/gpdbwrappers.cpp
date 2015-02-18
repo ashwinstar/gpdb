@@ -898,6 +898,20 @@ gpdb::FAggHasPrelimFunc
 	return false;
 }
 
+bool
+gpdb::FAggHasPrelimOrInvPrelimFunc
+	(
+	Oid aggid
+	)
+{
+	GP_WRAP_START;
+	{
+		return agg_has_prelim_or_invprelim_func(aggid);
+	}
+	GP_WRAP_END;
+	return false;
+}
+
 Oid
 gpdb::OidAggregate
 	(

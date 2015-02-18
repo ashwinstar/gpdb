@@ -169,6 +169,9 @@ namespace gpdb {
 	// does aggregate have a preliminary function
 	bool FAggHasPrelimFunc(Oid aggid);
 
+	// does aggregate have a prelim or inverse prelim function
+	bool FAggHasPrelimOrInvPrelimFunc(Oid aggid);
+
 	// intermediate result type of given aggregate
 	Oid OidAggregate(const char*szArg, Oid oidType);
 

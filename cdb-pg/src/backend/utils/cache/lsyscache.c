@@ -1329,6 +1329,37 @@ bool has_agg_prelimfunc(Oid aggid)
 	return has_prelimfunc;
 }
 
+
+/*
+ * agg_has_prelim_or_invprelim_func
+ *		Given aggregate id, check if it is has a prelim or inverse prelim function
+ */
+bool agg_has_prelim_or_invprelim_func(Oid aggid)
+{
+	Relation aggRelation = heap_open(AggregateRelationId, AccessShareLock);
+	cqContext	cqc;
+	HeapTuple aggTuple = caql_getfirst(
+			caql_addrel(cqclr(&cqc), aggRelation),
+			cql("SELECT * from pg_aggregate"
+				" WHERE aggfnoid = :1",
+				ObjectIdGetDatum(aggid)));
+
+	if (!HeapTupleIsValid(aggTuple))
+	{
+		elog(ERROR, "cache lookup failed for aggregate %u", aggid);
+	}
+
+	Form_pg_aggregate aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
+	bool has_prelimfunc = (InvalidOid != aggform->aggprelimfn);
+	bool has_invprelimfunc = (InvalidOid != aggform->agginvprelimfn);
+
+	heap_freetuple(aggTuple);
+	heap_close(aggRelation, AccessShareLock);
+
+	return has_prelimfunc || has_invprelimfunc;
+}
+
+
 /*
  * get_func_nargs
  *		Given procedure id, return the number of arguments.

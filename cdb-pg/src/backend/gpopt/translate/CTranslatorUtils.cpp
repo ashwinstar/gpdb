@@ -2763,6 +2763,34 @@ CTranslatorUtils::CheckRTEPermissions
 
 //---------------------------------------------------------------------------
 //	@function:
+//		CTranslatorUtils::CheckAggregateWindowFn
+//
+//	@doc:
+//		Check if the window function is an aggregate and has either
+//      prelim or inverse prelim function
+//
+//---------------------------------------------------------------------------
+void
+CTranslatorUtils::CheckAggregateWindowFn
+	(
+	Node *pnode
+	)
+{
+	GPOS_ASSERT(NULL != pnode);
+	GPOS_ASSERT(IsA(pnode, WindowRef))
+
+	WindowRef *pwinref = (WindowRef*) pnode;
+
+	if (gpdb::FAggregateExists(pwinref->winfnoid) && !gpdb::FAggHasPrelimOrInvPrelimFunc(pwinref->winfnoid))
+	{
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature,
+				GPOS_WSZ_LIT("Aggregate window function without prelim or inverse prelim function"));
+	}
+}
+
+
+//---------------------------------------------------------------------------
+//	@function:
 //		CTranslatorUtils::UpdateGrpColMapping
 //
 //	@doc:

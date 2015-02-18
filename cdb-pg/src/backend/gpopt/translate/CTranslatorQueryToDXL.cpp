@@ -1570,6 +1570,10 @@ CTranslatorQueryToDXL::PdxlnWindow
 		CDXLNode *pdxlnPrEl =  PdxlnPrEFromGPDBExpr(pte->expr, pte->resname);
 		ULONG ulColId = CDXLScalarProjElem::PdxlopConvert(pdxlnPrEl->Pdxlop())->UlId();
 
+		if (IsA(pte->expr, WindowRef))
+		{
+			CTranslatorUtils::CheckAggregateWindowFn((Node*) pte->expr);
+		}
 		if (!pte->resjunk)
 		{
 			if (IsA(pte->expr, Var) || IsA(pte->expr, WindowRef))
