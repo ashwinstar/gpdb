@@ -581,10 +581,6 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 					
 					smgr_relation = smgropen(result->entries[ii].relFileNode);
 					
-					smgr_relation->smgr_rnode.relNode = result->entries[ii].relFileNode.relNode;
-					smgr_relation->smgr_rnode.spcNode = result->entries[ii].relFileNode.spcNode;
-					smgr_relation->smgr_rnode.dbNode = result->entries[ii].relFileNode.dbNode;
-				
 					if (smgr_relation == NULL)
 					{
 						ereport(WARNING,	
@@ -602,6 +598,10 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 						
 						goto flush_check;
 					}
+
+					smgr_relation->smgr_rnode.relNode = result->entries[ii].relFileNode.relNode;
+					smgr_relation->smgr_rnode.spcNode = result->entries[ii].relFileNode.spcNode;
+					smgr_relation->smgr_rnode.dbNode = result->entries[ii].relFileNode.dbNode;
 					
 					numBlocks = smgrnblocks(smgr_relation);
 					
@@ -643,7 +643,7 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 				/* allow flushing buffers from buffer pool during scan */
 				FileRepResync_SetReadBufferRequest();
 				buf = ReadBuffer_ResyncEx(smgr_relation, 
-										  result->entries[ii].block_num);
+							  result->entries[ii].block_num);
 				FileRepResync_ResetReadBufferRequest();
 				
 				Assert(result->entries[ii].block_num < numBlocks);
@@ -700,43 +700,50 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 					
 				}
 								
-				if (XLByteEQ(PageGetLSN(page), result->entries[ii].lsn_end)) 	
+				if (XLByteLE(result->entries[ii].lsn_end, PageGetLSN(page)))
 				{
-					smgrwrite(smgr_relation, 
+					if (! XLByteEQ(PageGetLSN(page), result->entries[ii].lsn_end))
+					{
+						ereport(LOG,
+							(errmsg("Resynchonize buffer pool relation '%u/%u/%u' block '%d' has page lsn less than CT lsn, "
+								"lsn end change tracking '%s(%u/%u)' lsn page '%s(%u/%u)' "
+								"number of blocks '%d'",
+								smgr_relation->smgr_rnode.spcNode,
+								smgr_relation->smgr_rnode.dbNode,
+								smgr_relation->smgr_rnode.relNode,
+								result->entries[ii].block_num,
+								XLogLocationToString(&loc),
+								loc.xlogid,
+								loc.xrecoff,
+								XLogLocationToString(&loc1),
+								loc1.xlogid,
+								loc1.xrecoff,
+								numBlocks),
+							 FileRep_errcontext()));
+
+					}
+
+					/*
+					 * It's safe and better to perform write of the page to mirror,
+					 * for this case, as primary and mirror data pages should always
+					 * be same. So, we might do some extra work but definitely won't
+					 * loose out blocks, or error out and need to perform full recovery.
+					 * Need to cover for this case as there are some known scenarios where
+					 * CT file can have extra records which should have been discarded,
+					 * but as we loose out information of xlog LSN cannot be discarded.
+					 * One such case is when CT_TRANSIENT being compacted to CT_COMPACT
+					 * with specific xlog LSN (to discard extra records) in CT mode gets
+					 * interrupted by resync. Compaction during Resync collects all the
+					 * CT records and doesn't have xlog LSN information to discard any
+					 * extra records from CT_TRANSIENT.
+					 */
+
+					smgrwrite(smgr_relation,
 							  result->entries[ii].block_num,
 							  (char *)BufferGetBlock(buf),
 							  FALSE);
 				}
-				else
-				{					
-					if (! XLByteLE(result->entries[ii].lsn_end, PageGetLSN(page)))
-					{
-						ereport(WARNING,	
-								(errmsg("mirror failure, "
-										"could not resynchonize buffer pool relation '%u/%u/%u' block '%d' due to inconsistent lsn, "
-										"lsn end change tracking '%s(%u/%u)' lsn page '%s(%u/%u)' "
-										"number of blocks '%d', "
-										"failover requested",
-										smgr_relation->smgr_rnode.spcNode,
-										smgr_relation->smgr_rnode.dbNode,
-										smgr_relation->smgr_rnode.relNode,
-										result->entries[ii].block_num,
-										XLogLocationToString(&loc),
-										loc.xlogid,
-										loc.xrecoff,
-										XLogLocationToString(&loc1),
-										loc1.xlogid,
-										loc1.xrecoff,
-										numBlocks),						
-								 errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"),
-								 errSendAlert(true),
-								 FileRep_errcontext()));	
-						
-						FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);						
-					}
-					
-				}
-				
+
 #ifdef FAULT_INJECTOR	
 				FaultInjector_InjectFaultIfSet(
 											   FileRepResyncWorker, 
