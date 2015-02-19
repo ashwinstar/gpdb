@@ -720,7 +720,7 @@ sub get_presh2_txt
 #		$isBtree = ($flag2 =~ m/btree/i);
 #		$isOther = ($flag2 =~ m/other/i);
 #
-#		$glob_blanksummary = "NONE" if ($glob_adler && !$isBtree && !$isOther);
+#		$glob_blanksummary = "NONE" if ($glob_adler && !$isOther);
 #	}
 #
 #	my $filnam = shift @ARGV;
@@ -2454,7 +2454,7 @@ sub diff_thrice
 
 		# do a side-by-side diff (minus heap)
 		my $diffi4 = 
-		`$glob_diff  -y --suppress -b $primtmp $mirrtmp | grep -v ':heap:' `;
+		`$glob_diff  -y --suppress -b $primtmp $mirrtmp | grep -v ':heap:' | grep -v ':btree:'`;
 		
 		# print all non-heap diffs
 		goto L_diff_fini if (length($diffi4));
@@ -2462,18 +2462,27 @@ sub diff_thrice
 		# look for heap diffs that aren't trailing blanks (remove
 		# blocks with "zero_adler")
 		$diffi4 = 
-		`$glob_diff -y --suppress -b $primtmp $mirrtmp | grep -v ':2147483649' | grep -v 'SUMMARY:TRAILING' `;
+		`$glob_diff -y --suppress -b $primtmp $mirrtmp | grep -v ':2147483649' | grep -v 'SUMMARY:TRAILING' | grep -v 'SUMMARY:NONE'`;
 
 		# print heap diffs that aren't trailing blanks
 		goto L_diff_fini if (length($diffi4));
 
 		# find TRAILING only
 		$diffi4 = 
-		`$glob_diff -y --suppress -b $primtmp $mirrtmp | grep 'SUMMARY:TRAILING' `;
+		`$glob_diff -y --suppress -b $primtmp $mirrtmp | grep 'SUMMARY:TRAILING\\|SUMMARY:NONE'`;
 
 		if (length($diffi4))
 		{
 			$diffi3 = "";
+
+			print "raw diff:\n";
+			debug_print($diffi);
+
+			print "\nenhanced diff:\n";
+			debug_print($diffi2);
+
+			print "\nblock by block diff:\n";
+			debug_print($diffi4);
 		}
 
 	  L_diff_fini:
