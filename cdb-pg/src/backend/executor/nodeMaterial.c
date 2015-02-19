@@ -404,6 +404,15 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	}
 
 	outerPlan = outerPlan(node);
+	/*
+	 * A very basic check to see if the optimizer requires the material to do a projection.
+	 * Ideally, this check would recursively compare all the target list expressions. However,
+	 * such a check is tricky because of the varno mismatch (outer plan may have a varno that
+	 * index into range table, while the material may refer to the same relation as "outer" varno)
+	 * [JIRA: MPP-25365]
+	 */
+	insist_log(list_length(node->plan.targetlist) == list_length(outerPlan->targetlist),
+			"Material operator does not support projection");
 	outerPlanState(matstate) = ExecInitNode(outerPlan, estate, eflags);
 
 	/*
