@@ -2777,7 +2777,7 @@ CTranslatorUtils::CheckAggregateWindowFn
 	)
 {
 	GPOS_ASSERT(NULL != pnode);
-	GPOS_ASSERT(IsA(pnode, WindowRef))
+	GPOS_ASSERT(IsA(pnode, WindowRef));
 
 	WindowRef *pwinref = (WindowRef*) pnode;
 
