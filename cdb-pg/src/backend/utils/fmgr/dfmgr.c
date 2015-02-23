@@ -351,21 +351,40 @@ incompatible_module_error(const char *libname,
 	const char *mod_magic_product = get_magic_product(module_magic_data);
 
 	/*
+	 * The default header version for module_magic_data is assumed to be 0
+	 * as it may not be recent enough to have the headerversion field
+	 */
+	int lib_internal_version = 0;
+
+	/* module_magic_data is recent enough to provide its own header version */
+	if (module_magic_data->len > offsetof(Pg_magic_struct, headerversion))
+	{
+		lib_internal_version = module_magic_data->headerversion;
+	}
+
+	/*
 	 * If the version doesn't match, just report that, because the rest of the
 	 * block might not even have the fields we expect.
 	 */
 	if (magic_data.version != module_magic_data->version ||
-		magic_data.product != module_magic_data->product)
+		magic_data.product != module_magic_data->product ||
+		magic_data.headerversion != lib_internal_version)
+	{
 		ereport(ERROR,
 				(errmsg("incompatible library \"%s\": version mismatch",
 						libname),
-			  errdetail("Server version is %s %d.%d, library is %s %d.%d.",
+			  errdetail("Server version is %s %d.%d (header version: %d), library is %s %d.%d (header version: %d).",
 						magic_product,
 						magic_data.version / 100,
 						magic_data.version % 100,
+						magic_data.headerversion,
 						mod_magic_product,
 						module_magic_data->version / 100,
-						module_magic_data->version % 100)));
+						module_magic_data->version % 100,
+						lib_internal_version)
+				)
+		);
+	}
 
 	/*
 	 * Otherwise, spell out which fields don't agree.
@@ -378,7 +397,9 @@ incompatible_module_error(const char *libname,
 	if (module_magic_data->funcmaxargs != magic_data.funcmaxargs)
 	{
 		if (details.len)
+		{
 			appendStringInfoChar(&details, '\n');
+		}
 		appendStringInfo(&details,
 						 _("Server has FUNC_MAX_ARGS = %d, library has %d."),
 						 magic_data.funcmaxargs,
@@ -387,7 +408,9 @@ incompatible_module_error(const char *libname,
 	if (module_magic_data->indexmaxkeys != magic_data.indexmaxkeys)
 	{
 		if (details.len)
+		{
 			appendStringInfoChar(&details, '\n');
+		}
 		appendStringInfo(&details,
 						 _("Server has INDEX_MAX_KEYS = %d, library has %d."),
 						 magic_data.indexmaxkeys,
@@ -396,7 +419,9 @@ incompatible_module_error(const char *libname,
 	if (module_magic_data->namedatalen != magic_data.namedatalen)
 	{
 		if (details.len)
+		{
 			appendStringInfoChar(&details, '\n');
+		}
 		appendStringInfo(&details,
 						 _("Server has NAMEDATALEN = %d, library has %d."),
 						 magic_data.namedatalen,
@@ -405,7 +430,9 @@ incompatible_module_error(const char *libname,
 	if (module_magic_data->float4byval != magic_data.float4byval)
 	{
 		if (details.len)
+		{
 			appendStringInfoChar(&details, '\n');
+		}
 		appendStringInfo(&details,
 					   _("Server has FLOAT4PASSBYVAL = %s, library has %s."),
 						 magic_data.float4byval ? "true" : "false",
@@ -414,15 +441,20 @@ incompatible_module_error(const char *libname,
 	if (module_magic_data->float8byval != magic_data.float8byval)
 	{
 		if (details.len)
+		{
 			appendStringInfoChar(&details, '\n');
+		}
 		appendStringInfo(&details,
 					   _("Server has FLOAT8PASSBYVAL = %s, library has %s."),
 						 magic_data.float8byval ? "true" : "false",
 						 module_magic_data->float8byval ? "true" : "false");
 	}
+
 	if (details.len == 0)
+	{
 		appendStringInfo(&details,
 			  _("Magic block has unexpected length or padding difference."));
+	}
 
 	ereport(ERROR,
 			(errmsg("incompatible library \"%s\": magic block mismatch",
