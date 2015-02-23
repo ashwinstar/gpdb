@@ -128,110 +128,110 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		},
              	
 		{
-                EopttraceDisableMotions,
-                &optimizer_enable_motions,
-                true, // m_fNegate
+		EopttraceDisableMotions,
+		&optimizer_enable_motions,
+		true, // m_fNegate
 		GPOS_WSZ_LIT("Disable motion nodes in optimizer.")
-                },
+		},
 
-                {
-                EopttraceDisableMotionBroadcast,
-                &optimizer_enable_motion_broadcast,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable motion broadcast nodes in optimizer.")
-                },
+		{
+		EopttraceDisableMotionBroadcast,
+		&optimizer_enable_motion_broadcast,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable motion broadcast nodes in optimizer.")
+		},
 
-                {
-                EopttraceDisableMotionGather,
-                &optimizer_enable_motion_gather,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable motion gather nodes in optimizer.")
-                },
+		{
+		EopttraceDisableMotionGather,
+		&optimizer_enable_motion_gather,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable motion gather nodes in optimizer.")
+		},
 
-                {
-                EopttraceDisableMotionHashDistribute,
-                &optimizer_enable_motion_redistribute,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable motion hash-distribute nodes in optimizer.")
-                },
+		{
+		EopttraceDisableMotionHashDistribute,
+		&optimizer_enable_motion_redistribute,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable motion hash-distribute nodes in optimizer.")
+		},
 
-                {
-                EopttraceDisableMotionRandom,
-                &optimizer_enable_motion_redistribute,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable motion random nodes in optimizer.")
-                },
+		{
+		EopttraceDisableMotionRandom,
+		&optimizer_enable_motion_redistribute,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable motion random nodes in optimizer.")
+		},
 
-                {
-                EopttraceDisableMotionRountedDistribute,
-                &optimizer_enable_motion_redistribute,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable motion routed-distribute nodes in optimizer.")
-                },
+		{
+		EopttraceDisableMotionRountedDistribute,
+		&optimizer_enable_motion_redistribute,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable motion routed-distribute nodes in optimizer.")
+		},
 
-                {
-                EopttraceDisableSort,
-                &optimizer_enable_sort,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable sort nodes in optimizer.")
-                },
+		{
+		EopttraceDisableSort,
+		&optimizer_enable_sort,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable sort nodes in optimizer.")
+		},
 
-                {
-                EopttraceDisableSpool,
-                &optimizer_enable_materialize,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable spool nodes in optimizer.")
-                },
+		{
+		EopttraceDisableSpool,
+		&optimizer_enable_materialize,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable spool nodes in optimizer.")
+		},
 
-                {
-                EopttraceDisablePartPropagation,
-                &optimizer_enable_partition_propagation,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable partition propagation nodes in optimizer.")
-                },
-                
-                {
-                EopttraceDisablePartSelection,
-                &optimizer_enable_partition_selection,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable partition selection in optimizer.")
-                },
+		{
+		EopttraceDisablePartPropagation,
+		&optimizer_enable_partition_propagation,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable partition propagation nodes in optimizer.")
+		},
+
+		{
+		EopttraceDisablePartSelection,
+		&optimizer_enable_partition_selection,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable partition selection in optimizer.")
+		},
 
 
-                {
-                EopttraceDisableSortForDMLOnParquet,
-                &gp_parquet_insert_sort,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable sorting of table oids below INSERT on Parquet tables.")
-                },
+		{
+		EopttraceDisableSortForDMLOnParquet,
+		&gp_parquet_insert_sort,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable sorting of table oids below INSERT on Parquet tables.")
+		},
 
-                {
-                EopttraceDisableOuterJoin2InnerJoinRewrite,
-                &optimizer_enable_outerjoin_rewrite,
-                true, // m_fNegate
-                GPOS_WSZ_LIT("Disable outer join to inner join rewrite in optimizer.")
-                },
+		{
+		EopttraceDisableOuterJoin2InnerJoinRewrite,
+		&optimizer_enable_outerjoin_rewrite,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable outer join to inner join rewrite in optimizer.")
+		},
 
-                {
-                EopttraceEnableSpacePruning,
-                &optimizer_enable_space_pruning,
-                false, // m_fNegate
-                GPOS_WSZ_LIT("Enable space pruning in optimizer.")
-                },
+		{
+		EopttraceEnableSpacePruning,
+		&optimizer_enable_space_pruning,
+		false, // m_fNegate
+		GPOS_WSZ_LIT("Enable space pruning in optimizer.")
+		},
 
-                {
-                EopttracePreferMultiStageAgg,
-                &optimizer_prefer_multistage_agg,
-                false, // m_fNegate
-                GPOS_WSZ_LIT("Prefer multistage agg in optimizer.")
-                },
+		{
+		EopttracePreferMultiStageAgg,
+		&optimizer_prefer_multistage_agg,
+		false, // m_fNegate
+		GPOS_WSZ_LIT("Prefer multistage agg in optimizer.")
+		},
 
-                {
-                EopttraceEnableRedistributeBroadcastHashJoin,
+		{
+		EopttraceEnableRedistributeBroadcastHashJoin,
 		&optimizer_enable_hashjoin_redistribute_broadcast_children,
-                false, // m_fNegate
-                GPOS_WSZ_LIT("Enable generating hash join plan where outer child is Redistribute and inner child is Broadcast.")
-                },
+		false, // m_fNegate
+		GPOS_WSZ_LIT("Enable generating hash join plan where outer child is Redistribute and inner child is Broadcast.")
+		},
 
 		{
 		EopttraceExtractDXLStats,
@@ -248,11 +248,11 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		},
 
 		{
-                EopttraceDeriveStatsForDPE,
+		EopttraceDeriveStatsForDPE,
 		&optimizer_dpe_stats,
-                false, // m_fNegate
+		false, // m_fNegate
 		GPOS_WSZ_LIT("Enable stats derivation of partitioned tables with dynamic partition elimination.")
-                },
+		},
 
 		{
 		EopttraceEnumeratePlans,
@@ -308,6 +308,13 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		&optimizer_enable_broadcast_nestloop_outer_child,
 		true,  // m_fNegate
 		GPOS_WSZ_LIT("Enable plan alternatives where NLJ's outer child is replicated")
+		},
+
+		{
+		EopttraceEnforceCorrelatedExecution,
+		&optimizer_enforce_subplans,
+		false,  // m_fNegate
+		GPOS_WSZ_LIT("Enforce correlated execution in the optimizer")
 		}
 };
 
