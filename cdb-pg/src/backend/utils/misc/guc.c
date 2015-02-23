@@ -3709,8 +3709,7 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"optimizer", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enable the new optimizer."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			NULL
 		},
 		&optimizer,
 		false, assign_optimizer, NULL
@@ -3720,6 +3719,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"optimizer_log", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Log optimizer messages."),
 			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&optimizer_log,
 		true, NULL, NULL
@@ -4022,8 +4022,7 @@ static struct config_bool ConfigureNamesBool[] =
     {
     	{"optimizer_control", PGC_SUSET, DEVELOPER_OPTIONS,
     		gettext_noop("Allow/disallow turning the optimizer on or off."),
-    		NULL,
-    		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+    		NULL
     	},
     	&optimizer_control,
     	true, NULL, NULL
@@ -4124,10 +4123,9 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"optimizer_analyze_root_partition", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"optimizer_analyze_root_partition", PGC_USERSET, STATS_ANALYZE,
 			gettext_noop("Enable statistics collection on root partitions during ANALYZE"),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			NULL
 		},
 		&optimizer_analyze_root_partition,
 		false, NULL, NULL
@@ -6768,6 +6766,7 @@ static struct config_string ConfigureNamesString[] =
                 {"optimizer_cost_model", PGC_USERSET, LOGGING_WHEN,
                         gettext_noop("Set optimizer cost model."),
                         gettext_noop("Valid values are legacy, calibrated"),
+                        GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
                 },
                 &optimizer_cost_model_str,
                 "calibrated", assign_optimizer_cost_model, NULL
