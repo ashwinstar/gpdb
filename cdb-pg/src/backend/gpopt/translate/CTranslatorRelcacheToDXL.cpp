@@ -1139,13 +1139,15 @@ CTranslatorRelcacheToDXL::PmdindexPartTable
 	Node *pnodePartCnstrRel = gpdb::PnodePartConstraintRel(oidRel, &plDefaultLevelsRel);
 
 	BOOL fUnbounded = (NULL == pnodePartCnstr) && (NIL == plDefaultLevels);
+	for (ULONG ul = 0; ul < ulLevels; ul++)
+	{
+		fUnbounded = fUnbounded && FDefaultPartition(plDefaultLevelsRel, ul);
+	}
+
 	DrgPul *pdrgpulDefaultLevels = New(pmp) DrgPul(pmp);
 	for (ULONG ul = 0; ul < ulLevels; ul++)
 	{
-		BOOL fDefaultLevel = FDefaultPartition(plDefaultLevelsRel, ul);
-
-		fUnbounded = fUnbounded && fDefaultLevel;
-		if (fDefaultLevel || FDefaultPartition(plDefaultLevels, ul))
+		if (fUnbounded || FDefaultPartition(plDefaultLevels, ul))
 		{
 			pdrgpulDefaultLevels->Append(New(pmp) ULONG(ul));
 		}
