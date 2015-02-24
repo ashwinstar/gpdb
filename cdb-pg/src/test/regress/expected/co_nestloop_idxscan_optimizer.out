@@ -11,15 +11,15 @@ insert into co_nestloop_idxscan.bar values (1);
 create index foo_id_idx on co_nestloop_idxscan.foo(id);
 -- test with hash join
 explain select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id = b.id;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.06 rows=1 width=8)
-   ->  Hash Join  (cost=0.00..1.05 rows=1 width=8)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..862.55 rows=1 width=8)
+   ->  Hash Join  (cost=0.00..862.55 rows=1 width=8)
          Hash Cond: foo.id = bar.id
-         ->  Table Scan on foo  (cost=0.00..0.00 rows=1 width=8)
-         ->  Hash  (cost=0.00..0.00 rows=1 width=8)
-               ->  Table Scan on bar  (cost=0.00..0.00 rows=1 width=8)
- Settings:  optimizer=on
+         ->  Table Scan on foo  (cost=0.00..431.55 rows=1 width=8)
+         ->  Hash  (cost=431.00..431.00 rows=1 width=8)
+               ->  Table Scan on bar  (cost=0.00..431.00 rows=1 width=8)
+ Settings:  optimizer=on; optimizer_segments=3
 (7 rows)
 
 select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id = b.id;
@@ -37,17 +37,16 @@ select disable_xform('CXformInnerJoin2HashJoin');
 
 set enable_hashjoin=off;
 explain select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id = b.id;
-                                           QUERY PLAN
--------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..68.04 rows=1 width=8)
-   ->  Nested Loop  (cost=0.00..67.03 rows=1 width=8)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1324596.00 rows=1 width=8)
+   ->  Nested Loop  (cost=0.00..1324596.00 rows=1 width=8)
          Join Filter: foo.id = bar.id
-         ->  Table Scan on foo  (cost=0.00..0.00 rows=1 width=8)
-         ->  Materialize  (cost=0.00..2.03 rows=1 width=8)
-               ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..1.01 rows=1 width=8)
-                     ->  Table Scan on bar  (cost=0.00..0.00 rows=1 width=8)
- Settings:  enable_hashjoin=off; optimizer=on
-(8 rows)
+         ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.55 rows=2 width=8)
+               ->  Table Scan on foo  (cost=0.00..431.55 rows=1 width=8)
+         ->  Table Scan on bar  (cost=0.00..431.00 rows=1 width=8)
+ Settings:  enable_hashjoin=off; optimizer=on; optimizer_segments=3
+(7 rows)
 
 select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id = b.id;
  id 
@@ -61,17 +60,16 @@ set enable_seqscan = off;
 -- Known_opt_diff: OPT-929
 -- end_ignore
 explain select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id = b.id;
-                                           QUERY PLAN
--------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..68.04 rows=1 width=8)
-   ->  Nested Loop  (cost=0.00..67.03 rows=1 width=8)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1324596.00 rows=1 width=8)
+   ->  Nested Loop  (cost=0.00..1324596.00 rows=1 width=8)
          Join Filter: foo.id = bar.id
-         ->  Table Scan on foo  (cost=0.00..0.00 rows=1 width=8)
-         ->  Materialize  (cost=0.00..2.03 rows=1 width=8)
-               ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..1.01 rows=1 width=8)
-                     ->  Table Scan on bar  (cost=0.00..0.00 rows=1 width=8)
- Settings:  enable_hashjoin=off; enable_seqscan=off; optimizer=on
-(8 rows)
+         ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.55 rows=2 width=8)
+               ->  Table Scan on foo  (cost=0.00..431.55 rows=1 width=8)
+         ->  Table Scan on bar  (cost=0.00..431.00 rows=1 width=8)
+ Settings:  enable_hashjoin=off; enable_seqscan=off; optimizer=on; optimizer_segments=3
+(7 rows)
 
 select f.id from co_nestloop_idxscan.foo f, co_nestloop_idxscan.bar b where f.id = b.id;
  id 
