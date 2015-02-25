@@ -2073,8 +2073,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 					if (Gp_role == GP_ROLE_DISPATCH && isBeginning &&
 						stmt->distributedBy == NIL &&
 						stmt->inhRelations == NIL &&
-						stmt->policy == NULL &&
-						!gp_create_table_random_default_distribution)
+						stmt->policy == NULL)
 					{
 						likeDistributedBy = getLikeDistributionPolicy((InhRelation *) element);
 					}
@@ -2257,8 +2256,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 					if (Gp_role == GP_ROLE_DISPATCH && isBeginning &&
 						stmt->distributedBy == NIL &&
 						stmt->policy == NULL &&
-						iswritable /* dont bother if readable table */ &&
-						!gp_create_table_random_default_distribution)
+						iswritable /* dont bother if readable table */)
 					{
 						likeDistributedBy = getLikeDistributionPolicy((InhRelation *) element);
 					}
@@ -2759,20 +2757,6 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	int			numUniqueIndexes = 0;
 	Constraint *uniqueindex = NULL;
 
-	if (gp_create_table_random_default_distribution && NIL == distributedBy)
-	{
-		Assert(NIL == likeDistributedBy);
-		*policyp = createRandomDistribution(maxattrs);
-		if (!bQuiet)
-			ereport(NOTICE,
-				(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
-				 errmsg("Using default RANDOM distribution since no distribution was specified."),
-				 errhint("Consider including the 'DISTRIBUTED BY' clause to determine the distribution of rows."),
-				 errOmitLocation(true)));
-
-		return;
-	}
-
 	/*
 	 * utility mode creates can't have a policy.  Only the QD can have policies
 	 *
@@ -2961,7 +2945,21 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				 "defaulting to distribution columns from LIKE table");
 	}
 
-	if (distributedBy == NIL)
+	if (gp_create_table_random_default_distribution && NIL == distributedBy)
+	{
+		Assert(NIL == likeDistributedBy);
+		policy = createRandomDistribution(maxattrs);
+		
+		if (!bQuiet)
+		{
+			ereport(NOTICE,
+				(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
+				 errmsg("Using default RANDOM distribution since no distribution was specified."),
+				 errhint("Consider including the 'DISTRIBUTED BY' clause to determine the distribution of rows."),
+				 errOmitLocation(true)));
+		}
+	}
+	else if (distributedBy == NIL)
 	{
 		/*
 		 * if we get here, we haven't a clue what to use for the distribution columns.
@@ -3185,22 +3183,6 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 						}
 					}
 				}
-
-				if (found)
-				{
-					/* good, the columns exists */
-				}
-#if 0
-				else if (SystemAttributeByName(key, cxt->hasoids) != NULL)
-				{
-					/*
-					* column will be a system column in the new table, so
-					* accept it.
-					*/
-					found = true;
-				}
-#endif
-
 
 				/*
 				* In the ALTER TABLE case, don't complain about index keys
