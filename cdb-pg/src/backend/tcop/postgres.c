@@ -1022,8 +1022,11 @@ exec_mpp_query(const char *query_string,
     	plan = (PlannedStmt *) deserializeNode(serializedPlantree,serializedPlantreelen);
 		if ( !plan ||
 			!IsA(plan, PlannedStmt) ||
-			plan->sliceTable != NULL )
+			plan->sliceTable != NULL ||
+			plan->memoryAccount != NULL)
+		{
 			elog(ERROR, "MPPEXEC: receive invalid planned statement");
+		}
 		
     	/*
 		 * Since we're running as a QE, we need to put the slice table 

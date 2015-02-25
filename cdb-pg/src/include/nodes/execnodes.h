@@ -571,9 +571,6 @@ typedef struct EState
 	 * Information relevant to dynamic table scans.
 	 */
 	DynamicTableScanInfo *dynamicTableScanInfo;
-
-	/* MemoryAccount that records the executor memory usage information. */
-	MemoryAccount *memoryAccount;
 } EState;
 
 struct PlanState;

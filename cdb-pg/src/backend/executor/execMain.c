@@ -248,19 +248,20 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	bool		shouldDispatch;
 	bool		needDtxTwoPhase;
 
-	/*
-	 * Create a memory account with disowned account included. The disowned memory
-	 * account will be used to account for interconnect or any other subsystem memory consumption
-	 */
-	MemoryAccount *curMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_EXECUTOR);
+	/* sanity checks: queryDesc must not be started already */
+	Assert(queryDesc != NULL);
+	Assert(queryDesc->estate == NULL);
+	Assert(queryDesc->plannedstmt != NULL);
 
-	START_MEMORY_ACCOUNT(curMemoryAccount);
+	PlannedStmt *plannedStmt = queryDesc->plannedstmt;
+
+	if (NULL == plannedStmt->memoryAccount)
 	{
-		/* sanity checks: queryDesc must not be started already */
-		Assert(queryDesc != NULL);
-		Assert(queryDesc->estate == NULL);
-		Assert(queryDesc->plannedstmt != NULL);
+		plannedStmt->memoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_EXECUTOR);
+	}
 
+	START_MEMORY_ACCOUNT(plannedStmt->memoryAccount);
+	{
 		Assert(queryDesc->plannedstmt->intoPolicy == NULL
 			   || queryDesc->plannedstmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 
@@ -320,7 +321,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 * Build EState, switch into per-query memory context for startup.
 		 */
 		estate = CreateExecutorState();
-		estate->memoryAccount = curMemoryAccount;
 		queryDesc->estate = estate;
 
 		oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
@@ -781,7 +781,9 @@ ExecutorRun(QueryDesc *queryDesc,
 
 	Assert(estate != NULL);
 
-	START_MEMORY_ACCOUNT(estate->memoryAccount);
+	Assert(NULL != queryDesc->plannedstmt && NULL != queryDesc->plannedstmt->memoryAccount);
+
+	START_MEMORY_ACCOUNT(queryDesc->plannedstmt->memoryAccount);
 
 	/*
 	 * Set dynamicTableScanInfo to the one in estate, and reset its value at
@@ -979,7 +981,9 @@ ExecutorEnd(QueryDesc *queryDesc)
 
 	Assert(estate != NULL);
 
-	START_MEMORY_ACCOUNT(estate->memoryAccount);
+	Assert(NULL != queryDesc->plannedstmt && NULL != queryDesc->plannedstmt->memoryAccount);
+
+	START_MEMORY_ACCOUNT(queryDesc->plannedstmt->memoryAccount);
 
 	if (DEBUG1 >= log_min_messages)
 	{
@@ -1143,7 +1147,9 @@ ExecutorRewind(QueryDesc *queryDesc)
 
 	Assert(estate != NULL);
 
-	START_MEMORY_ACCOUNT(estate->memoryAccount);
+	Assert(NULL != queryDesc->plannedstmt && NULL != queryDesc->plannedstmt->memoryAccount);
+
+	START_MEMORY_ACCOUNT(queryDesc->plannedstmt->memoryAccount);
 
 	/* It's probably not sensible to rescan updating queries */
 	Assert(queryDesc->operation == CMD_SELECT);
