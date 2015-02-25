@@ -678,7 +678,7 @@ file_set_dirs(char *file)
 					fprintf(stderr, "Utility should be run from the base data directory\n");
 					exit(1);
 				}
-
+                closedir(dir);
 				break;
 			}
 		}
@@ -2149,24 +2149,19 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 						default:
 							if (blockDirectoryFile)
 							{
-								struct Minipage *mp = (struct Minipage *) DatumGetPointer(datum);
+								struct varlena *value = DatumGetPointer(datum);
+								struct Minipage *mp = (struct Minipage *) value;
 								strcat(deparsed, "\nMinipage Info");
-								char           *tmp = malloc(64);
-								Assert(tmp != NULL);
+								char           tmp[64];
 
-								strncat(deparsed, "\n    Length        : ", strlen("\n    Length        : "));
-								pg_ltoa(DatumGetInt32(mp->_len), tmp);
-								strncat(deparsed, tmp, 32);
 								strncat(deparsed, "\n    Version       : ", strlen("\n    Version       : "));
-								pg_ltoa(DatumGetInt32(mp->version), tmp);
-								strncat(deparsed, tmp, 32);
+								pg_ltoa(DatumGetInt32(mp->version), (char *) &tmp);
+								strncat(deparsed, (char *) &tmp, 32);
 								strncat(deparsed, "\n    NumOfEntries  : ", strlen("\n    NumOfEntries  : "));
-								pg_ltoa(DatumGetInt64(mp->nEntry), tmp);
-								strncat(deparsed, tmp, 64);
+								pg_ltoa(DatumGetInt64(mp->nEntry), (char *) &tmp);
+								strncat(deparsed, (char *) &tmp, 64);
 								strncat(deparsed, "\n", strlen("\n"));
 								DeparseMiniPage(mp, mp->nEntry, deparsed);
-								if (tmp)
-									free(tmp);
 							}
 							else
 							{
@@ -2240,7 +2235,7 @@ DeparseMiniPage(struct Minipage *minipage, uint32 numEntries, char *deparsed)
 		return;
 	
 	strncat(deparsed, "    Entries per page:", strlen("    Entries per page:"));
-	strncat(deparsed, "\n\tFirstRowNum  RowCount  FileOffSet", strlen("\n\tFirstRowNum  RowCount  FileOffSet"));
+	strncat(deparsed, "\n\tFirstRowNum  FileOffSet  RowCount", strlen("\n\tFirstRowNum  RowCount  FileOffSet"));
 	strncat(deparsed, "\n\t--------------------------------\n", strlen("\n\t--------------------------------\n"));
 
 	start_no = 0;
@@ -2255,17 +2250,16 @@ DeparseMiniPage(struct Minipage *minipage, uint32 numEntries, char *deparsed)
 
 		Assert(entry->firstRowNum > 0);
 		Assert(entry->rowCount > 0);
-		Assert(entry->fileOffset > 0);
 
 		Assert(entry != NULL);
 		pg_ltoa(DatumGetInt64(entry->firstRowNum), tmp);
 		strncat(deparsed, "\t", strlen("\t"));
 		strncat(deparsed, tmp, 64);
 		strncat(deparsed, "\t", strlen("\t"));
-		pg_ltoa(DatumGetInt64(entry->rowCount), tmp);
+		pg_ltoa(DatumGetInt64(entry->fileOffset), tmp);
 		strncat(deparsed, tmp, 64);
 		strncat(deparsed, "\t", strlen("\t"));
-		pg_ltoa(DatumGetInt64(entry->fileOffset), tmp);
+		pg_ltoa(DatumGetInt64(entry->rowCount), tmp);
 		strncat(deparsed, tmp, 64);
 		strncat(deparsed, "\n", strlen("\n"));
 
