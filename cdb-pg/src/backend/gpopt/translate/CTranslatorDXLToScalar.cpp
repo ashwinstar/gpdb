@@ -738,7 +738,7 @@ CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan
 	// translate subplan and set test expression
 	SubPlan *psubplan = PsubplanFromChildPlan(pplanChild, slink, pctxdxltoplstmt);
 	psubplan->testexpr = (Node *) pexprTestExpr;
-	if (NULL != psubplan->testexpr)
+	if (NULL != psubplan->testexpr && nodeTag(psubplan->testexpr) != T_Const)
         {
 		// test expression is used for non-scalar subplan,
 		// second arg of test expression must be an EXEC param referring to subplan output,
@@ -766,34 +766,43 @@ CTranslatorDXLToScalar::PsubplanFromDXLNodeScSubPlan
 //---------------------------------------------------------------------------
 Expr *
 CTranslatorDXLToScalar::PexprSubplanTestExpr
-        (
-        CDXLNode *pdxlnTestExpr,
+	(
+	CDXLNode *pdxlnTestExpr,
 	SubLinkType slink,
-        CMappingColIdVar *pmapcidvar
-        )
+	CMappingColIdVar *pmapcidvar
+	)
 {
-        if (EXPR_SUBLINK == slink ||
-	    EXISTS_SUBLINK == slink ||
-	    NOT_EXISTS_SUBLINK == slink)
-        {
+	if (EXPR_SUBLINK == slink || EXISTS_SUBLINK == slink || NOT_EXISTS_SUBLINK == slink)
+	{
 		// expr/exists/not-exists sublinks have no test expression
 		return NULL;
-        }
-	
+	}
 	GPOS_ASSERT(NULL != pdxlnTestExpr);
+
+	if (FConstTrue(pdxlnTestExpr, m_pmda))
+	{
+		// dummy test expression
+		return (Expr *) PconstFromDXLNodeScConst(pdxlnTestExpr, NULL);
+	}
+
+	if (EdxlopScalarCmp != pdxlnTestExpr->Pdxlop()->Edxlop())
+	{
+		// test expression is expected to be a comparison
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtConversion,  GPOS_WSZ_LIT("Unexpected subplan test expression"));
+	}
+
 	GPOS_ASSERT(2 == pdxlnTestExpr->UlArity());
-        GPOS_ASSERT(ANY_SUBLINK == slink || ALL_SUBLINK == slink);
+	GPOS_ASSERT(ANY_SUBLINK == slink || ALL_SUBLINK == slink);
 
 	CDXLNode *pdxlnOuterChild = (*pdxlnTestExpr)[0];
-        CDXLNode *pdxlnInnerChild = (*pdxlnTestExpr)[1];
+	CDXLNode *pdxlnInnerChild = (*pdxlnTestExpr)[1];
 
-        if (EdxlopScalarCmp != pdxlnTestExpr->Pdxlop()->Edxlop() ||
-	   EdxlopScalarIdent != pdxlnInnerChild->Pdxlop()->Edxlop())
-        {
+	if (EdxlopScalarIdent != pdxlnInnerChild->Pdxlop()->Edxlop())
+	{
 		// test expression is expected to be a comparison between an outer expression 
 		// and a scalar identifier from subplan child
-                GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtConversion,  GPOS_WSZ_LIT("Unexpected subplan test expression"));
-        }
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtConversion,  GPOS_WSZ_LIT("Unexpected subplan test expression"));
+	}
 
 	// extract type of inner column
         CDXLScalarComp *pdxlopCmp = CDXLScalarComp::PdxlopConvert(pdxlnTestExpr->Pdxlop());
