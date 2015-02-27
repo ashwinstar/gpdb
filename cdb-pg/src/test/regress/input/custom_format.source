@@ -5,7 +5,7 @@
 -- --------------------------------------
 -- check platform and start 'gpfdist'
 -- --------------------------------------
-
+set optimizer_disable_missing_stats_collection = on;
 CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
 execute E'( python $GPHOME/bin/lib/gppinggpfdist.py @hostname@:7575 2>&1 || echo) '
 on SEGMENT 0

@@ -1,3 +1,4 @@
+set optimizer_disable_missing_stats_collection = on;
 --
 -- This test case covers basic ADD COLUMN functionality for AOCS relations.
 --

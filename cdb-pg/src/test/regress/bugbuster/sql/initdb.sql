@@ -1,4 +1,4 @@
-
+set optimizer_disable_missing_stats_collection = on;
 
 
 \echo -- start_ignore

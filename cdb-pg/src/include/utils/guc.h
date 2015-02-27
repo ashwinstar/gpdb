@@ -386,6 +386,7 @@ extern bool  optimizer_xforms[OPTIMIZER_XFORMS_COUNT];
 extern char *optimizer_search_strategy_path;
 extern bool optimizer_extract_dxl_stats;
 extern bool optimizer_extract_dxl_stats_all_nodes;
+extern bool optimizer_disable_missing_stats_collection;
 extern bool optimizer_dpe_stats;
 extern bool optimizer_enable_indexjoin;
 extern bool optimizer_enable_motions_masteronly_queries;

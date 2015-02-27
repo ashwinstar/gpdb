@@ -731,7 +731,8 @@ char 		*optimizer_search_strategy_path = NULL;
 char	   *gp_idf_deduplicate_str;
 bool		optimizer_extract_dxl_stats;
 bool		optimizer_extract_dxl_stats_all_nodes;
-bool            optimizer_dpe_stats;
+bool 		optimizer_disable_missing_stats_collection;
+bool        optimizer_dpe_stats;
 bool		optimizer_enable_indexjoin;
 bool		optimizer_enable_motions_masteronly_queries;
 bool		optimizer_enable_motions;
@@ -3773,6 +3774,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&optimizer_release_mdcache,
 		true, NULL, NULL
+	},
+
+	{
+		{"optimizer_disable_missing_stats_collection", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Disable collecting of columns with missing statistics."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_disable_missing_stats_collection,
+		false, NULL, NULL
 	},
 
 	{

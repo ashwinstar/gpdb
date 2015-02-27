@@ -2336,7 +2336,8 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 											dNullFrequency,
 											dDistinctRemain,
 											dFreqRemain,
-											pdrgpdxlbucket
+											pdrgpdxlbucket,
+											false /* fColStatsMissing */
 											);
 
 	return pdxlcolstats;

@@ -1,3 +1,4 @@
+set optimizer_disable_missing_stats_collection = on;
 drop table if exists ctas_src;
 drop table if exists ctas_dst;
 

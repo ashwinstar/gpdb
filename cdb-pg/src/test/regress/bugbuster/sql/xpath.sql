@@ -1,4 +1,4 @@
-
+set optimizer_disable_missing_stats_collection = on;
 \! gpfdist -p 45555 -d bugbuster/data &> bugbuster/data/xpath_gpfdist.out &
 -- apparently this is needed on darwin
 \! sleep 5

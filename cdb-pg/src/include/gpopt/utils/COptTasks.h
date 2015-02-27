@@ -246,6 +246,10 @@ class COptTasks
 		static
 		ICostModel *Pcm(IMemoryPool *pmp, ULONG ulSegments);
 
+		// print warning messages for columns with missing statistics
+		static
+		void PrintMissingStatsWarning(IMemoryPool *pmp, CMDAccessor *pmda, DrgPmdid *pdrgmdidCol, HMMDIdMDId *phmmdidRel);
+
 	public:
 
 		// convert Query->DXL->LExpr->Optimize->PExpr->DXL

@@ -712,7 +712,7 @@ COptTasks::PoconfCreate
 	return New(pmp) COptimizerConfig
 						(
 						New(pmp) CEnumeratorConfig(pmp, ullPlanId, ullSamples, dCostThreshold),
-						New(pmp) CStatisticsConfig(dDampingFactorFilter, dDampingFactorJoin, dDampingFactorGroupBy),
+						New(pmp) CStatisticsConfig(pmp, dDampingFactorFilter, dDampingFactorJoin, dDampingFactorGroupBy),
 						New(pmp) CCTEConfig(ulCTEInliningCutoff),
 						pcm
 						);
@@ -900,6 +900,9 @@ COptTasks::PvOptimizeTask
 	CBitSet *pbsDisabled = NULL;
 	CDXLNode *pdxlnPlan = NULL;
 
+	DrgPmdid *pdrgmdidCol = NULL;
+	HMMDIdMDId *phmmdidRel = NULL;
+
 	GPOS_TRY
 	{
 		// set trace flags
@@ -993,6 +996,16 @@ COptTasks::PvOptimizeTask
 				poctx->m_pplstmt = (PlannedStmt *) gpdb::PvCopyObject(Pplstmt(pmp, &mda, pdxlnPlan));
 			}
 
+			CStatisticsConfig *pstatsconf = pocconf->Pstatsconf();
+			pdrgmdidCol = New(pmp) DrgPmdid(pmp);
+			pstatsconf->CollectMissingStatsColumns(pdrgmdidCol);
+
+			phmmdidRel = New(pmp) HMMDIdMDId(pmp);
+			PrintMissingStatsWarning(pmp, &mda, pdrgmdidCol, phmmdidRel);
+
+			phmmdidRel->Release();
+			pdrgmdidCol->Release();
+
 			pceeval->Release();
 			pdxlnQuery->Release();
 			pocconf->Release();
@@ -1002,6 +1015,8 @@ COptTasks::PvOptimizeTask
 	GPOS_CATCH_EX(ex)
 	{
 		ResetTraceflags(pbsEnabled, pbsDisabled);
+		CRefCount::SafeRelease(phmmdidRel);
+		CRefCount::SafeRelease(pdrgmdidCol);
 		CRefCount::SafeRelease(pbsEnabled);
 		CRefCount::SafeRelease(pbsDisabled);
 		CRefCount::SafeRelease(pbsTraceFlags);
@@ -1037,6 +1052,67 @@ COptTasks::PvOptimizeTask
 
 	return NULL;
 }
+
+
+//---------------------------------------------------------------------------
+//	@function:
+//		COptTasks::PrintMissingStatsWarning
+//
+//	@doc:
+//		Print warning messages for columns with missing statistics
+//
+//---------------------------------------------------------------------------
+void
+COptTasks::PrintMissingStatsWarning
+	(
+	IMemoryPool *pmp,
+	CMDAccessor *pmda,
+	DrgPmdid *pdrgmdidCol,
+	HMMDIdMDId *phmmdidRel
+	)
+{
+	GPOS_ASSERT(NULL != pmda);
+	GPOS_ASSERT(NULL != pdrgmdidCol);
+	GPOS_ASSERT(NULL != phmmdidRel);
+
+	CWStringDynamic str(pmp);
+	COstreamString oss(&str);
+
+	const ULONG ulMissingColStats = pdrgmdidCol->UlLength();
+	for (ULONG ul = 0; ul < ulMissingColStats; ul++)
+	{
+		IMDId *pmdid = (*pdrgmdidCol)[ul];
+		CMDIdColStats *pmdidColStats = CMDIdColStats::PmdidConvert(pmdid);
+
+		IMDId *pmdidRel = pmdidColStats->PmdidRel();
+		const ULONG ulPos = pmdidColStats->UlPos();
+		const IMDRelation *pmdrel = pmda->Pmdrel(pmdidRel);
+
+		if (NULL == phmmdidRel->PtLookup(pmdidRel))
+		{
+			if (0 != ul)
+			{
+				oss << ", ";
+			}
+
+			pmdidRel->AddRef();
+			pmdidRel->AddRef();
+			phmmdidRel->FInsert(pmdidRel, pmdidRel);
+			oss << pmdrel->Mdname().Pstr()->Wsz();
+		}
+
+		CMDName mdname = pmdrel->Pmdcol(ulPos)->Mdname();
+		elog(LOG, "Missing statistics for column: %s.%s", SzFromWsz(pmdrel->Mdname().Pstr()->Wsz()), SzFromWsz(mdname.Pstr()->Wsz()));
+	}
+
+	if (0 < pdrgmdidCol->UlLength())
+	{
+		elog(WARNING, "One or more columns in the following table(s) do not have statistics. (see log for column name(s))");
+		elog(WARNING, "Please analyze table(s): %s", SzFromWsz(str.Wsz()));
+	}
+
+}
+
 
 //---------------------------------------------------------------------------
 //	@function:

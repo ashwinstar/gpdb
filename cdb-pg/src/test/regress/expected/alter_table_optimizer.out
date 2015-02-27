@@ -1,3 +1,4 @@
+set optimizer_disable_missing_stats_collection = on;
 --
 -- ALTER_TABLE
 -- add attribute

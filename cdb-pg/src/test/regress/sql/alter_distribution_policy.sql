@@ -1,8 +1,8 @@
-
 -- ALTER TABLE ... SET DISTRIBUTED BY
 -- This is the main interface for system expansion
 \set DATA values(1, 2), (2, 3), (3, 4)
 -- Basic sanity tests
+set optimizer_disable_missing_stats_collection = on;
 create table atsdb (i int, j text) distributed by (i);
 insert into atsdb :DATA;
 

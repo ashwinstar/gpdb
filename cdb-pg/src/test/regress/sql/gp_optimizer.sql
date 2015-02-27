@@ -854,12 +854,34 @@ SELECT generate_series(1,10) EXCEPT SELECT 1;
 SELECT generate_series(1,10) INTERSECT SELECT 1;
 
 SELECT generate_series(1,10) UNION SELECT 1;
+--- warning messages for missing stats
+create table foo_missing_stats(a int, b int);
+insert into foo_missing_stats select i, i%5 from generate_series(1,20) i;
+create table bar_missing_stats(c int, d int);
+insert into bar_missing_stats select i, i%8 from generate_series(1,30) i;
+
+analyze foo_missing_stats;
+analyze bar_missing_stats;
+
+select count(*) from foo_missing_stats where a = 10;
+with x as (select * from foo_missing_stats) select count(*) from x x1, x x2 where x1.a = x2.a;
+with x as (select * from foo_missing_stats) select count(*) from x x1, x x2 where x1.a = x2.b;
+
+set allow_system_table_mods="DML";
+delete from pg_statistic where starelid='foo_missing_stats'::regclass;
+delete from pg_statistic where starelid='bar_missing_stats'::regclass;
+
+select count(*) from foo_missing_stats where a = 10;
+with x as (select * from foo_missing_stats) select count(*) from x x1, x x2 where x1.a = x2.a;
+with x as (select * from foo_missing_stats) select count(*) from x x1, x x2 where x1.a = x2.b;
+
+set optimizer_disable_missing_stats_collection = on;
+
 -- Push components of disjunctive predicates
 create table cust(cid integer, firstname text, lastname text) distributed by (cid);
 create table datedim(date_sk integer, year integer, moy integer) distributed by (date_sk);
 create table sales(item_sk integer, ticket_number integer, cid integer, date_sk integer, type text)
   distributed by (item_sk, ticket_number);
-
 -- create a volatile function which should not be pushed
 CREATE FUNCTION plusone(integer) RETURNS integer AS $$
 BEGIN
