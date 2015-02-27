@@ -466,5 +466,6 @@ extern void PersistentFileSysObj_ActivateStandby(
 
 extern void PersistentFileSysObj_DoGlobalSequenceScan(void);
 
+extern int PersistentFileSysObj_CountResyncObjects(void);
 
 #endif   /* CDBPERSISTENTFILESYSOBJ_H */

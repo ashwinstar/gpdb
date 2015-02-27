@@ -109,9 +109,9 @@ class GpSegStatusProgram:
             return data
 
         # verify that all expected ones are there
-        for expected in ["mode","segmentState","dataState", "postmasterState", "databaseStatus", "isFullResync", \
-                            "resyncNumCompleted","resyncTotalToComplete","estimatedCompletionTimeSecondsSinceEpoch", \
-                            "changeTrackingBytesUsed","verificationStatus","verificationMode", 
+        for expected in ["mode","segmentState","dataState", "postmasterState", "databaseStatus", "isFullResync",
+                            "resyncNumCompleted","resyncTotalToComplete","estimatedCompletionTimeSecondsSinceEpoch",
+                            "totalResyncObjectCount", "curResyncObjectCount", "changeTrackingBytesUsed","verificationStatus","verificationMode", 
                             "verificationStartTimeSecondsSinceEpoch", "verificationCompletedCount", "verificationTotalCount",
                             "estimatedCompletionVerificationTimeSecondsSinceEpoch"]:
             if expected not in data:
@@ -119,7 +119,7 @@ class GpSegStatusProgram:
                 return None
 
         # convert some to long integers
-        for toConvert in ["resyncNumCompleted","resyncTotalToComplete","estimatedCompletionTimeSecondsSinceEpoch", \
+        for toConvert in ["resyncNumCompleted","resyncTotalToComplete","estimatedCompletionTimeSecondsSinceEpoch",
                             "changeTrackingBytesUsed"]:
             value = data[toConvert]
             try:

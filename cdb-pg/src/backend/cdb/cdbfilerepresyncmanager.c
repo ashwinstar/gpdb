@@ -193,7 +193,13 @@ typedef struct FileRepResyncShmem_s {
 	
 	int				writeCount;
 		/* number of relations waiting to be resynchronized */
-		
+
+	int			curFsobjCount;
+	/* Current number of file system objects to create/drop during resync*/
+
+	int			totalFsobjCount;
+	/* Total number of file system objects to create/drop during resync*/
+
 	int				resyncInProgressCount; 
 		/* number of relations in resynchronization */
 	
@@ -201,7 +207,7 @@ typedef struct FileRepResyncShmem_s {
 	
 	HTAB			*fileRepResyncHash;
 	/* List of relations to be resynced */
-	
+
 } FileRepResyncShmem_s;
 
 static volatile FileRepResyncShmem_s *fileRepResyncShmem = NULL;
@@ -234,6 +240,30 @@ static void
 FileRepResync_LockRelease(void) 
 {	
 	SpinLockRelease(&fileRepResyncShmem->lock);
+}
+
+void
+FileRepResync_DecFsobjCount(void)
+{
+	Assert(fileRepResyncShmem->curFsobjCount > 0);
+	if (fileRepResyncShmem != NULL)
+	{
+		--(fileRepResyncShmem->curFsobjCount);
+	}
+}
+
+int
+FileRepResync_GetCurFsobjCount(void)
+{
+	return (fileRepResyncShmem != NULL) ?
+			fileRepResyncShmem->curFsobjCount : -1;
+}
+
+int
+FileRepResync_GetTotalFsobjCount(void)
+{
+	return (fileRepResyncShmem != NULL) ?
+			fileRepResyncShmem->totalFsobjCount : -1;
 }
 
 int
@@ -499,7 +529,10 @@ FileRepResync_ShmemInit(void)
 	fileRepResyncShmem->endIncrResyncLSN.xrecoff = 0;
 	
 	fileRepResyncShmem->writeCount = 0;
-	
+
+	fileRepResyncShmem->curFsobjCount = 0;
+	fileRepResyncShmem->totalFsobjCount = 0;
+
 	fileRepResyncShmem->resyncInProgressCount = 0;
 	fileRepResyncShmem->resyncCompletedCount = 0;
 	
@@ -567,7 +600,10 @@ FileRepResync_ShmemReInit(void)
 	fileRepResyncShmem->endIncrResyncLSN.xrecoff = 0;
 	
 	fileRepResyncShmem->writeCount = 0;
-	
+
+	fileRepResyncShmem->curFsobjCount = 0;
+	fileRepResyncShmem->totalFsobjCount = 0;
+
 	fileRepResyncShmem->resyncInProgressCount = 0;
 	fileRepResyncShmem->resyncCompletedCount = 0;
 		
@@ -883,6 +919,9 @@ FileRepResyncManager_InResyncTransition(void)
 	 * created by re-created phase.
 	 */
 	FileRep_InsertConfigLogEntry("run resync manager, mirror redrop");
+
+	fileRepResyncShmem->totalFsobjCount = fileRepResyncShmem->curFsobjCount
+									= PersistentFileSysObj_CountResyncObjects();
 
 	/*
 	 * Drop the objects on the mirror that were dropped on the primary when the

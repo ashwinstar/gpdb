@@ -720,6 +720,8 @@ static DistributedTransactionTimeStamp Save_DtxStartTime = 0;
 extern struct timeval FileRepResync_GetEstimateResyncCompletionTime(void);
 extern int64 FileRepResync_GetBlocksSynchronized(void);
 extern int64 FileRepResync_GetTotalBlocksToSynchronize(void);
+extern int FileRepResync_GetCurFsobjCount(void);
+extern int FileRepResync_GetTotalFsobjCount(void);
 
 /** verification status info from cdbfilerepverify.h **/
 /*
@@ -3191,7 +3193,8 @@ processTransitionRequest_getMirrorStatus(void)
 	float totalGBsToVerify = FileRepVerify_GetTotalGBsToVerify();
 	struct timeval estimateVerifyCompletionTime = FileRepVerify_GetEstimateVerifyCompletionTime();
 	struct timeval verificationStartTime = FileRepVerify_GetVerifyRequestStartTime();
-
+	int fsobjCount = FileRepResync_GetCurFsobjCount();
+	int totalFsobjCount = FileRepResync_GetTotalFsobjCount();
 
 	/**
 	 * Note: call this one AFTER calling the others above -- it will return a sentinel
@@ -3247,6 +3250,8 @@ processTransitionRequest_getMirrorStatus(void)
 							  "resyncTotalToComplete:" INT64_FORMAT "\n"
 							  "changeTrackingBytesUsed:" INT64_FORMAT "\n"
 							  "estimatedCompletionTimeSecondsSinceEpoch:" INT64_FORMAT "\n"
+							  "totalResyncObjectCount:%d\n"
+							  "curResyncObjectCount:%d\n"
 							  "verificationStatus:%s\n"
 							  "verificationMode:%s\n"
 							  "verificationStartTimeSecondsSinceEpoch:" INT64_FORMAT "\n"
@@ -3265,6 +3270,8 @@ processTransitionRequest_getMirrorStatus(void)
 			 resyncTotalToComplete,
 			 changeTrackingBytesUsed,
 			 (int64)estimateResyncCompletionTime.tv_sec,
+			 totalFsobjCount,
+			 fsobjCount,
 			 verificationStatus,
 			 verificationMode,
 			 (int64)verificationStartTime.tv_sec,

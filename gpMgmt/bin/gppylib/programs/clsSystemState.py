@@ -67,6 +67,8 @@ VALUE__RESYNC_MODE = FieldDefinition("Resynchronization mode", "resync_mode", "t
 VALUE__RESYNC_DATA_SYNCHRONIZED = FieldDefinition("Data synchronized", "data_synced_str", "text", "Data synced")
 VALUE__RESYNC_EST_TOTAL_DATA = FieldDefinition("Estimated total data to synchronize", "est_total_bytes_to_sync_str", "text", "Est. total to sync")
 VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR = FieldDefinition("Estimated resync progress with mirror", "est_resync_progress_str", "text", "Est. resync progress")
+VALUE__TOTAL_RESYNC_OBJECT_COUNT = FieldDefinition("Total resync objects", "totalResyncObjectCount", "text", "Total resync objects")
+VALUE__RESYNC_OBJECT_COUNT = FieldDefinition("Objects to resync", "curResyncObjectCount", "text", "Objects to resync")
 VALUE__RESYNC_EST_COMPLETION_TIME = FieldDefinition("Estimated resync end time", "est_resync_end_time_str", "text", "Est. resync end time")
 
 CATEGORY__STATUS = "Status"
@@ -91,6 +93,8 @@ VALUE__CONTENTID = FieldDefinition("contentid", "contentid", "int")
 VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES = FieldDefinition("Data synchronized (bytes)", "bytes_synced", "int8")
 VALUE__RESYNC_EST_TOTAL_DATA_BYTES = FieldDefinition("Estimated total data to synchronize (bytes)", "est_total_bytes_to_sync", "int8")
 VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC = FieldDefinition("Estimated resync progress with mirror (numeric)", "est_resync_progress_pct", "float")
+VALUE__TOTAL_RESYNC_OBJECT_COUNT_INT = FieldDefinition("Total Resync Object Count (int)", "totalResyncObjCount", "int")
+VALUE__RESYNC_OBJECT_COUNT_INT = FieldDefinition("Resync Object Count (int)", "curResyncObjCount", "int")
 VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP = FieldDefinition("Estimated resync end time (timestamp)", "est_resync_end_time", "timestamp")
 VALUE__HAS_DATABASE_STATUS_WARNING = FieldDefinition("Has database status warning", "has_status_warning", "bool")
 VALUE__VERSION_STRING = FieldDefinition("Version", "version", "text")
@@ -156,6 +160,8 @@ class GpStateData:
                 VALUE__RESYNC_DATA_SYNCHRONIZED,
                 VALUE__RESYNC_EST_TOTAL_DATA,
                 VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR,
+                VALUE__TOTAL_RESYNC_OBJECT_COUNT,
+                VALUE__RESYNC_OBJECT_COUNT,
                 VALUE__RESYNC_EST_COMPLETION_TIME]
 
         self.__entriesByCategory[CATEGORY__STATUS] = \
@@ -177,9 +183,9 @@ class GpStateData:
         self.__allValues = {}
         for k in [VALUE__SEGMENT_STATUS, VALUE__DBID, VALUE__CONTENTID,
                     VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES, VALUE__RESYNC_EST_TOTAL_DATA_BYTES,
-                    VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC, VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP,
-                    VALUE__HAS_DATABASE_STATUS_WARNING, VALUE__VERSION_STRING,
-                    VALUE__POSTMASTER_PID_FILE_EXISTS, VALUE__LOCK_FILES_EXIST,
+                    VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC, VALUE__TOTAL_RESYNC_OBJECT_COUNT_INT,
+                    VALUE__RESYNC_OBJECT_COUNT_INT, VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP, VALUE__HAS_DATABASE_STATUS_WARNING,
+                    VALUE__VERSION_STRING, VALUE__POSTMASTER_PID_FILE_EXISTS, VALUE__LOCK_FILES_EXIST,
                     VALUE__ACTIVE_PID_INT, VALUE__POSTMASTER_PID_VALUE_INT,
                     VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES,
 					VALUE__POSTMASTER_PID_FILE, VALUE__POSTMASTER_PID_VALUE, VALUE__LOCK_FILES,
@@ -693,7 +699,7 @@ class GpSystemStateProgram:
             logger.info("----------------------------------------------------")
             logger.info("Segment Pairs in Resynchronization")
             logSegments(primariesInResync, logAsPairs=True, additionalFieldsToLog=[VALUE__RESYNC_MODE, \
-                        VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, VALUE__RESYNC_DATA_SYNCHRONIZED, \
+                        VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, VALUE__TOTAL_RESYNC_OBJECT_COUNT, VALUE__RESYNC_OBJECT_COUNT, VALUE__RESYNC_DATA_SYNCHRONIZED, \
                         VALUE__RESYNC_EST_TOTAL_DATA, VALUE__RESYNC_EST_COMPLETION_TIME, VALUE__CHANGE_TRACKING_DATA_SIZE])
             exitCode = 1
         else:
@@ -1009,6 +1015,18 @@ class GpSystemStateProgram:
             if mirrorData is None:
                 data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, "unable to retrieve progress", isWarning=True)
             else:
+                totalResyncObjectCount =  mirrorData['totalResyncObjectCount']
+                if totalResyncObjectCount == -1:
+                    totalResyncObjectCountStr = "Not Available"
+                else:
+                    totalResyncObjectCountStr = str(totalResyncObjectCount)
+		
+                resyncObjectCount =  mirrorData['curResyncObjectCount']
+                if resyncObjectCount == -1:
+                    resyncObjectCountStr = "Not Available"
+                else:
+                    resyncObjectCountStr = str(resyncObjectCount)
+		
                 dataSynchronizedBytes = mirrorData["resyncNumCompleted"] * 32L * 1024
                 dataSynchronizedStr = self.__abbreviateBytes( dataSynchronizedBytes )
                 resyncDataBytes = None
@@ -1051,6 +1069,12 @@ class GpSystemStateProgram:
 
                 data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR, resyncProgressStr)
                 data.addValue(VALUE__RESYNC_EST_PROGRESS_WITH_MIRROR_NUMERIC, resyncProgressNumeric)
+
+                data.addValue(VALUE__TOTAL_RESYNC_OBJECT_COUNT, totalResyncObjectCountStr)
+                data.addValue(VALUE__TOTAL_RESYNC_OBJECT_COUNT_INT, totalResyncObjectCount)
+
+                data.addValue(VALUE__RESYNC_OBJECT_COUNT, resyncObjectCountStr)
+                data.addValue(VALUE__RESYNC_OBJECT_COUNT_INT, resyncObjectCount)
 
                 data.addValue(VALUE__RESYNC_EST_COMPLETION_TIME, estimatedEndTimeStr)
                 data.addValue(VALUE__RESYNC_EST_COMPLETION_TIME_TIMESTAMP, estimatedEndTimeTimestamp)

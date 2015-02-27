@@ -105,4 +105,10 @@ extern struct timeval FileRepResync_GetEstimateResyncCompletionTime(void);
 
 extern void FileRepResyncManager_ResyncFlatFiles(void);
 
+extern void FileRepResync_DecFsobjCount(void);
+
+extern int FileRepResync_GetCurFsobjCount(void);
+
+extern int FileRepResync_GetTotalFsobjCount(void);
+
 #endif  /* CDBFILEREPRESYNCMANAGER_H */

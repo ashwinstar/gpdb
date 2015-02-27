@@ -100,6 +100,34 @@ typedef struct ReadTupleForUpdateInfo
 
 static PersistentFileSysObjPrivateSharedMemory *persistentFileSysObjPrivateSharedData = NULL;
 
+static inline bool
+PersistentFileSysObj_IsMirrorReCreate(
+	int						state,
+	int						mirrorExistenceState)
+{
+	return ((state == PersistentFileSysState_BulkLoadCreatePending ||
+			 state == PersistentFileSysState_CreatePending ||
+			 state == PersistentFileSysState_Created ||
+			 state == PersistentFileSysState_JustInTimeCreatePending)
+			&&
+			(mirrorExistenceState ==
+			 MirroredObjectExistenceState_MirrorDownBeforeCreate ||
+			 mirrorExistenceState ==
+			 MirroredObjectExistenceState_MirrorDownDuringCreate));
+}
+
+static inline bool
+PersistentFileSysObj_IsMirrorReDrop(
+	int						state,
+	int						mirrorExistenceState)
+{
+	return ((state == PersistentFileSysState_DropPending ||
+			 state == PersistentFileSysState_AbortingCreate)
+			&&
+			(mirrorExistenceState ==
+			 MirroredObjectExistenceState_OnlyMirrorDropRemains));
+}
+
 void PersistentFileSysObj_InitShared(
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData)
 {
@@ -4896,13 +4924,7 @@ static void PersistentFileSysObj_ScanStateAction(
 			break;
 
 		case StateAction_MirrorReCreate:
-			if ((state == PersistentFileSysState_BulkLoadCreatePending ||
-				 state == PersistentFileSysState_CreatePending ||
-				 state == PersistentFileSysState_Created ||
-				 state == PersistentFileSysState_JustInTimeCreatePending)
-				&&
-				(mirrorExistenceState == MirroredObjectExistenceState_MirrorDownBeforeCreate ||
-				 mirrorExistenceState == MirroredObjectExistenceState_MirrorDownDuringCreate))
+			if (PersistentFileSysObj_IsMirrorReCreate(state, mirrorExistenceState))
 			{
 				MirrorDataLossTrackingState mirrorDataLossTrackingState;
 				int64						mirrorDataLossTrackingSessionNum;
@@ -4950,7 +4972,7 @@ static void PersistentFileSysObj_ScanStateAction(
 				// UNDONE: Act on mirrorDataLossOccurred
 
 				WRITE_PERSISTENT_STATE_ORDERED_LOCK;
-
+				FileRepResync_DecFsobjCount();
 			}
 			else
 			{
@@ -5064,10 +5086,7 @@ static void PersistentFileSysObj_ScanStateAction(
 
 		case StateAction_MirrorReDrop:
 		case StateAction_MirrorReDropped:
-			if ((state == PersistentFileSysState_DropPending ||
-				 state == PersistentFileSysState_AbortingCreate)
-				&&
-				(mirrorExistenceState == MirroredObjectExistenceState_OnlyMirrorDropRemains))
+			if (PersistentFileSysObj_IsMirrorReDrop(state, mirrorExistenceState))
 			{
 				MirrorDataLossTrackingState mirrorDataLossTrackingState;
 				int64						mirrorDataLossTrackingSessionNum;
@@ -5136,6 +5155,7 @@ static void PersistentFileSysObj_ScanStateAction(
 
 				/* Retain the lock */
 				WRITE_PERSISTENT_STATE_ORDERED_LOCK;
+				FileRepResync_DecFsobjCount();
 			}
 			else
 			{
@@ -5256,6 +5276,61 @@ void PersistentFileSysObj_MarkMirrorReCreated(void)
 			break;
 		fsObjType--;
 	}
+}
+
+/*
+ * Count the number of file system objects to be created/dropped on
+ * mirror prior to resync phase.
+ */
+int PersistentFileSysObj_CountResyncObjects(void)
+{
+	PersistentFileSysObjData *fileSysObjData;
+	PersistentFileSysObjSharedData	*fileSysObjSharedData;
+
+	PersistentStoreScan storeScan;
+	Datum values[Natts_gp_persistent_relation_node];
+
+	ItemPointerData persistentTid;
+	int64 persistentSerialNum;
+	MirroredObjectExistenceState		mirrorExistenceState;
+	PersistentFileSysState  			state;
+	PersistentFileSysObjName			fsObjName;
+	TransactionId						parentXid;
+	int64								serialNum;
+	int									count = 0;
+
+	PersistentFileSysObj_GetDataPtrs(
+								PersistentFsObjType_RelationFile,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+
+	PersistentStore_BeginScan(
+						&fileSysObjData->storeData,
+						&fileSysObjSharedData->storeSharedData,
+						&storeScan);
+
+	while (PersistentStore_GetNext(
+							&storeScan,
+							values,
+							&persistentTid,
+							&persistentSerialNum))
+	{
+		GpPersistent_GetCommonValues(
+								PersistentFsObjType_RelationFile,
+								values,
+								&fsObjName,
+								&state,
+								&mirrorExistenceState,
+								&parentXid,
+								&serialNum);
+		if (PersistentFileSysObj_IsMirrorReDrop(state, mirrorExistenceState) ||
+			PersistentFileSysObj_IsMirrorReCreate(state, mirrorExistenceState))
+		{
+			count++;
+		}
+	}
+	PersistentStore_EndScan(&storeScan);
+	return count;
 }
 
 void PersistentFileSysObj_MirrorReDrop(void)
