@@ -228,7 +228,7 @@ alter database dsp1 set	gp_default_storage_options=
 select pg_catalog.set_config('gp_default_storage_options',
     'appendonly=true, orientation=column', false);
 show gp_default_storage_options;
-create table co8 (a int, b float);
+create table co8 (a int, b float) distributed by (a);
 \d+ co8
 -- ensure that set_config() has propagated to segments by insert and
 -- select into a column oriented table.
@@ -238,7 +238,7 @@ begin;
 select pg_catalog.set_config('gp_default_storage_options',
     'compresslevel=2', true);
 show gp_default_storage_options;
-create table ao1 (a int, b int) with (appendonly=true);
+create table ao1 (a int, b int) with (appendonly=true) distributed by (a);
 \d+ ao1;
 insert into ao1 select i, i from generate_series(1,100)i;
 select count(*) from ao1;
@@ -246,7 +246,7 @@ end;
 -- GUC should be reset after end of transaction.
 show gp_default_storage_options;
 -- verify reset happendon on segments by create, insert, select.
-create table co9 (x int, y float);
+create table co9 (x int, y float) distributed by (x);
 \d+ co9
 -- ensure that set_config() has propagated to segments by insert and
 -- select into a column oriented table.
