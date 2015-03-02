@@ -262,7 +262,7 @@ def impl(context, HOST, PORT, USER, transition):
     port = os.environ.get(PORT)
     source_file = os.path.join(os.environ.get('GPHOME'),'greenplum_path.sh') 
     master_dd = os.environ.get('MASTER_DATA_DIRECTORY')
-    export_mdd = 'export MASTER_DATA_DIRECTORY=%s'%master_dd
+    export_mdd = 'export MASTER_DATA_DIRECTORY=%s;export PGPORT=%s'%(master_dd, port)
     # reset all fault inject entry if exists
     command = 'gpfaultinjector -f all -m async -y reset -r primary -H ALL'
     run_command_remote(context, command, host, source_file, export_mdd)

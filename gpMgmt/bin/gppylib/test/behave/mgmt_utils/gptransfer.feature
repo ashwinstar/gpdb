@@ -1097,10 +1097,8 @@ Feature: gptransfer tests
 
 
    @T339824
-    Scenario: 4.2.x(S) -> gptransfer -> 4.3.x(D)
+    Scenario: gptransfer full with all ddl, dml and filespace
         Given the database is running
-        And the database is "4.2" with dburl "psql -p $GPTRANSFER_SOURCE_PORT -h $GPTRANSFER_SOURCE_HOST -U $GPTRANSFER_SOURCE_USER -d template1"
-        And the database is "4.3" with dburl "psql -p $GPTRANSFER_DEST_PORT -h $GPTRANSFER_DEST_HOST -U $GPTRANSFER_DEST_USER -d template1"
         And the database "gptransfer_destdb" does not exist
         And the database "gptransfer_testdb1" does not exist
         And the database "gptransfer_testdb2" does not exist
@@ -1125,10 +1123,8 @@ Feature: gptransfer tests
         And the user runs "psql -p $GPTRANSFER_DEST_PORT -h $GPTRANSFER_DEST_HOST -U $GPTRANSFER_DEST_USER -f gppylib/test/behave/mgmt_utils/steps/data/gptransfer/teardown.sql -d template1"
 
     @T339821
-    Scenario: 4.2.x(S) -> change tracking ->gptransfer -> 4.2.x(D)
+    Scenario: gptransfer full in change tracking
         Given the database is running
-        And the database is "4.2" with dburl "psql -p $GPTRANSFER_SOURCE_PORT -h $GPTRANSFER_SOURCE_HOST -U $GPTRANSFER_SOURCE_USER -d template1"
-        And the database is "4.2" with dburl "psql -p $GPTRANSFER_DEST_PORT -h $GPTRANSFER_DEST_HOST -U $GPTRANSFER_DEST_USER -d template1"
         And the database "gptransfer_destdb" does not exist
         And the database "gptransfer_testdb1" does not exist
         And the database "gptransfer_testdb2" does not exist
@@ -1155,10 +1151,8 @@ Feature: gptransfer tests
         And the user runs "psql -p $GPTRANSFER_DEST_PORT -h $GPTRANSFER_DEST_HOST -U $GPTRANSFER_DEST_USER -f gppylib/test/behave/mgmt_utils/steps/data/gptransfer/teardown.sql -d template1"
 
     @T339821
-    Scenario: 4.2.x(S) -> resync ->gptransfer -> 4.2.x(D)
+    Scenario: gptransfer in resync
         Given the database is running
-        And the database is "4.2" with dburl "psql -p $GPTRANSFER_SOURCE_PORT -h $GPTRANSFER_SOURCE_HOST -U $GPTRANSFER_SOURCE_USER -d template1"
-        And the database is "4.2" with dburl "psql -p $GPTRANSFER_DEST_PORT -h $GPTRANSFER_DEST_HOST -U $GPTRANSFER_DEST_USER -d template1"
         And the database "gptransfer_destdb" does not exist
         And the database "gptransfer_testdb1" does not exist
         And the database "gptransfer_testdb2" does not exist
