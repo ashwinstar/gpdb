@@ -213,7 +213,8 @@ class AnalyzeDb(Operation):
             qresult = execute_sql("SELECT version()", self.pg_port, self.dbname)
             version = GpVersion(qresult[0][0])
             if version < GpVersion('4.3.4.0'):
-                raise ProgramArgumentValidationException("--refresh_root_stats is not supported on Greenplum version lower than 4.3.4.0")
+                logger.debug("Adding --skip_root_stats option since Greenplum version is lower than 4.3.4.0")
+                self.rootstats = False
 
 
     def _preprocess_options(self):
@@ -673,7 +674,7 @@ class AnalyzeDb(Operation):
         logger.debug("getting mapping between leaf and root partition tables...")
         ret = {}
         # The leaf_root_dict keeps track of the mapping between a leaf partition and its root partition
-        # for the use of '--refresh_root_stats' option.
+        # for the use of refreshing root stats.
         leaf_root_dict = {}
         oid_str = ','.join(["'%s'::regclass" % can for can in candidates])
         qresult = run_sql(self.conn, GET_LEAF_ROOT_MAPPING_SQL % oid_str)
@@ -973,8 +974,8 @@ def create_parser():
                      help="List the tables to be analyzed without actually running analyze (dry run).")
     parser.add_option('-p', type='int', dest='parallel_level', default=5, metavar="<parallel level>",
                      help="Parallel level, i.e. the number of tables to be analyzed in parallel. Valid numbers are between 1 and 10. Default value is 5.")
-    parser.add_option('--refresh_root_stats', action='store_true', dest='rootstats', default=False,
-                     help="Refresh root partition stats if any of the leaf partitions is analyzed.")
+    parser.add_option('--skip_root_stats', action='store_false', dest='rootstats', default=True,
+                     help="Skip refreshing root partition stats if any of the leaf partitions is analyzed.")
     parser.add_option('--full', action='store_true', dest='full_analyze', default=False,
                      help="Analyze without using incremental. All tables requested by the user will be analyzed.")
     parser.add_option('--clean_last', action='store_true', dest='clean_last', default=False,
