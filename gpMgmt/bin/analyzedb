@@ -18,6 +18,7 @@ import os
 import shutil
 import fnmatch
 import tempfile
+import time
 from threading import Thread
 import threading
 from datetime import datetime
@@ -197,13 +198,13 @@ class AnalyzeDb(Operation):
 
         if (self.schema is not None) + (self.single_table is not None) \
                 + (self.config_file is not None) > 1:
-            raise ProgramArgumentValidationException('options -s, -t and -c are mutually exclusive')
+            raise ProgramArgumentValidationException('options -s, -t and -f are mutually exclusive')
 
         if (self.include_cols is not None) + (self.exclude_cols is not None) > 1:
-            raise ProgramArgumentValidationException('options -c and -C are mutually exclusive')
+            raise ProgramArgumentValidationException('options -i and -x are mutually exclusive')
 
         if (self.include_cols is not None or self.exclude_cols is not None) and self.single_table is None:
-            raise ProgramArgumentValidationException('option -c or -C can only be used together with -t')
+            raise ProgramArgumentValidationException('option -i or -x can only be used together with -t')
 
         if self.parallel_level < 1 or self.parallel_level > 10:
             raise ProgramArgumentValidationException('option -p requires a value between 1 and 10')
@@ -260,6 +261,10 @@ class AnalyzeDb(Operation):
         try:
             if self.clean_all or self.clean_last:
                 return 0
+
+            global CURR_TIME
+            CURR_TIME = generate_timestamp()
+
             # The input_col_dict keeps track of the requested columns to analyze.
             # key: table name (e.g. 'public.foo')
             # value: a set of requested column names (e.g. set(['col1','col2']), or '-1' indicating all columns
@@ -342,10 +347,9 @@ class AnalyzeDb(Operation):
             if not self.silent and not userinput.ask_yesno(None, "\nContinue with Analyze", 'N'):
                 raise UserAbortedException()
 
-            global CURR_TIME
-            CURR_TIME = generate_timestamp()
-
-            pool = AnalyzeWorkerPool(numWorkers=min(self.parallel_level, len(ordered_candidates)))
+            num_workers = min(self.parallel_level, len(ordered_candidates))
+            logger.info("Starting analyze with %d workers..." % num_workers)
+            pool = AnalyzeWorkerPool(numWorkers=num_workers)
             for can in ordered_candidates:
                 if can in candidates:
                     target = self._get_tablename_with_cols(can, input_col_dict)
@@ -357,11 +361,15 @@ class AnalyzeDb(Operation):
 
             wait_count = len(ordered_candidates)
             try:
+                start_time = time.time()
                 while wait_count > 0:
                     done_cmd = pool.completed_queue.get()
                     if done_cmd.was_successful():
                         subject = self._get_tablename_from_cmd(done_cmd.cmdStr)
                         self.success_list.append(subject)
+                    if wait_count % 10 == 0:
+                        logger.info("progress status: completed %d out of %d tables or partitions" %
+                                    (len(self.success_list), len(ordered_candidates)))
                     wait_count -= 1
 
                 for worker in pool.workers:
@@ -376,6 +384,10 @@ class AnalyzeDb(Operation):
                 self._write_back(curr_ao_state, curr_last_op, prev_ao_state, prev_last_op, heap_partitions,
                             input_col_dict, prev_col_dict, root_partition_col_dict, self.full_analyze, dirty_partitions,
                             target_list)
+                end_time = time.time()
+                logger.info("Total elapsed time: %d seconds. Analyzed %d out of %d table(s) or partition(s) successfully."
+                            % (int(end_time-start_time), len(self.success_list), len(ordered_candidates)))
+                logger.info("Done.")
         except:
             raise
 
@@ -423,8 +435,8 @@ class AnalyzeDb(Operation):
             for line in cfg_file:
                 toks = line.strip().split()
                 table = toks[0]
-                included_cols = self._get_include_or_exclude_cols(toks, '-c')
-                excluded_cols = self._get_include_or_exclude_cols(toks, '-C')
+                included_cols = self._get_include_or_exclude_cols(toks, '-i')
+                excluded_cols = self._get_include_or_exclude_cols(toks, '-x')
                 self._parse_column(col_dict, table, included_cols, excluded_cols, [table] in all_root_partitions)
 
         else: # all user tables in database
@@ -437,7 +449,7 @@ class AnalyzeDb(Operation):
     def _get_include_or_exclude_cols(self, line_tokens, option_str):
         """
         Get included or excluded columns from a line in the config file
-        :param line_tokens: tokenized lien in the config file, e.g., ['<schema>.<table>', '-c', '<col1>,<col2>,...']
+        :param line_tokens: tokenized lien in the config file, e.g., ['<schema>.<table>', '-i', '<col1>,<col2>,...']
         :param option_str: 'include' or 'exclude'
         :return: a list of included or excluded columns
         """
@@ -538,28 +550,30 @@ class AnalyzeDb(Operation):
 
         if len(ao_state_output) > 0:
             ao_state_filename = generate_statefile_name('ao', self.master_datadir, self.analyze_dir, self.dbname, CURR_TIME)
-            logger.info("Writing ao state file ...")
+            logger.info("Writing ao state file %s" % ao_state_filename)
             write_lines_to_file(ao_state_filename, ao_state_output)
             logger.debug("Verifying ao state file ...")
             verify_lines_in_file(ao_state_filename, ao_state_output)
 
         if len(last_op_output) > 0:
             last_operation_filename = generate_statefile_name('lastop', self.master_datadir, self.analyze_dir, self.dbname, CURR_TIME)
-            logger.info("Writing last operation file ...")
+            logger.info("Writing last operation file %s" % last_operation_filename)
             write_lines_to_file(last_operation_filename, last_op_output)
             logger.debug("Verifying last operation file ...")
             verify_lines_in_file(last_operation_filename, last_op_output)
 
         if len(prev_col_dict) > 0:
             col_state_filename = generate_statefile_name('col', self.master_datadir, self.analyze_dir, self.dbname, CURR_TIME)
-            logger.info("Writing column state file ...")
+            logger.info("Writing column state file %s" % col_state_filename)
             write_lines_to_file(col_state_filename, col_state_output)
             logger.debug("Verifying column state ...")
             verify_lines_in_file(col_state_filename, col_state_output)
 
         report_filename = generate_statefile_name('report', self.master_datadir, self.analyze_dir, self.dbname, CURR_TIME)
-        logger.info("Writing report file ...")
+        logger.info("Writing report file %s" % report_filename)
         with open(report_filename, 'w') as fp:
+            fp.write("%s:%s:%s:%s %s:%s:analyzedb %s\n\n" % (CURR_TIME[:8], CURR_TIME[8:10], CURR_TIME[10:12], CURR_TIME[12:14],
+                                                           unix.getLocalHostname(), unix.getUserName(), ' '.join(sys.argv[1:])))
             fp.write("Tables or partitions to analyze:\n---------------------------------------\n")
             for target in target_list:
                 fp.write("%s\n" % target.strip())
@@ -870,7 +884,7 @@ def validate_dir(path):
 def validate_include_tables(conn, table_list, include_file):
     """
     table_list needs to be a list of 'schema.table's
-    include_file could contain columns specified by -c
+    include_file could contain columns specified by -i
     """
     tables = {}
     if table_list is not None:
@@ -929,8 +943,16 @@ def validate_columns(conn, table, column_list):
 
 def create_parser():
     parser = OptionParser(version='%prog version 1.0',
-                       description='Analyze a database')
-    parser.set_usage('%prog [--help] [options] ')
+                       description=
+                       "Analyze a database incrementally. 'Incremental' means if a table or partition has not been modified by"
+                       "DML or DDL commands since the last analyzedb run, it will be automatically skipped since its statistics"
+                       "must be up to date. Some restrictions apply:  "
+                       "1. The incremental semantics only applies to append-only tables or partitions. All heap tables are regarded"
+                       "as having stale stats every time analyzedb is run. This is because we use AO metadata to check for DML or"
+                       "DDL events, which is not available to heap tables.  "
+                       "2. Catalog tables, views and external tables are automatically skipped."
+                       )
+    parser.set_usage('%prog [options] ')
     parser.remove_option('-h')
 
     parser.add_option('-d', dest='dbname', metavar="<database name>",
@@ -939,14 +961,14 @@ def create_parser():
                      help="Specify a schema to analyze. All tables in the schema will be analyzed.")
     parser.add_option('-t', dest='single_table', metavar="<schema name>.<table name>",
                      help="Analyze a single table. Table name needs to be qualified with schema name.")
-    parser.add_option('-c', type='string', dest='include_cols', metavar="<column1>,<column2>,...",
+    parser.add_option('-i', type='string', dest='include_cols', metavar="<column1>,<column2>,...",
                      help="Columns to include to be analyzed, separated by comma. All columns will be analyzed if not specified.")
-    parser.add_option('-C', type='string', dest='exclude_cols', metavar="<column1>,<column2>,...",
+    parser.add_option('-x', type='string', dest='exclude_cols', metavar="<column1>,<column2>,...",
                      help="Columns to exclude to be analyzed, separated by comma. All columns will be analyzed if not specified.")
     parser.add_option('-f', '--file', dest='config_file', metavar="<config_file>",
-                     help="Config file that includes a list of tables to be analyzed."
+                     help="Config file that includes a list of tables to be analyzed. "
                           "Table names must be qualified with schema name. Optionally a list of columns (separated by "
-                          "comma) can be specified using -c or -C.")
+                          "comma) can be specified using -i or -x.")
     parser.add_option('-l', '--list', action='store_true', dest='dry_run', default=False,
                      help="List the tables to be analyzed without actually running analyze (dry run).")
     parser.add_option('-p', type='int', dest='parallel_level', default=5, metavar="<parallel level>",
@@ -1018,12 +1040,15 @@ class AnalyzeWorker(Thread):
                 if self.cmd is not None:
                     # tablename = self.cmd.cmdStr.split()[-1][:-1]
                     self.logger.info("[%s] started  %s" % (self.name, self.cmd.name))
+                    start_time = time.time()
                     self.cmd.run()
+                    end_time = time.time()
                     stderr = self.cmd.get_stderr_lines()
                     if len(stderr) > 0: # emit stderr if there is any
                         self.logger.warning('\n'.join(stderr))
                     if self.cmd.was_successful():
-                        self.logger.info("[%s] finished %s" % (self.name, self.cmd.name))
+                        self.logger.info("[%s] finished %s. Elapsed time: %d seconds." % (self.name, self.cmd.name,
+                                                                                          int(end_time-start_time)))
                     self.pool.addFinishedWorkItem(self.cmd)
                     self.cmd=None
 

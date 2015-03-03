@@ -3,9 +3,9 @@ Feature: Incrementally analyze the database
 
     @analyzedb_UI
     Scenario: Invalid arguments entered
-      When the user runs "analyzedb -x"
+      When the user runs "analyzedb -w"
       Then analyzedb should print error: no such option error message
-      When the user runs "analyzedb -d incr_analyze -x"
+      When the user runs "analyzedb -d incr_analyze -w"
       Then analyzedb should print error: no such option error message
 
 #    @analyzedb_UI
@@ -17,10 +17,10 @@ Feature: Incrementally analyze the database
     Scenario: Missing required options
       When the user runs "analyzedb"
       Then analyzedb should print option -d required to stdout
-      When the user runs "analyzedb -l -d incr_analyze -c x"
-      Then analyzedb should print option -c or -C can only be used together with -t to stdout
-      When the user runs "analyzedb -l -d incr_analyze -C x"
-      Then analyzedb should print option -c or -C can only be used together with -t to stdout
+      When the user runs "analyzedb -l -d incr_analyze -i x"
+      Then analyzedb should print option -i or -x can only be used together with -t to stdout
+      When the user runs "analyzedb -l -d incr_analyze -x x"
+      Then analyzedb should print option -i or -x can only be used together with -t to stdout
 
     @analyzedb_UI
     Scenario: Missing parameters
@@ -30,10 +30,10 @@ Feature: Incrementally analyze the database
       Then analyzedb should print error: -t option requires an argument error message
       When the user runs "analyzedb -d incr_analyze -s"
       Then analyzedb should print error: -s option requires an argument error message
-      When the user runs "analyzedb -d incr_analyze -t public.t1_ao -c"
-      Then analyzedb should print error: -c option requires an argument error message
-      When the user runs "analyzedb -d incr_analyze -t public.t1_ao -C"
-      Then analyzedb should print error: -C option requires an argument error message
+      When the user runs "analyzedb -d incr_analyze -t public.t1_ao -i"
+      Then analyzedb should print error: -i option requires an argument error message
+      When the user runs "analyzedb -d incr_analyze -t public.t1_ao -x"
+      Then analyzedb should print error: -x option requires an argument error message
 
     @analyzedb_UI
     Scenario: Additional ignored arguments
@@ -42,8 +42,8 @@ Feature: Incrementally analyze the database
 
     @analyzedb_UI
     Scenario: Mutually exclusive arguments
-      When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao -c x -C y"
-      Then analyzedb should print options -c and -C are mutually exclusive to stdout
+      When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao -i x -x y"
+      Then analyzedb should print options -i and -x are mutually exclusive to stdout
 
     @analyzedb_UI
     Scenario: Table name not qualified with schema name
@@ -72,9 +72,9 @@ Feature: Incrementally analyze the database
       Then analyzedb should print Schema public.t1_ao does not exist to stdout
       When the user runs "analyzedb -l -d incr_analyze -t public.t1_xyz"
       Then analyzedb should print relation "public.t1_xyz" does not exist to stdout
-      When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao -c r"
+      When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao -i r"
       Then analyzedb should print Invalid input columns for table public.t1_ao to stdout
-      When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao -C r"
+      When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao -x r"
       Then analyzedb should print Invalid input columns for table public.t1_ao to stdout
 
     @analyzedb_UI
@@ -85,10 +85,10 @@ Feature: Incrementally analyze the database
       When the user runs command "printf 'public.t1_xyz' > config_file"
       And the user runs "analyzedb -l -d incr_analyze -f config_file"
       Then analyzedb should print relation "public.t1_xyz" does not exist to stdout
-      When the user runs command "printf 'public.t1_ao -c r' > config_file"
+      When the user runs command "printf 'public.t1_ao -i r' > config_file"
       And the user runs "analyzedb -l -d incr_analyze -f config_file"
       Then analyzedb should print Invalid input columns for table public.t1_ao to stdout
-      When the user runs command "printf 'public.t1_ao -C r' > config_file"
+      When the user runs command "printf 'public.t1_ao -x r' > config_file"
       And the user runs "analyzedb -l -d incr_analyze -f config_file"
       Then analyzedb should print Invalid input columns for table public.t1_ao to stdout
 
@@ -105,10 +105,10 @@ Feature: Incrementally analyze the database
       When the user runs command "printf 'public.t1_ao\npublic.t1_ao' > config_file"
       And the user runs "analyzedb -l -d incr_analyze -f config_file"
       Then analyzedb should print analyzedb error: Duplicate table name to stdout
-      When the user runs command "printf 'public.t1_ao -c x\npublic.t1_ao -C x' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x\npublic.t1_ao -x x' > config_file"
       And the user runs "analyzedb -l -d incr_analyze -f config_file"
       Then analyzedb should print analyzedb error: Duplicate table name to stdout
-      When the user runs command "printf 'public.t1_ao -c x\npublic.t1_ao -C y' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x\npublic.t1_ao -x y' > config_file"
       And the user runs "analyzedb -l -d incr_analyze -f config_file"
       Then analyzedb should print analyzedb error: Duplicate table name to stdout
 
@@ -138,17 +138,17 @@ Feature: Incrementally analyze the database
       And analyzedb should print -public.t3_ao to stdout
       When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao"
       Then analyzedb should print -public.t1_ao to stdout
-      When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao -c x"
+      When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao -i x"
       Then analyzedb should print -public.t1_ao\(x\) to stdout
-      When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao -C y"
+      When the user runs "analyzedb -l -d incr_analyze -t public.t1_ao -x y"
       Then analyzedb should print -public.t1_ao\(x,z\) to stdout
       When the user runs command "printf 'public.t1_ao' > config_file"
       And the user runs "analyzedb -l -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao to stdout
-      When the user runs command "printf 'public.t1_ao -C y,z\npublic.t3_ao' > config_file"
+      When the user runs command "printf 'public.t1_ao -x y,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -l -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(x\)" and "-public.t3_ao"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c b' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i b' > config_file"
       And the user runs "analyzedb -l -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(b\)"
 
@@ -199,7 +199,7 @@ Feature: Incrementally analyze the database
     Scenario: Single table, dml, no entry in state file, some columns requested
       Given no state files exist for database "incr_analyze"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x"
       Then analyzedb should print -public.t1_ao\(x\) to stdout
       And "public.t1_ao" should appear in the latest state files
       And columns "x" of table "public.t1_ao" should appear in the latest column state file
@@ -208,7 +208,7 @@ Feature: Incrementally analyze the database
     Scenario: Single table, ddl, no entry in state file, some columns requested
       Given no state files exist for database "incr_analyze"
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
       Then output should contain either "-public.t1_ao\(x,y\)" or "-public.t1_ao\(y,x\)"
       And "public.t1_ao" should appear in the latest state files
       And columns "x,y" of table "public.t1_ao" should appear in the latest column state file
@@ -218,7 +218,7 @@ Feature: Incrementally analyze the database
       Given no state files exist for database "incr_analyze"
       And some ddl is performed on table "t1_ao" in schema "public"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,z"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,z"
       Then output should contain either "-public.t1_ao\(z,x\)" or "-public.t1_ao\(x,z\)"
       And "public.t1_ao" should appear in the latest state files
       And columns "x,z" of table "public.t1_ao" should appear in the latest column state file
@@ -228,7 +228,7 @@ Feature: Incrementally analyze the database
       Given no state files exist for database "incr_analyze"
       And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao"
       And "public.t1_ao" appears in the latest state files
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
       Then analyzedb should print There are no tables or partitions to be analyzed to stdout
       And columns "-1" of table "public.t1_ao" should appear in the latest column state file
 
@@ -238,7 +238,7 @@ Feature: Incrementally analyze the database
       And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao"
       And "public.t1_ao" appears in the latest state files
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
       Then output should contain either "-public.t1_ao\(y,x\)" or "-public.t1_ao\(x,y\)"
       And columns "x,y" of table "public.t1_ao" should appear in the latest column state file
 
@@ -257,7 +257,7 @@ Feature: Incrementally analyze the database
       And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao"
       And "public.t1_ao" appears in the latest state files
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,z"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,z"
       Then output should contain either "-public.t1_ao\(z,x\)" or "-public.t1_ao\(x,z\)"
       And columns "x,z" of table "public.t1_ao" should appear in the latest column state file
 
@@ -278,14 +278,14 @@ Feature: Incrementally analyze the database
       And "public.t1_ao" appears in the latest state files
       And some ddl is performed on table "t1_ao" in schema "public"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,z"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,z"
       Then output should contain either "-public.t1_ao\(z,x\)" or "-public.t1_ao\(x,z\)"
       And columns "x,z" of table "public.t1_ao" should appear in the latest column state file
 
     @analyzedb_core @analyzedb_single_table
     Scenario: Single table, entry exists for some columns, no change, whole table requested
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
       When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao"
       Then analyzedb should print -public.t1_ao\(z\) to stdout
       And columns "x,y,z" of table "public.t1_ao" should appear in the latest column state file
@@ -293,15 +293,15 @@ Feature: Incrementally analyze the database
     @analyzedb_core @analyzedb_single_table
     Scenario: Single table, entry exists for some columns, no change, some columns requested
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,z"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,z"
       Then analyzedb should print -public.t1_ao\(z\) to stdout
       And columns "x,y,z" of table "public.t1_ao" should appear in the latest column state file
 
     @analyzedb_core @analyzedb_single_table
     Scenario: Single table, entry exists for some columns, dml, whole table requested
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao"
       Then analyzedb should print -public.t1_ao to stdout
@@ -310,16 +310,16 @@ Feature: Incrementally analyze the database
     @analyzedb_core @analyzedb_single_table
     Scenario: Single table, entry exists for some columns, dml, some columns requested
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,z"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,z"
       Then output should contain either "-public.t1_ao\(z,x\)" or "-public.t1_ao\(x,z\)"
       And columns "x,z" of table "public.t1_ao" should appear in the latest column state file
 
     @analyzedb_core @analyzedb_single_table
     Scenario: Single table, entry exists for some columns, ddl, whole table requested
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
       And some ddl is performed on table "t1_ao" in schema "public"
       When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao"
       Then analyzedb should print -public.t1_ao to stdout
@@ -328,16 +328,16 @@ Feature: Incrementally analyze the database
     @analyzedb_core @analyzedb_single_table
     Scenario: Single table, entry exists for some columns, ddl, some columns requested
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,z"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,z"
       Then output should contain either "-public.t1_ao\(z,x\)" or "-public.t1_ao\(x,z\)"
       And columns "x,z" of table "public.t1_ao" should appear in the latest column state file
 
     @analyzedb_core @analyzedb_single_table
     Scenario: Single table, entry exists for some columns, ddl, dml, whole table requested
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
       And some ddl is performed on table "t1_ao" in schema "public"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao"
@@ -347,10 +347,10 @@ Feature: Incrementally analyze the database
     @analyzedb_core @analyzedb_single_table
     Scenario: Single table, entry exists for some columns, ddl, dml, some columns requested
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,y"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,y"
       And some ddl is performed on table "t1_ao" in schema "public"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
-      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -c x,z"
+      When the user runs "analyzedb -a -d incr_analyze -t public.t1_ao -i x,z"
       Then output should contain either "-public.t1_ao\(z,x\)" or "-public.t1_ao\(x,z\)"
       And columns "x,z" of table "public.t1_ao" should appear in the latest column state file
 
@@ -360,7 +360,7 @@ Feature: Incrementally analyze the database
    @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, no entry), (no change, no change), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c b,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i b,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(b,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -382,7 +382,7 @@ Feature: Incrementally analyze the database
    @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, no entry), (no change, no change), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c b,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i b,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(x,z\)" and "-public.t3_ao\(b,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -394,7 +394,7 @@ Feature: Incrementally analyze the database
     Scenario: Multiple tables, (no entry, no entry), (no change, DML), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c b,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i b,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(b,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -419,7 +419,7 @@ Feature: Incrementally analyze the database
       Given no state files exist for database "incr_analyze"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c b,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i b,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(x,z\)" and "-public.t3_ao\(b,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -432,8 +432,8 @@ Feature: Incrementally analyze the database
    @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (no change, no change), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c b,c' > config_file"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i b,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(b\)"
       And "public.t1_ao" should appear in the latest state files
@@ -444,7 +444,7 @@ Feature: Incrementally analyze the database
    @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (no change, no change), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
       When the user runs command "printf 'public.t1_ao\npublic.t3_ao\n' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(a,b\)"
@@ -456,8 +456,8 @@ Feature: Incrementally analyze the database
    @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (no change, no change), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c a,b,c"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c b,c' > config_file"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i a,b,c"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i b,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao\(x,z\) to stdout
       And "public.t1_ao" should appear in the latest state files
@@ -468,9 +468,9 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (no change, DML), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -481,7 +481,7 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (no change, DML), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
       When the user runs command "printf 'public.t1_ao\npublic.t3_ao\n' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
@@ -494,9 +494,9 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (no change, DML), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao"
       And "public.t1_ao" should appear in the latest state files
@@ -507,10 +507,10 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (no change, DML&DDL), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -521,7 +521,7 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (no change, DML&DDL), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
       When the user runs command "printf 'public.t1_ao\npublic.t3_ao\n' > config_file"
@@ -535,10 +535,10 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (no change, DML&DDL), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(x,z\)" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -549,10 +549,10 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (DML, DDL), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -563,7 +563,7 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (DML, DDL), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
       When the user runs command "printf 'public.t1_ao\npublic.t3_ao\n' > config_file"
@@ -578,10 +578,10 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (no entry, some cols), (DML, DDL), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -c c"
+      And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao -i c"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao"
       And "public.t1_ao" should appear in the latest state files
@@ -595,7 +595,7 @@ Feature: Incrementally analyze the database
     Scenario: Multiple tables, (no entry, whole table), (no change, no change), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
       And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c b,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i b,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao to stdout
       And output should not contain "public.t3_ao"
@@ -621,7 +621,7 @@ Feature: Incrementally analyze the database
     Scenario: Multiple tables, (no entry, whole table), (no change, no change), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
       And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c b,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i b,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao\(x,z\) to stdout
       And output should not contain "public.t3_ao"
@@ -635,7 +635,7 @@ Feature: Incrementally analyze the database
       Given no state files exist for database "incr_analyze"
       And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -661,7 +661,7 @@ Feature: Incrementally analyze the database
       Given no state files exist for database "incr_analyze"
       And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -675,7 +675,7 @@ Feature: Incrementally analyze the database
       And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao to stdout
       And output should not contain "public.t3_ao"
@@ -705,7 +705,7 @@ Feature: Incrementally analyze the database
       And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao to stdout
       And output should not contain "public.t3_ao"
@@ -720,7 +720,7 @@ Feature: Incrementally analyze the database
       And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -749,7 +749,7 @@ Feature: Incrementally analyze the database
       And the user runs "analyzedb -a -d incr_analyze -t public.t3_ao"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       When the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(x,z\)" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -764,9 +764,9 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (no change, no change), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c b,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i b,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao\(y\) to stdout
       And output should not contain "public.t3_ao"
@@ -778,7 +778,7 @@ Feature: Incrementally analyze the database
    @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (no change, no change), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       When the user runs command "printf 'public.t1_ao\npublic.t3_ao\n' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
@@ -792,9 +792,9 @@ Feature: Incrementally analyze the database
    @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (no change, no change), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
-      When the user runs command "printf 'public.t1_ao -c x,y\npublic.t3_ao -c b,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,y\npublic.t3_ao -i b,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao\(y\) to stdout
       And output should not contain "public.t3_ao"
@@ -806,10 +806,10 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (no change, DML), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(y\)" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -820,7 +820,7 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (no change, DML), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
       When the user runs command "printf 'public.t1_ao\npublic.t3_ao\n' > config_file"
@@ -835,10 +835,10 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (no change, DML), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao -c y,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i y,z\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(y\)" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -850,11 +850,11 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (DML&DDL, no change), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao to stdout
       And output should not contain "public.t1_ao\("
@@ -867,7 +867,7 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (DML&DDL, no change), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t1_ao" in schema "public"
@@ -884,11 +884,11 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (DML&DDL, no change), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao\(x,z\) to stdout
       And output should not contain "public.t3_ao"
@@ -901,11 +901,11 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (DML, DDL), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(a,c\)"
       And output should not contain "public.t1_ao\("
@@ -918,7 +918,7 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (DML, DDL), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
@@ -935,11 +935,11 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, whole table), (DML, DDL), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(x,z\)" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -955,7 +955,7 @@ Feature: Incrementally analyze the database
       Given no state files exist for database "incr_analyze"
       And the user runs command "printf 'public.t1_ao \npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c b,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i b,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print There are no tables or partitions to be analyzed to stdout
       And "public.t1_ao" should appear in the latest state files
@@ -981,7 +981,7 @@ Feature: Incrementally analyze the database
       Given no state files exist for database "incr_analyze"
       And the user runs command "printf 'public.t1_ao \npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
-      When the user runs command "printf 'public.t1_ao -c x,y\npublic.t3_ao -c b,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,y\npublic.t3_ao -i b,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print There are no tables or partitions to be analyzed to stdout
       And "public.t1_ao" should appear in the latest state files
@@ -995,7 +995,7 @@ Feature: Incrementally analyze the database
       And the user runs command "printf 'public.t1_ao \npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t3_ao\(a,c\) to stdout
       And output should not contain "-public.t1_ao"
@@ -1026,7 +1026,7 @@ Feature: Incrementally analyze the database
       And the user runs command "printf 'public.t1_ao \npublic.t3_ao' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao -c y,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i y,z\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t3_ao\(a,c\) to stdout
       And output should not contain "-public.t1_ao"
@@ -1043,7 +1043,7 @@ Feature: Incrementally analyze the database
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao to stdout
       And output should not contain "public.t1_ao\("
@@ -1077,7 +1077,7 @@ Feature: Incrementally analyze the database
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao\(x,z\) to stdout
       And output should not contain "public.t3_ao"
@@ -1094,7 +1094,7 @@ Feature: Incrementally analyze the database
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(a,c\)"
       And output should not contain "public.t1_ao\("
@@ -1128,7 +1128,7 @@ Feature: Incrementally analyze the database
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(x,z\)" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -1142,9 +1142,9 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (no change, no change), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,b' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao\(y\) to stdout
       And output should not contain "public.t3_ao"
@@ -1156,7 +1156,7 @@ Feature: Incrementally analyze the database
    @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (no change, no change), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       When the user runs command "printf 'public.t1_ao\npublic.t3_ao\n' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
@@ -1169,9 +1169,9 @@ Feature: Incrementally analyze the database
    @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (no change, no change), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
-      When the user runs command "printf 'public.t1_ao -c x,y\npublic.t3_ao -c b,a' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,y\npublic.t3_ao -i b,a' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then analyzedb should print -public.t1_ao\(y\) to stdout
       And output should not contain "public.t3_ao"
@@ -1183,10 +1183,10 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (no change, DML), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(y\)" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -1197,7 +1197,7 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (no change, DML), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
       When the user runs command "printf 'public.t1_ao\npublic.t3_ao\n' > config_file"
@@ -1212,10 +1212,10 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (no change, DML), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t3_ao" in schema "public" with column type list "int,text,real"
-      When the user runs command "printf 'public.t1_ao -c y,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i y,z\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(y\)" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -1227,11 +1227,11 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (DML&DDL, no change), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(c\)"
       And output should not contain "public.t1_ao\("
@@ -1243,7 +1243,7 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (DML&DDL, no change), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t1_ao" in schema "public"
@@ -1259,11 +1259,11 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (DML&DDL, no change), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t1_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(x,z\)" and "-public.t3_ao\(c\)"
       And "public.t1_ao" should appear in the latest state files
@@ -1275,11 +1275,11 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (DML, DDL), (whole table, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao" and "-public.t3_ao\(a,c\)"
       And output should not contain "public.t1_ao\("
@@ -1292,7 +1292,7 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (DML, DDL), (whole table, whole table)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
@@ -1309,11 +1309,11 @@ Feature: Incrementally analyze the database
        @analyzedb_core @analyzedb_multitables
     Scenario: Multiple tables, (some cols, some cols), (DML, DDL), (some cols, some cols)
       Given no state files exist for database "incr_analyze"
-      And the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,b' > config_file"
+      And the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,b' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       And some data is inserted into table "t1_ao" in schema "public" with column type list "int,text,real"
       And some ddl is performed on table "t3_ao" in schema "public"
-      When the user runs command "printf 'public.t1_ao -c x,z\npublic.t3_ao -c a,c' > config_file"
+      When the user runs command "printf 'public.t1_ao -i x,z\npublic.t3_ao -i a,c' > config_file"
       And the user runs "analyzedb -a -d incr_analyze -f config_file"
       Then output should contain both "-public.t1_ao\(x,z\)" and "-public.t3_ao\(a,c\)"
       And "public.t1_ao" should appear in the latest state files
