@@ -19,8 +19,11 @@ import errno
 import fcntl
 import os
 import select
-import subprocess
 import time
+try:
+    import subprocess32 as subprocess
+except:
+    import subprocess
 from gppylib import gplog
 
 

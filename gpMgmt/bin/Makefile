@@ -25,7 +25,7 @@ SBIN_DIR=$(SRC)/../sbin
 LIB_DIR=$(SRC)/lib
 PYLIB_DIR=$(SRC)/ext
 
-all: lockfile paramiko pycrypto pygresql stream pychecker psi unittest2
+all: lockfile paramiko pycrypto pygresql stream pychecker psi unittest2 subprocess32
 
 #
 # Python Libraries
@@ -101,6 +101,12 @@ lockfile:
 	awk 'BEGIN{print "# pylint: disable-all"} /^if hasattr/ {exit} { print }' < $(LOCKFILE_SRC)/__init__.py    > $(LOCKFILE_DST)/__init__.py
 	awk 'BEGIN{print "# pylint: disable-all"} { print }'                      < $(LOCKFILE_SRC)/pidlockfile.py > $(LOCKFILE_DST)/pidlockfile.py
 
+subprocess32:
+	@echo "--- subprocess32, Linux only"
+	@if [ `uname -s` = 'Linux' ]; then \
+		  cd $(PYLIB_SRC)/subprocess32 && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))" LDFLAGS="$(BLD_CFLAGS)"  python setup.py build; \
+		  cp -f $(PYLIB_SRC)/subprocess32/build/lib.*/* $(PYLIB_DIR)/;  \
+	  fi
 #
 # PYCRYPTO
 #
