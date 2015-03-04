@@ -2283,22 +2283,6 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 					&pdrgdatumHistValues, &iNumHistValues,
 					NULL, NULL);
 
-	// ndistinct and frequency of remaining tuples
-	// that are not covered by MCV, histogram or Nulls
-	CDouble dDistinctRemain = 0.0;
-	CDouble dFreqRemain = 0.0;
-
-	// there will be remaining tuples when both conditions below are met:
-	// 1. no GPDB histogram is available
-	// 2. the MCVs and Nulls do not cover all the tuples, i.e. sum(MCFs) + null_frac < 1 && dDistinct > iNumMCVValues + iNullNDV
-	if (1 >= iNumHistValues &&
-		1 - CStatistics::DEpsilon > dMCFSum + dNullFrequency &&
-		0 < dDistinct - iNumMCVValues - iNullNDV)
-	{
-		dDistinctRemain = dDistinct - iNumMCVValues - iNullNDV;
-		dFreqRemain = 1 - dMCFSum - dNullFrequency;
-	}
-
 	// transform all the bits and pieces from pg_statistic
 	// to a single bucket structure
 	DrgPdxlbucket *pdrgpdxlbucketTransformed =
@@ -2314,6 +2298,30 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 					pdrgdatumHistValues,
 					ULONG(iNumHistValues)
 					);
+
+	GPOS_ASSERT(NULL != pdrgpdxlbucketTransformed);
+
+	CDouble dNDVBuckets(0.0);
+	CDouble dFreqBuckets(0.0);
+	const ULONG ulBuckets = pdrgpdxlbucketTransformed->UlLength();
+	for (ULONG ul = 0; ul < ulBuckets; ul++)
+	{
+	   CDXLBucket *pdxlbucket = (*pdrgpdxlbucketTransformed)[ul];
+	   dNDVBuckets = dNDVBuckets + pdxlbucket->DDistinct();
+	   dFreqBuckets = dFreqBuckets + pdxlbucket->DFrequency();
+	}
+
+	// there will be remaining tuples if the merged histogram and the NULLS do not cover
+	// the total number of distinct values
+	CDouble dDistinctRemain(0.0);
+	CDouble dFreqRemain(0.0);
+
+ 	if ((1 - CStatistics::DEpsilon > dFreqBuckets + dNullFrequency) &&
+	 	(0 < dDistinct - dNDVBuckets - iNullNDV))
+	{
+ 		dDistinctRemain = std::max(CDouble(0.0), (dDistinct - dNDVBuckets - iNullNDV));
+ 		dFreqRemain = std::max(CDouble(0.0), (1 - dFreqBuckets - dNullFrequency));
+	}
 
 	CUtils::AddRefAppend(pdrgpdxlbucket, pdrgpdxlbucketTransformed);
 
