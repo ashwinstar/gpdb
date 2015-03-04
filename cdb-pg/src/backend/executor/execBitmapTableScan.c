@@ -407,7 +407,7 @@ BitmapTableScanReScan(BitmapTableScanState *node, ExprContext *exprCtxt)
 		estate->es_evTupleNull[scanrelid - 1] = false;
 	}
 
-	DynamicScan_ReScan((ScanState *)node, exprCtxt);
+	DynamicScan_ReScan((ScanState *)node, BitmapTableScanEndPartition, exprCtxt);
 
 	ExecReScan(outerPlanState(node), exprCtxt);
 }

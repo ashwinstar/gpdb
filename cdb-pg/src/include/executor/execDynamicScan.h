@@ -29,7 +29,7 @@ extern void
 DynamicScan_End(ScanState *scanState, PartitionEndMethod *partitionEndMethod);
 
 extern void
-DynamicScan_ReScan(ScanState *scanState, ExprContext *exprCtxt);
+DynamicScan_ReScan(ScanState *scanState, PartitionEndMethod *partitionEndMethod, ExprContext *exprCtxt);
 
 extern bool
 DynamicScan_InitNextRelation(ScanState *scanState, PartitionEndMethod *partitionEndMethod, PartitionInitMethod *partitionInitMethod);

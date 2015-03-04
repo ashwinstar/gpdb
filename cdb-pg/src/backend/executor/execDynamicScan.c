@@ -942,10 +942,15 @@ DynamicScan_Begin(ScanState *scanState, Plan *plan, EState *estate, int eflags)
  *		Prepares for the rescanning of one or more relations (partitions).
  */
 void
-DynamicScan_ReScan(ScanState *scanState, ExprContext *exprCtxt)
+DynamicScan_ReScan(ScanState *scanState, PartitionEndMethod *partitionEndMethod, ExprContext *exprCtxt)
 {
 	/* Only BitmapTableScanState supports this unified iteration of partitions */
 	Assert(T_BitmapTableScanState == scanState->ps.type);
+
+	if (SCAN_SCAN == scanState->scan_state)
+	{
+		DynamicScan_CleanupOneRelation(scanState, partitionEndMethod);
+	}
 
 	Assert(SCAN_SCAN != scanState->scan_state && SCAN_END != scanState->scan_state);
 
