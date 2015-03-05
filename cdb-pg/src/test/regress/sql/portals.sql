@@ -1,7 +1,7 @@
 --
 -- Cursor regression tests
 --
-
+SET optimizer_disable_missing_stats_collection=true;
 BEGIN;
 
 DECLARE foo1 CURSOR FOR SELECT * FROM tenk1 ORDER BY 1,2,3,4;

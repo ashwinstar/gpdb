@@ -365,7 +365,7 @@ reset optimizer_enable_constant_expression_evaluation;
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select * from direct_test_type_real where real1 = 8::real;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  real1 | smallint1 | boolean1 | int1 | double1 |   date1    | numeric1 
 -------+-----------+----------+------+---------+------------+----------
      8 |         8 | t        |    8 |       8 | 08-08-2008 |      8.8
@@ -395,7 +395,7 @@ INFO:  Dispatch command to SINGLE content
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select * from direct_test_type_double where double1 = 8;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  real1 | smallint1 | boolean1 | int1 | double1 |   date1    | numeric1 
 -------+-----------+----------+------+---------+------------+----------
      8 |         8 | t        |    8 |       8 | 08-08-2008 |      8.8
@@ -405,7 +405,7 @@ INFO:  Dispatch command to ALL contents
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select * from direct_test_type_date where date1 = '2008-08-08';
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  real1 | smallint1 | boolean1 | int1 | double1 |   date1    | numeric1 
 -------+-----------+----------+------+---------+------------+----------
      8 |         8 | t        |    8 |       8 | 08-08-2008 |      8.8
@@ -415,7 +415,7 @@ INFO:  Dispatch command to ALL contents
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select * from direct_test_type_numeric where numeric1 = 8.8;
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  real1 | smallint1 | boolean1 | int1 | double1 |   date1    | numeric1 
 -------+-----------+----------+------+---------+------------+----------
      8 |         8 | t        |    8 |       8 | 08-08-2008 |      8.8
@@ -558,14 +558,14 @@ INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL cont
 -- Known_opt_diff: MPP-19812
 -- end_ignore
 insert into direct_test_type_abstime values('2008-08-08');
-INFO:  Dispatch command to ALL contents
-INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
-INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to SINGLE content
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to SINGLE content
 -- start_ignore
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select 1 from direct_test_type_abstime where x = '2008-08-08';
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  ?column? 
 ----------
         1
@@ -575,14 +575,14 @@ INFO:  Dispatch command to ALL contents
 -- Known_opt_diff: MPP-19812
 -- end_ignore
 insert into direct_test_type_bit values('1');
-INFO:  Dispatch command to ALL contents
-INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
-INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to SINGLE content
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to SINGLE content
 -- start_ignore
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select * from direct_test_type_bit where x = '1';
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
  x 
 ---
  1
@@ -592,14 +592,14 @@ INFO:  Dispatch command to ALL contents
 -- Known_opt_diff: MPP-19812
 -- end_ignore
 insert into direct_test_type_bpchar values('abs');
-INFO:  Dispatch command to ALL contents
-INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
-INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to SINGLE content
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to SINGLE content
 -- start_ignore
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select * from direct_test_type_bpchar where x = 'abs';
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
   x  
 -----
  abs
@@ -609,14 +609,14 @@ INFO:  Dispatch command to ALL contents
 -- Known_opt_diff: MPP-19812
 -- end_ignore
 insert into direct_test_type_bytea values('greenplum');
-INFO:  Dispatch command to ALL contents
-INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
-INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to SINGLE content
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to SINGLE content
 -- start_ignore
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select * from direct_test_type_bytea where x = 'greenplum';
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
      x     
 -----------
  greenplum
@@ -626,9 +626,9 @@ INFO:  Dispatch command to ALL contents
 -- Known_opt_diff: MPP-19812
 -- end_ignore
 insert into direct_test_type_cidr values('68.44.55.111');
-INFO:  Dispatch command to ALL contents
-INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
-INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to SINGLE content
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to SINGLE content
 -- start_ignore
 -- Known_opt_diff: MPP-21346
 -- end_ignore
@@ -643,14 +643,14 @@ INFO:  Dispatch command to ALL contents
 -- Known_opt_diff: MPP-19812
 -- end_ignore
 insert into direct_test_type_inet values('68.44.55.111');
-INFO:  Dispatch command to ALL contents
-INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
-INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to SINGLE content
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to SINGLE content
 -- start_ignore
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select * from direct_test_type_inet where x = '68.44.55.111';
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
       x       
 --------------
  68.44.55.111
@@ -660,14 +660,14 @@ INFO:  Dispatch command to ALL contents
 -- Known_opt_diff: MPP-19812
 -- end_ignore
 insert into direct_test_type_macaddr values('12:34:56:78:90:ab');
-INFO:  Dispatch command to ALL contents
-INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
-INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to SINGLE content
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to SINGLE content
 -- start_ignore
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select * from direct_test_type_macaddr where x = '12:34:56:78:90:ab';
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
          x         
 -------------------
  12:34:56:78:90:ab
@@ -677,9 +677,9 @@ INFO:  Dispatch command to ALL contents
 -- Known_opt_diff: MPP-19812
 -- end_ignore
 insert into direct_test_type_tinterval values('["2008-08-08" "2010-10-10"]');
-INFO:  Dispatch command to ALL contents
-INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
-INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to SINGLE content
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to SINGLE content
 -- start_ignore
 -- Known_opt_diff: MPP-21346
 -- end_ignore
@@ -694,14 +694,14 @@ INFO:  Dispatch command to ALL contents
 -- Known_opt_diff: MPP-19812
 -- end_ignore
 insert into direct_test_type_varbit values('0101010');
-INFO:  Dispatch command to ALL contents
-INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents
-INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL contents
+INFO:  Dispatch command to SINGLE content
+INFO:  Distributed transaction command 'Distributed Prepare' to SINGLE content
+INFO:  Distributed transaction command 'Distributed Commit Prepared' to SINGLE content
 -- start_ignore
 -- Known_opt_diff: MPP-21346
 -- end_ignore
 select * from direct_test_type_varbit where x = '0101010';
-INFO:  Dispatch command to ALL contents
+INFO:  Dispatch command to SINGLE content
     x    
 ---------
  0101010
@@ -991,9 +991,9 @@ INFO:  Distributed transaction command 'Distributed Commit Prepared' to ALL cont
 EXPLAIN SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = b.j) and a.i = 1;
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1765377.25 rows=1 width=16)
-   ->  Result  (cost=0.00..1765377.25 rows=1 width=16)
-         ->  Result  (cost=0.00..1765377.25 rows=1 width=16)
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1765377.40 rows=1 width=16)
+   ->  Result  (cost=0.00..1765377.40 rows=1 width=16)
+         ->  Result  (cost=0.00..1765377.40 rows=1 width=16)
                Filter: (subplan)
                ->  Hash Join  (cost=0.00..862.00 rows=1 width=24)
                      Hash Cond: public.mpp_22019_a.i = mpp_22019_b.i
@@ -1003,12 +1003,12 @@ EXPLAIN SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHER
                            ->  Table Scan on mpp_22019_b  (cost=0.00..431.00 rows=1 width=16)
                                  Filter: i = 1
                SubPlan 1
-                 ->  Result  (cost=0.00..431.00 rows=2 width=8)
+                 ->  Result  (cost=0.00..431.00 rows=1 width=8)
                        Filter: public.mpp_22019_a.j = $1
-                       ->  Materialize  (cost=0.00..431.00 rows=2 width=8)
-                             ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.00 rows=2 width=8)
+                       ->  Materialize  (cost=0.00..431.00 rows=1 width=8)
+                             ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.00 rows=1 width=8)
                                    ->  Table Scan on mpp_22019_a  (cost=0.00..431.00 rows=1 width=8)
- Settings:  optimizer=on; optimizer_segments=3
+ Settings:  optimizer=on
 (18 rows)
 
 SELECT a.* FROM MPP_22019_a a INNER JOIN MPP_22019_b b ON a.i = b.i WHERE a.j NOT IN (SELECT j FROM MPP_22019_a a2 where a2.j = b.j) and a.i = 1;

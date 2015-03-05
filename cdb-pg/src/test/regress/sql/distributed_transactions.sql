@@ -2,7 +2,6 @@
 -- DISTRIBUTED TRANSACTIONS
 --
 --SET debug_print_full_dtm=true;
-
 --
 -- start_matchsubs
 --
@@ -13,11 +12,11 @@
 --
 -- end_matchsubs
 --
-
 --
 -- We want to have an error between the point where all segments are prepared and our decision 
 -- to write the Distributed Commit record.
 --
+SET optimizer_disable_missing_stats_collection=true;
 CREATE TABLE distxact1_1 (a int);
 BEGIN;
 INSERT INTO distxact1_1 VALUES (1);
