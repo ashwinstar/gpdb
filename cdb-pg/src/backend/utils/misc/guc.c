@@ -3704,7 +3704,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&gp_create_table_random_default_distribution,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 
 	{
