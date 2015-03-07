@@ -1096,6 +1096,16 @@ join_selectivity(PlannerInfo *root,
 	return (Selectivity) result;
 }
 
+static int
+oid_cmp(const void *left, const void *right)
+{
+	if (*(Oid *)left < *(Oid *)right)
+		return -1;
+	if (*(Oid *)left > *(Oid *)right)
+		return 1;
+	return 0;
+}
+
 /*
  * find_inheritance_children
  *
@@ -1114,6 +1124,9 @@ find_inheritance_children(Oid inhparent)
 	HeapTuple	inheritsTuple;
 	Oid			inhrelid;
 	cqContext  *pcqCtx;
+	ListCell   *item;
+	int         i;
+	Oid        *ordered_list;
 
 	/*
 	 * Can skip the scan if pg_class shows the relation has never had a
@@ -1135,6 +1148,28 @@ find_inheritance_children(Oid inhparent)
 	}
 	caql_endscan(pcqCtx);
 
+	/*
+	 * The order in which child OIDs are scanned on master may not be
+	 * the same on segments.  When a partitioned table needs to be
+	 * rewritten during ALTER TABLE, master generates new OIDs for
+	 * every child in this list.  Segments scan pg_inherits and
+	 * correlate the list of OIDs dispatched by master with each
+	 * child.  To guarantee that the child <--> new OID pairs are
+	 * identical on master and segments, we need the following sort.
+	 */
+	ordered_list = (Oid *) palloc(sizeof(Oid) * list_length(list));
+	i = 0;
+	foreach(item, list)
+	{
+		ordered_list[i++] = lfirst_oid(item);
+	}
+	qsort(ordered_list, list_length(list), sizeof(Oid), oid_cmp);
+	i = 0;
+	foreach(item, list)
+	{
+		lfirst_oid(item) = ordered_list[i++];
+	}
+	pfree(ordered_list);
 	return list;
 }
 
