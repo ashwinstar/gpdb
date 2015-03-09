@@ -263,7 +263,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 		{
 			elogif(Debug_appendonly_print_compaction, LOG,
 					"Vacuum cleanup phase %s", RelationGetRelationName(onerel));
-
+			vacuum_appendonly_indexes(onerel, vacstmt, updated_stats);
 			vacuum_appendonly_fill_stats(onerel, ActiveSnapshot, vacrelstats, false);
 		}
 	}

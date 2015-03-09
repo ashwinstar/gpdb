@@ -310,7 +310,7 @@ void vacuum(VacuumStmt *vacstmt, List *relids)
 	VacuumStmt *analyzeStmt = copyObject(vacstmt);
 	bool doAnalyze = vacstmt->analyze;
 	bool doVacuum = vacstmt->vacuum;
-	
+
 	Assert(!(vacstmt != NULL && relids != NULL));
 	
 	if (doVacuum)
@@ -2009,7 +2009,7 @@ static bool vacuum_appendonly_index_should_vacuum(Relation aoRelation,
 	
 	pfree(totals);
 
-	if(hidden_tupcount > 0 || vacstmt->full)
+	if(hidden_tupcount > 0 || vacstmt->full || vacstmt->appendonly_compaction_vacuum_cleanup)
 	{
 		return true;
 	}
@@ -2321,7 +2321,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 		{
 			elogif(Debug_appendonly_print_compaction, LOG,
 					"Vacuum full cleanup phase %s", RelationGetRelationName(onerel));
-
+			vacuum_appendonly_indexes(onerel, vacstmt, updated_stats);
 			vacuum_appendonly_fill_stats(onerel, ActiveSnapshot, vacrelstats, true);
 		}
 	}
