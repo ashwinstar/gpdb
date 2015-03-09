@@ -945,11 +945,11 @@ def validate_columns(conn, table, column_list):
 def create_parser():
     parser = OptionParser(version='%prog version 1.0',
                        description=
-                       "Analyze a database incrementally. 'Incremental' means if a table or partition has not been modified by"
-                       "DML or DDL commands since the last analyzedb run, it will be automatically skipped since its statistics"
+                       "Analyze a database incrementally. 'Incremental' means if a table or partition has not been modified by "
+                       "DML or DDL commands since the last analyzedb run, it will be automatically skipped since its statistics "
                        "must be up to date. Some restrictions apply:  "
-                       "1. The incremental semantics only applies to append-only tables or partitions. All heap tables are regarded"
-                       "as having stale stats every time analyzedb is run. This is because we use AO metadata to check for DML or"
+                       "1. The incremental semantics only applies to append-only tables or partitions. All heap tables are regarded "
+                       "as having stale stats every time analyzedb is run. This is because we use AO metadata to check for DML or "
                        "DDL events, which is not available to heap tables.  "
                        "2. Catalog tables, views and external tables are automatically skipped."
                        )
