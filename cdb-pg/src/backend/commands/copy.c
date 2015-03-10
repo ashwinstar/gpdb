@@ -52,6 +52,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/portal.h"
 #include "utils/builtins.h"
 
 #include "cdb/cdbvars.h"
@@ -75,6 +76,7 @@ typedef struct
 	CopyState	cstate;			/* CopyStateData for the command */
 } DR_copy;
 
+extern Portal		ActivePortal;
 /* non-export function prototypes */
 static void DoCopyTo(CopyState cstate);
 extern void CopyToDispatch(CopyState cstate);
@@ -1329,6 +1331,10 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		ExecutorStart(cstate->queryDesc, 0);
 
 		tupDesc = cstate->queryDesc->tupDesc;
+		/*
+		 * In case some errors happen, process have chance to clean gangs etcs. 
+		 */
+		ActivePortal->queryDesc = cstate->queryDesc;
 	}
 
 	cstate->attnamelist = attnamelist;
@@ -1383,7 +1389,6 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		/* keep the raw version too, we will need it later */
 		cstate->force_notnull = force_notnull;
 	}
-
 	/*
 	 * Set up variables to avoid per-attribute overhead.
 	 */
@@ -1581,6 +1586,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		/* Close down the query and free resources. */
 		ExecutorEnd(cstate->queryDesc);
 		FreeQueryDesc(cstate->queryDesc);
+		ActivePortal->queryDesc = NULL;
 	}
 
 	/* Clean up single row error handling related memory */

@@ -105,3 +105,14 @@ this is just a line full of junk that would error out if parsed
 
 copy copytest3 to stdout csv header;
 
+-- test copy force quote
+
+create temp table copytest4 (id int, id1 int);
+
+insert into copytest4 values (1,2);
+insert into copytest4 values (1,3);
+insert into copytest4 values (1,4);
+
+copy (select * from copytest4) to stdout csv delimiter ',' force quote id, id1, id2;
+copy (select * from copytest4) to stdout csv delimiter ',' force quote id, id1;
+
