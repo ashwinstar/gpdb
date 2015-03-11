@@ -1254,6 +1254,15 @@ static void gx_accept(SOCKET sock, short event, void* arg)
 
 	if (event & EV_TIMEOUT)
 	{
+		if (gx.tcp_sock)
+		{ 
+			/* start watching connect request again */
+			if (event_add(&gx.listen_event, 0))
+			{
+				gpsmon_fatal(FLINE, "event_add failed");
+			}
+			return;
+		}
 		gpmon_fatal(FLINE, "smon terminates due to no requests come after %" FMT64 " seconds\n", opt.terminate_timeout);
 	}
 
