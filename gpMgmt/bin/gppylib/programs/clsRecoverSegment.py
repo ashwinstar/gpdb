@@ -1130,7 +1130,8 @@ class GpRecoverSegmentProgram:
 
         #Query for duplicate entries should not be run on segments. It should only be done on the master
         for dbname in dbnames:
-            self.__pool.addCommand(RemoteQueryCommand(qname, query.format(dbname=dbname[0]), 'localhost', os.environ['PGPORT'], dbname[0]))
+            self.__pool.addCommand(RemoteQueryCommand(qname, query.format(dbname=dbname[0]), 'localhost',
+                                                      os.environ.get('PGPORT', 5432), dbname[0]))
 
         self.__pool.join()
 
