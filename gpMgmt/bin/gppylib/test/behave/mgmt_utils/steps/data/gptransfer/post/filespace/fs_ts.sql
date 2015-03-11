@@ -16,6 +16,8 @@ DROP TABLE tbl2_ts;
 
 \c template1;
 
+SELECT pg_sleep(2);
+
 DROP DATABASE db_ts;
 
 DROP TABLESPACE ts;

@@ -19,6 +19,11 @@ You are now connected to database "db_ts" as user "gpadmin".
 
 DROP TABLE
 You are now connected to database "template1" as user "gpadmin".
+ pg_sleep 
+----------
+ 
+(1 row)
+
 DROP DATABASE
 DROP TABLESPACE
 DROP FILESPACE
