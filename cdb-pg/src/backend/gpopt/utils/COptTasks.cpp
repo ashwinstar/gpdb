@@ -1088,27 +1088,35 @@ COptTasks::PrintMissingStatsWarning
 		const ULONG ulPos = pmdidColStats->UlPos();
 		const IMDRelation *pmdrel = pmda->Pmdrel(pmdidRel);
 
-		if (NULL == phmmdidRel->PtLookup(pmdidRel))
+		if (IMDRelation::ErelstorageExternal != pmdrel->Erelstorage())
 		{
-			if (0 != ul)
+			if (NULL == phmmdidRel->PtLookup(pmdidRel))
 			{
-				oss << ", ";
+				if (0 != ul)
+				{
+					oss << ", ";
+				}
+
+				pmdidRel->AddRef();
+				pmdidRel->AddRef();
+				phmmdidRel->FInsert(pmdidRel, pmdidRel);
+				oss << pmdrel->Mdname().Pstr()->Wsz();
 			}
 
-			pmdidRel->AddRef();
-			pmdidRel->AddRef();
-			phmmdidRel->FInsert(pmdidRel, pmdidRel);
-			oss << pmdrel->Mdname().Pstr()->Wsz();
+			CMDName mdname = pmdrel->Pmdcol(ulPos)->Mdname();
+			elog(LOG, "Missing statistics for column: %s.%s", SzFromWsz(pmdrel->Mdname().Pstr()->Wsz()), SzFromWsz(mdname.Pstr()->Wsz()));
 		}
-
-		CMDName mdname = pmdrel->Pmdcol(ulPos)->Mdname();
-		elog(LOG, "Missing statistics for column: %s.%s", SzFromWsz(pmdrel->Mdname().Pstr()->Wsz()), SzFromWsz(mdname.Pstr()->Wsz()));
 	}
 
 	if (0 < pdrgmdidCol->UlLength())
 	{
-		elog(WARNING, "One or more columns in the following table(s) do not have statistics. (see log for column name(s))");
-		elog(WARNING, "Please analyze table(s): %s", SzFromWsz(str.Wsz()));
+		ereport(NOTICE,
+				(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
+				errmsg("One or more columns in the following table(s) do not have statistics: %s", SzFromWsz(str.Wsz())),
+				errhint("For non-partitioned tables, run analyze <table_name>(<column_list>)."
+						 " For partitioned tables, run analyze rootpartition <table_name>(<column_list>)."
+						 " See log for columns missing statistics."),
+				errOmitLocation(true)));
 	}
 
 }

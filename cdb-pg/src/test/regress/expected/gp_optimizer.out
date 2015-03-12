@@ -8907,30 +8907,30 @@ with x as (select * from foo_missing_stats) select count(*) from x x1, x x2 wher
 
 set allow_system_table_mods="DML";
 delete from pg_statistic where starelid='foo_missing_stats'::regclass;
-WARNING:  One or more columns in the following table(s) do not have statistics. (see log for column name(s))
-WARNING:  Please analyze table(s): pg_statistic
+NOTICE:  One or more columns in the following table(s) do not have statistics: pg_statistic
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
 delete from pg_statistic where starelid='bar_missing_stats'::regclass;
-WARNING:  One or more columns in the following table(s) do not have statistics. (see log for column name(s))
-WARNING:  Please analyze table(s): pg_statistic
+NOTICE:  One or more columns in the following table(s) do not have statistics: pg_statistic
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
 select count(*) from foo_missing_stats where a = 10;
-WARNING:  One or more columns in the following table(s) do not have statistics. (see log for column name(s))
-WARNING:  Please analyze table(s): foo_missing_stats
+NOTICE:  One or more columns in the following table(s) do not have statistics: foo_missing_stats
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
  count 
 -------
      1
 (1 row)
 
 with x as (select * from foo_missing_stats) select count(*) from x x1, x x2 where x1.a = x2.a;
-WARNING:  One or more columns in the following table(s) do not have statistics. (see log for column name(s))
-WARNING:  Please analyze table(s): foo_missing_stats
+NOTICE:  One or more columns in the following table(s) do not have statistics: foo_missing_stats
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
  count 
 -------
     20
 (1 row)
 
 with x as (select * from foo_missing_stats) select count(*) from x x1, x x2 where x1.a = x2.b;
-WARNING:  One or more columns in the following table(s) do not have statistics. (see log for column name(s))
-WARNING:  Please analyze table(s): foo_missing_stats
+NOTICE:  One or more columns in the following table(s) do not have statistics: foo_missing_stats
+HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For partitioned tables, run analyze rootpartition <table_name>(<column_list>). See log for columns missing statistics.
  count 
 -------
     16
