@@ -1826,6 +1826,12 @@ CheckCOConsistencyWithGpRelationNode( Snapshot snapshot, Relation rel, int total
 	int64 persistentSerialNum = 0;
 	int segmentCount = 0;
 	Relation gp_relation_node;
+
+	if (!gp_appendonly_verify_eof)
+	{
+		return;
+	}
+
 	/*
 	 * gp_relation_node always has a zero as its first entry. Hence we use Segment File number
 	 * plus one in order to accomodate the zero.

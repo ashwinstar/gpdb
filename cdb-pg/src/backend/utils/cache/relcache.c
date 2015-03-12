@@ -531,8 +531,6 @@ DeleteGpRelationNodeTuple(
 	Relation	gp_relation_node;
 	HeapTuple	tuple;
 
-	Assert(relation->rd_segfile0_relationnodeinfo.isPresent);
-
 	/* Grab an appropriate lock on the pg_class relation */
 	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
