@@ -2117,7 +2117,10 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 		curl->error = 1;
 		
 		if(!curl->still_running)
-			elog(ERROR, "gpfdist server closed connection.\n");
+			elog(ERROR, "gpfdist server closed connection. \nThis is not a "
+			     "GPDB defect.  \nThe root cause is an overload of the ETL host or "
+			     "a temporary network glitch between the database and the ETL host "
+			     "causing the connection between the gpfdist and database to disconnect.\n");
 	}
 
 	if (n > bufsz)
