@@ -1108,7 +1108,7 @@ COptTasks::PrintMissingStatsWarning
 		}
 	}
 
-	if (0 < pdrgmdidCol->UlLength())
+	if (0 < phmmdidRel->UlEntries())
 	{
 		ereport(NOTICE,
 				(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
