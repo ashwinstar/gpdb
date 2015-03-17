@@ -69,6 +69,18 @@ class GPDB(object):
             raise GPDBException("GPDB is not running version 4.3.x")
         self.__systable_mods_set = False
         self.__catdml_created = False
+        self.public_schema_is_created = False
+        self.public_schema_oid = self.checkPublicSchemaOid()
+
+    def checkPublicSchemaOid(self):
+        oids = self.db.query("select oid from pg_namespace where nspname='public'").getresult()
+        public_schema_oid = oids[0][0] if len(oids) > 0 else None
+        if not public_schema_oid:
+            self.db.query("create schema public")
+            self.public_schema_is_created = True
+            oids = self.db.query("select oid from pg_namespace where nspname='public'").getresult()
+            public_schema_oid = oids[0][0] if len(oids) > 0 else None
+        return public_schema_oid
 
     def allowSystableMods(self):
         if not self.__systable_mods_set:
@@ -132,8 +144,8 @@ class GPDB(object):
         for relname in visimaps:
             query = (
                 """SELECT catDML('update pg_catalog.pg_class set relkind=''r'',
-                relnamespace=2200 where oid = ' || oid) FROM pg_catalog.pg_class
-                WHERE relname='%s';""" % relname)
+                relnamespace=%s where oid = ' || oid) FROM pg_catalog.pg_class
+                WHERE relname='%s';""" % (self.public_schema_oid, relname))
             logger.debug(query)
             self.db.query(query)
             query = "DROP TABLE public.%s" % relname
@@ -222,7 +234,7 @@ class GPDB(object):
             # TABLE can drop it.
             query = (
                 """ SELECT catDML('UPDATE pg_catalog.pg_class SET relkind=''r'',
-                relnamespace=2200 WHERE oid=%d')""" % toastoid)
+                relnamespace=%s WHERE oid=%d')""" % (self.public_schema_oid, toastoid))
             logger.debug(query)
             self.db.query(query)
             query = "DROP TABLE public.%s" % toastname
@@ -238,10 +250,12 @@ class GPDB(object):
     def cleanup(self):
         self.db.query("BEGIN")
         self.db.query("DROP FUNCTION IF EXISTS pg_catalog.catDML(text)")
+        if self.public_schema_is_created:
+            self.db.query("DROP SCHEMA public")
         self.db.query("COMMIT")
         self.db.close()
         self.__systable_mods_set = False
-
+        self.public_schema_is_created = False
 
 def parseargs(argv):
     parser = OptionParser(add_help_option=False)
