@@ -43,7 +43,7 @@ bool		proc_exit_inprogress = false;
  * (or in the parent postmaster).
  */
 static bool atexit_callback_setup = false;
-
+extern char DoingCommandRead;
 
 
 /* ----------------------------------------------------------------
@@ -173,7 +173,11 @@ proc_exit_prepare(int code)
 	ImmediateInterruptOK = false;
 	InterruptHoldoffCount = 1;
 	CritSectionCount = 0;
-
+	/* In handle_sig_alarm, DoingCommandRead flag will release all gangs.
+	 * At some unusual situation, this signal would be send during gang-cleanup
+	 * processing, which would cause gang's double free problem.(MPP-25425)
+	 */
+	DoingCommandRead = 0;
 	/*
 	 * Also clear the error context stack, to prevent error callbacks
 	 * from being invoked by any elog/ereport calls made during proc_exit.
