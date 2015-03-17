@@ -1316,13 +1316,11 @@ class GpRecoverSegmentProgram:
         mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpEnv, gpArray)
 
 
-        if not self.__options.skip_persistent_check:
+        if self.__options.persistent_check:
             failed_segs = [seg for seg in gpArray.getSegDbList() if seg.isSegmentDown()]
             failed_seg_peers = self.findAndValidatePeersForFailedSegments(gpArray, failed_segs)
             logger.info('Performing persistent table check')
             self._check_persistent_tables(failed_seg_peers)
-        else:
-            logger.info('Skipping persistent table check')
 
         if self.__options.outputSampleConfigFile is not None:
             # just output config file and done
@@ -1350,7 +1348,7 @@ class GpRecoverSegmentProgram:
                 self.logger.info("There is a resynchronization running in the background to bring all")
                 self.logger.info("segments in sync.")
                 self.logger.info("")
-                self.logger.info("Use gpstate -s to check the resynchronization progress.")
+                self.logger.info("Use gpstate -e to check the resynchronization progress.")
                 self.logger.info("******************************************************************")
             
         elif len(mirrorBuilder.getMirrorsToBuild()) == 0:
@@ -1441,9 +1439,9 @@ class GpRecoverSegmentProgram:
 
         addTo = OptionGroup(parser, "Recovery Options")
         parser.add_option_group(addTo)
-        addTo.add_option('--skip-persistent-check', None, default=False, action='store_true',
-                            dest="skip_persistent_check",
-                            help="Skip persistent table check")
+        addTo.add_option('--persistent-check', None, default=False, action='store_true',
+                            dest="persistent_check",
+                            help="perform persistent table check")
         addTo.add_option('-F', None, default=False, action='store_true',
                             dest="forceFullResynchronization",
                             metavar="<forceFullResynchronization>",
