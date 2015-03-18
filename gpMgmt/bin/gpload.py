@@ -100,6 +100,7 @@ valid_tokens = {
     "error_limit": {'parse_children': True, 'parent': "input"}, 
     "error_percent": {'parse_children': True, 'parent': "input"},
     "error_table": {'parse_children': True, 'parent': "input"},
+    "log_errors": {'parse_children': False, 'parent': "input"},
     "header": {'parse_children': True, 'parent': "input"},
     "output": {'parse_children': True, 'parent': "gpload"},
     "table": {'parse_children': True, 'parent': "output"}, 
@@ -1964,7 +1965,7 @@ class gpload:
     # This function will return the SQL to run in order to find out whether
     # such a table exists.
     # 
-    def get_reuse_exttable_query(self, formatType, formatOpts, limitStr, errorTableOid, from_cols, schemaName):
+    def get_reuse_exttable_query(self, formatType, formatOpts, limitStr, errorTableOid, from_cols, schemaName, log_errors):
         sqlFormat = """select attrelid::regclass
                  from (
                         select 
@@ -2009,16 +2010,18 @@ class gpload:
 
         if errorTableOid:
             sql += " WHERE pgext.fmterrtbl = %d\n " % errorTableOid
+        elif log_errors:
+            sql += " WHERE pgext.fmterrtbl = pgext.reloid "
         else:
             sql += " WHERE pgext.fmterrtbl IS NULL " 
-         
+
         for i, l in enumerate(self.locations):
             sql += " and pgext.location[%s] = %s\n" % (i + 1, quote(l))
              
         sql+= """and pgext.fmttype = %s
                  and pgext.writable = false
                  and pgext.fmtopts like %s """ % (quote(formatType[0]),quote("%" + quote_unident(formatOpts.rstrip()) +"%"))
-        
+
         if limitStr:
             sql += "and pgext.rejectlimit = %s " % limitStr         
         else:
@@ -2174,6 +2177,9 @@ class gpload:
         if self.error_table and not limitStr:
             self.control_file_error("gpload:input:error_table requires " +
                     "gpload:input:error_limit to be specified")
+        if self.log_errors and not limitStr:
+            self.control_file_error("gpload:input:log_errors requires " +
+                    "gpload:input:error_limit to be specified")
 
         self.extSchemaName = self.getconfig('gpload:external:schema', unicode, None)
         if self.extSchemaName == '%':
@@ -2194,7 +2200,8 @@ class gpload:
         if self.reuse_tables == True:
                          
             if (not self.error_table or self.error_table_oid): 
-                sql = self.get_reuse_exttable_query(formatType, formatOpts, limitStr, self.error_table_oid, from_cols, self.extSchemaName)
+                sql = self.get_reuse_exttable_query(formatType, formatOpts,
+                        limitStr, self.error_table_oid, from_cols, self.extSchemaName, self.log_errors)
                 resultList = self.db.query(sql.encode('utf-8')).getresult()
                 if len(resultList) > 0:
                     # found an external table to reuse. no need to create one. we're done here.
@@ -2223,6 +2230,8 @@ class gpload:
             sql += "encoding%s "%quote(encodingStr)
         if self.error_table:
             sql += "log errors into %s " % self.error_table
+        if self.log_errors:
+            sql += "log errors "
 
         if limitStr:
             if limitStr < 2:
@@ -2323,9 +2332,12 @@ class gpload:
 
     def count_errors(self):
         notice_processor(self)
-        if self.error_table and not self.options.D and not self.reuse_tables:
+        if (self.error_table or self.log_errors) and not self.options.D and not self.reuse_tables:
             # make sure we only get errors for our own instance
-            queryStr = 'select count(*) from ' + self.error_table + " WHERE relname = '%s'" % self.extTableName
+            if self.error_table:
+                queryStr = 'select count(*) from ' + self.error_table + " WHERE relname = '%s'" % self.extTableName
+            else:
+                queryStr = "select count(*) from gp_read_error_log('%s')" %self.extTableName
             results = self.db.query(queryStr.encode('utf-8')).getresult()
             return (results[0])[0]
         return 0
@@ -2334,9 +2346,13 @@ class gpload:
         errors = self.count_errors()
         if errors==1:
             self.log(self.WARN, '1 bad row')
+            if self.log_errors:
+                self.log(self.WARN, "please use GPDB built-in function gp_read_error_log('%s') to access the detailed error row" % self.extTableName)
             self.exitValue = 1
         elif errors:
             self.log(self.WARN, '%d bad rows'%errors)
+            if self.log_errors:
+                self.log(self.WARN, "please use GPDB built-in function gp_read_error_log('%s') to access the detailed error row" % self.extTableName)
             self.exitValue = 1
 
     def do_insert(self, dest):
@@ -2567,6 +2583,9 @@ class gpload:
         preload = self.getconfig('gpload:preload', list, default=None)
         method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
         self.error_table = self.getconfig('gpload:input:error_table', unicode, None)
+        self.log_errors = self.getconfig('gpload:input:log_errors', bool, False)
+        if self.error_table and self.log_errors:
+            self.control_file_error("gpload:input:log_errors and gpload:input:error_table are not allowd to use together.")
         truncate = False
         self.reuse_tables = False
 

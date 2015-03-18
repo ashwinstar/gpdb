@@ -212,6 +212,7 @@ GPLOAD:
     - ENCODING: <database_encoding>
     - ERROR_LIMIT: <integer>
     - ERROR_TABLE: <schema>.<table_name>
+    - LOG_ERRORS: true | false
    EXTERNAL:
     - SCHEMA: <schema> | '%'
    OUTPUT:
@@ -427,14 +428,24 @@ ERROR_LIMIT - Optional. Enables single row error isolation mode for this
               encountered. For information about handling load errors, see 
               the "Greenplum Database Database Administrator Guide." 
 
-ERROR_TABLE - Optional when ERROR_LIMIT is declared. Specifies an error 
-              table where rows with formatting errors will be logged when 
-              running in single row error isolation mode. You can then examine 
+ERROR_TABLE - Deprecated, LOG_ERRORS is encouraged instead.
+              Optional when ERROR_LIMIT is declared. Specifies an error
+              table where rows with formatting errors will be logged when
+              running in single row error isolation mode. You can then examine
               this error table to see error rows that were not loaded (if any).
               If the error_table specified already exists, it will be used. 
-              If it does not exist, it will be automatically generated. 
+              If it does not exist, it will be automatically generated.
               For more information about handling load errors, see the
-              "Greenplum Database Database Administrator Guide." 
+              "Greenplum Database Database Administrator Guide."
+
+LOG_ERRORS  - Optional when ERROR_LIMIT is declared. If true(default false),
+              gpload would create an internal error table where rows with
+              formatting errors will be logged when running in single row error
+              isolation mode. You can then examine this error table by using
+              GPDB built-in function gp_read_error_log() to see error rows that
+              were not loaded (if any). For more information about handling load
+              errors, see the "Greenplum Database Database Administrator Guide."
+              NOTE: LOG_ERRORS is not allowed to use together with ERROR_TABLE.
 
 EXTERNAL - Optional. Defines the schema of the external table database 
            objects created by gpload. The default is to use the Greenplum 
@@ -607,7 +618,7 @@ GPLOAD:
     - FORMAT: text
     - DELIMITER: '|'
     - ERROR_LIMIT: 25
-    - ERROR_TABLE: payables.err_expenses
+    - LOG_ERRORS: True
    OUTPUT:
     - TABLE: payables.expenses
     - MODE: INSERT
