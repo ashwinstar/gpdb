@@ -2932,11 +2932,22 @@ Dump_AppendOnlyStorage_ContentHeaderInfo(
 	bool success = true;
 	AOHeaderCheckError checkError;
 	int version = AO_CO_HEADER_VERSION;
+	pg_crc32 storedChecksum = 0;
+	pg_crc32 computedChecksum = 0;
 
 	checkError = AppendOnlyStorageFormat_GetHeaderInfo ( headerPtr, useChecksum, &blkHdr->headerKind, &blkHdr->actualHeaderLen);
 	printf("\n<AO Header> -----");
 	printf("\n HeaderKind: %d ", blkHdr->headerKind);
 
+	if (useChecksum)
+	{
+		if (! AppendOnlyStorageFormat_VerifyHeaderChecksum(headerPtr, &storedChecksum, &computedChecksum))
+		{
+			printf("\n Header checksum's don't match (StoredChecksum %d, ComputedChecksum %d)\n", storedChecksum, computedChecksum);
+			return false;
+		}
+		printf("\n Header Checksum Valid (checksum %d)\n", storedChecksum);
+	}
 
 	switch( blkHdr->headerKind )
 	{
@@ -3040,6 +3051,9 @@ DumpAppendOnlyFileContents()
 	bool largeContentFragments = false;
 	unsigned long overallBlockLenDisplay = 0;
 	unsigned long long totaloverallBlockPosition = 0;
+	bool useChecksum = appendOnlyOptions & APPEND_ONLY_CHECKSUM;
+	pg_crc32 storedChecksum = 0;
+	pg_crc32 computedChecksum = 0;
 
 	if ( compressType == DECOMPRESS_QUICKLZ )
 	{
@@ -3076,6 +3090,7 @@ DumpAppendOnlyFileContents()
 			break;
 		}	
 
+
 		if ( ! blkHdr.isLarge )
 		{
 			if ( !largeContentFragments )
@@ -3109,15 +3124,28 @@ DumpAppendOnlyFileContents()
 						}
 					}
 				}
-				if ( orientation == ORIENTATION_COLUMN )
+
+				if (useChecksum)
 				{
-				   success = Dump_AppendOnlyStorage_ContentInfo( (uint8*)(buffer + blkHdr.contentOffset), &blkHdr );
-					if ( !success )
+					if(!AppendOnlyStorageFormat_VerifyBlockChecksum((uint8*)buffer, blkHdr.overallBlockLen, &storedChecksum, &computedChecksum))
 					{
-					   printf("\nError dumping append-only Block Content info, still moving ahead to dump rest \n");
-						success = true;
+						printf("\nContent checksum doesn't match storedChecksum: %d, computedChecksum: %d\n", storedChecksum, computedChecksum);
+						success = false;
+					}
+					else
+					{
+						printf("\n Content checksum valid (checksum: %d)\n", storedChecksum);
 					}
 				}
+
+				if (success && orientation == ORIENTATION_COLUMN )
+				{
+					if (!Dump_AppendOnlyStorage_ContentInfo( (uint8*)(buffer + blkHdr.contentOffset), &blkHdr ) )
+					{
+					   printf("\nError dumping append-only Block Content info, still moving ahead to dump rest \n");
+					}
+				}
+				success = true;
 			}
 			else
 			{
