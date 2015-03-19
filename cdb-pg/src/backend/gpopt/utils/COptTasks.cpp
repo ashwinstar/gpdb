@@ -493,7 +493,26 @@ COptTasks::Execute
 
 	CAutoMemoryPool amp(CAutoMemoryPool::ElcNone, CMemoryPoolManager::EatMalloc, optimizer_parallel);
 	IMemoryPool *pmp = amp.Pmp();
-	CHAR *err_buf = New(pmp) CHAR[GPOPT_ERROR_BUFFER_SIZE];
+
+	CHAR *err_buf = NULL;
+	GPOS_TRY
+	{
+		// allocation of error buffer happens outside gpos_exec() function,
+		// we must guard against system OOM here
+		err_buf = New(pmp) CHAR[GPOPT_ERROR_BUFFER_SIZE];
+	}
+	GPOS_CATCH_EX(ex)
+	{
+		if (GPOS_MATCH_EX(ex, CException::ExmaSystem, CException::ExmiOOM))
+		{
+			// failure to allocate error buffer means that we do not have memory
+			// to run optimizer, we error out in this case
+			elog(ERROR, "no available memory to allocate optimizer error buffer");
+			return;
+		}
+		GPOS_RETHROW(ex);
+	}
+	GPOS_CATCH_END;
 
 	gpos_exec_params params;
 	params.func = pfunc;
