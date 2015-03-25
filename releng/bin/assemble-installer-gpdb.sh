@@ -25,20 +25,6 @@ BLDWRAP_TOP="${script_dir%/*}"
 INSTALLER_TYPE="$1"
 echo "INSTALLER_TYPE: ${INSTALLER_TYPE}"
 
-##
-## Determine if this is a supported GPPkg platform.
-## If it is,
-##   o Display GPPkg optional migration prompt.
-##   o Depending on user's reponse to migration prompt, skip or
-##     perform GPPkg migration.
-##
-
-if [ "${MPP_ARCH}" = "RHEL5-x86_64" ] ||
-   [ "${MPP_ARCH}" = "RHEL5-i386" ] ||
-   [ "${MPP_ARCH}" = "SuSE10-x86_64" ]; then
-    IS_GPPKG_SUPPORTED=true
-fi
-
 ## ======================================================================
 ## ======================================================================
 
@@ -356,42 +342,6 @@ generate-pulse-installer-header(){
 
 	EOF_HEADER
 
-	if [ "${IS_GPPKG_SUPPORTED}" = "true" ]; then
-
-		cat <<-EOF_HEADER
-	
-			validMigrateDecision=
-			migratePath=
-			while [ -z "\${validMigrateDecision}" ] ; do
-				cat <<-EOF
-	
-				********************************************************************************
-				[Optional] Provide the path to a previous installation of Greenplum Database,
-				or press ENTER to skip this step. e.g. /usr/local/greenplum-db-4.1.1.3
-	
-				This installation step will migrate any Greenplum Database extensions from the
-				provided path to the version currently being installed. This step is optional 
-				and can be run later with: 
-				gppkg --migrate <path_to_old_gphome> \${installPath}
-				********************************************************************************
-	
-				EOF
-
-				read migratePath leftover
-				if [ -z "\${migratePath}" ] ; then
-					validMigrateDecision=1
-				elif [ -d "\${migratePath}" ] ; then
-					validMigrateDecision=1
-				else
-					echo ""
-					echo "\${migratePath} is not a valid directory."
-	 				echo ""
-				fi
-			done
-			
-		EOF_HEADER
-	fi
-
 	cat <<-EOF_HEADER
 
 		echo ""
@@ -436,37 +386,6 @@ generate-pulse-installer-header(){
 		mv \${installPath}/greenplum_path.sh.tmp \${installPath}/greenplum_path.sh
 
 	EOF_HEADER
-
-	if [ "${IS_GPPKG_SUPPORTED}" = "true" ]; then
-
-		cat <<-EOF_HEADER
-
-			if [ -z "\${migratePath}" ] ; then
-				echo ""
-				echo "Skipping migration of Greenplum Database extensions..."
-				echo ""
-			else
-				echo ""
-				echo "Migrating Greenplum Database extensions"
-				echo " from \${migratePath}"
-				echo " to   \${installPath}"
-				echo ""
-				source \${installPath}/greenplum_path.sh
-				gppkg --migrate \${migratePath} \${installPath} --verbose > /dev/null 2>&1
-				if [ \$? -ne 0 ] ; then
-					cat << EOF
-	
-			********************************************************************************
-			gppkg --migrate failed. Please review ~/gpAdminLogs and run 
-			gppkg --migrate \${migratePath} \${installPath}
-			********************************************************************************
-	
-					EOF
-				fi
-			fi
-			
-		EOF_HEADER
-    fi
 
 	cat <<-EOF_HEADER
 	    cat <<-EOF
