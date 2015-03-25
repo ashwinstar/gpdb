@@ -9,8 +9,8 @@ ARCH=$(shell uname -p)
 
 PGCRYPTO_DIR=`cd .. && pwd`
 PGCRYPTO_VER=1.2
-PGCRYPTO_PKG_VER=ossv1.1_pv1.2_gpdb4.3
-PGCRYPTO_REL=1
+PGCRYPTO_PKG_VER=ossv1.1_pv1.2_gpdb4.3orca
+PGCRYPTO_REL=2
 PGCRYPTO_RPM_FLAGS="--define 'pgcrypto_dir $(PGCRYPTO_DIR)' --define 'pgcrypto_ver $(PGCRYPTO_VER)' --define 'pgcrypto_rel $(PGCRYPTO_REL)'"
 PGCRYPTO_RPM=pgcrypto-$(PGCRYPTO_VER)-$(PGCRYPTO_REL).$(ARCH).rpm
 PGCRYPTO_GPPKG=pgcrypto-$(PGCRYPTO_PKG_VER)-$(OS)-$(ARCH).gppkg
