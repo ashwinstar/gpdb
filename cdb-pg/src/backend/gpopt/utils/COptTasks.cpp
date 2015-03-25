@@ -503,14 +503,10 @@ COptTasks::Execute
 	}
 	GPOS_CATCH_EX(ex)
 	{
-		if (GPOS_MATCH_EX(ex, CException::ExmaSystem, CException::ExmiOOM))
-		{
-			// failure to allocate error buffer means that we do not have memory
-			// to run optimizer, we error out in this case
-			elog(ERROR, "no available memory to allocate optimizer error buffer");
-			return;
-		}
-		GPOS_RETHROW(ex);
+		// failure to allocate error buffer means that we do not have memory
+		// to run optimizer, we error out in this case
+		elog(ERROR, "no available memory to allocate optimizer error buffer");
+		return;
 	}
 	GPOS_CATCH_END;
 
