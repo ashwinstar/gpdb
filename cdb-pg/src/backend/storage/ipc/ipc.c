@@ -29,7 +29,7 @@
 #include "postmaster/autovacuum.h"
 #endif
 #include "storage/ipc.h"
-
+#include "libpq/pqsignal.h"
 
 /*
  * This flag is set during proc_exit() to change ereport()'s behavior,
@@ -90,6 +90,8 @@ static int	on_proc_exit_index,
 void
 proc_exit(int code)
 {
+	pqsignal(SIGALRM, SIG_IGN);
+
 	/* Clean up everything that must be cleaned up */
 	proc_exit_prepare(code);
 
