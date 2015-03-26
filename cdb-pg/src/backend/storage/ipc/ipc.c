@@ -153,7 +153,7 @@ proc_exit_prepare(int code)
 	 * should consider to resolve the actual programming error.
 	 */
 	if (CritSectionCount > 0)
-		elog(PANIC, "process is dying from critical secion");
+		elog(PANIC, "process is dying from critical section");
 
 	/*
 	 * Once we set this flag, we are committed to exit.  Any ereport() will

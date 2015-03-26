@@ -2143,11 +2143,6 @@ FileRepMirror_RunConsumer(void)
 				break;
 		}
 
-		if (fd == -1) 
-		{
-			Assert(status == STATUS_ERROR);
-		}
-			
 		if (FileRep_IsOperationSynchronous(
 						fileRepMessageHeader->fileRepOperation)) 
 		{
@@ -2732,56 +2727,31 @@ FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName, int segmentFileNum)
 {
 	char	tmp[MAXPGPATH+1];
 	char	fileNameLocal[MAXPGPATH+1];
-	
-	int		status = STATUS_OK;
-	int		constantPrefixLen;
-	int		ii;
-	glob_t	g;
+	int	status = STATUS_OK;
+	int	segmentFileNumLocal;
 
-	sprintf(tmp, "%s.*", fileName);
-	
-	constantPrefixLen = strlen(tmp) - 1;
-
-	ii = glob(tmp, 0, 0, &g);
-
-	/* glob success */
-	if (ii == 0)
+	/*
+	 * We do this in two passes because it is safer to drop the files in reverse
+	 * order so as to prevent the creation of holes, but we need to scan forward
+	 * to know what files actually exist.
+	 */
+	for (segmentFileNumLocal = 1; /* break in code */ ; segmentFileNumLocal++)
 	{
-		size_t n;
-		for (n = 0; n < g.gl_pathc; ++n)
+		struct stat sbuf;
+		snprintf(tmp, sizeof(tmp), "%s.%d", fileName, segmentFileNumLocal);
+		if (stat(tmp, &sbuf) < 0)
+			break;  /* No such file, loop is done */
+	}
+
+	/* second pass perform the drops in reverse order: important for REDO */
+	for(segmentFileNumLocal--; segmentFileNumLocal > segmentFileNum; segmentFileNumLocal--)
+	{
+		sprintf(fileNameLocal, "%s.%u", fileName, segmentFileNumLocal);
+		status = FileRepMirror_Drop(fileNameLocal);
+		if (status != STATUS_OK)
 		{
-			char	*match = g.gl_pathv[n];
-			int		scanCount;
-			int		segmentFileNumLocal;
-			
-			if (strncmp(match, tmp, constantPrefixLen) != 0)
-			{
-				continue;
-			}
-			
-			scanCount = sscanf(&match[constantPrefixLen], "%u", &segmentFileNumLocal);
-			
-			if (segmentFileNumLocal <= 0)
-			{
-				continue;
-			}
-			
-			if (segmentFileNumLocal <= segmentFileNum)
-			{
-				continue;
-			}
-			
-			sprintf(fileNameLocal, "%s.%u", fileName, segmentFileNumLocal);
-			
-			status = FileRepMirror_Drop(fileNameLocal);
-			
-			if (status != STATUS_OK)
-			{
-				break;
-			}
+			break;
 		}
-		
-		globfree(&g);
 	}
 	
 	return status;
