@@ -386,6 +386,10 @@ class IsVersionCompatible(Operation):
             logger.error('%s requires Greenplum Database version %s' % (gppkg.pkgname, required_gpdb_version))
             return False
 
+        if not 'orca' in gppkg.version and ".".join(map(str,gpdb_version.version)) >= '4.3.5':
+            logger.error('Greenplum Database requires orca version of %s' % (gppkg.pkg))
+            return False
+
         return True
 
     def _get_gpdb_version(self):
