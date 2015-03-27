@@ -5143,6 +5143,7 @@ static void PersistentFileSysObj_ScanStateAction(
 
 					// UNDONE: Act on mirrorDataLossOccurred
 					FileRepResync_ResetReMirrorAllowed();
+					FileRepResync_DecFsobjCount();
 				}
 				else
 				{
@@ -5155,7 +5156,6 @@ static void PersistentFileSysObj_ScanStateAction(
 
 				/* Retain the lock */
 				WRITE_PERSISTENT_STATE_ORDERED_LOCK;
-				FileRepResync_DecFsobjCount();
 			}
 			else
 			{
