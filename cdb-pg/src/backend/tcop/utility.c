@@ -2862,6 +2862,10 @@ GetCommandLogLevel(Node *parsetree)
 			lev = GetQueryLogLevel((Node *) parsetree);
 			break;
 
+		case T_PlannedStmt:
+			lev = GetPlannedStmtLogLevel((PlannedStmt *) parsetree);
+			break;
+
 		default:
 			elog(WARNING, "unrecognized node type: %d",
 				 (int) nodeTag(parsetree));
