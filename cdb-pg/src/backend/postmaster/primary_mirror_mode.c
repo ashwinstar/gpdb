@@ -1172,7 +1172,7 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 	assertModuleInitialized();
 	targetMode = args->mode;
 
-	elog(getPrimaryMirrorModeDebugLogLevel(false),
+	elog(getPrimaryMirrorModeDebugLogLevel(true),
 		 "PrimaryMirrorTransitionRequest: to primary/mirror mode %s, "
 		 "data state %s, host %s, port %d, peer %s, peerPort %d%s%s",
 		 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
@@ -1879,6 +1879,7 @@ applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArgume
 	switch (*stateInOut)
 	{
 		case TSNone:
+			elog(LOG, "TransitionToMasterOrMirrorless: initializing XLog startup");
 			XLogStartupInit(); /* do this as early as possible */
 
 			switch (pmModuleState->mode)
@@ -1892,6 +1893,7 @@ applyStepForTransitionToMasterOrMirrorlessMode(PrimaryMirrorModeTransitionArgume
 			return PMTransitionSuccess;
 
 		case TSDoDatabaseStartup:
+			elog(LOG, "TransitionToMasterOrMirrorless: starting database");
 			copyTransitionInputParameters(args, SegmentStateNotInitialized);
 			return stepDoDatabaseStartup(TSDone, stateInOut);
 
@@ -1925,19 +1927,25 @@ applyStepForTransitionToQuiescentSegmentMode(PrimaryMirrorModeTransitionArgument
 			}
 
 		case TSDoFilerepBackendsShutdown:
+			elog(LOG, "TransitionToQuiescent: shutting down filerep backends");
 			return stepDoFilerepBackendsShutdown(TSAwaitingFilerepBackendsShutdown, stateInOut);
 		case TSAwaitingFilerepBackendsShutdown:
+			elog(LOG, "TransitionToQuiescent: waiting for filerep backends to shutdown");
 			return stepWaitForFilerepBackendsShutdown(TSDoneFilerepBackendsShutdown, stateInOut);
 		case TSDoneFilerepBackendsShutdown:
+			elog(LOG, "TransitionToQuiescent: completed filerep backends shutdown");
 			*stateInOut = TSDoFilerepShutdown;
 			return PMTransitionSuccess;
 
 		case TSDoFilerepShutdown:
+			elog(LOG, "TransitionToQuiescent: shutting down filerep");
 			return stepDoFilerepShutdown(TSAwaitingFilerepShutdown, stateInOut);
 		case TSAwaitingFilerepShutdown:
+			elog(LOG, "TransitionToQuiescent: waiting for filerep to shutdown");
 			return stepWaitForFilerepShutdown(TSDoneFilerepShutdown, stateInOut);
 		case TSDoneFilerepShutdown:
 
+			elog(LOG, "TransitionToQuiescent: completed filerep shutdown");
 			*stateInOut = TSDone;
 			copyTransitionInputParameters(args, SegmentStateNotInitialized);
 			return PMTransitionSuccess;
@@ -1976,24 +1984,30 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 			}
 
 		case TSDoFilerepBackendsShutdown:
+			elog(LOG, "TransitiontoPrimary: shutting down filerep backends");
 			return stepDoFilerepBackendsShutdown(TSAwaitingFilerepBackendsShutdown, stateInOut);
 		case TSAwaitingFilerepBackendsShutdown:
+			elog(LOG, "TransitiontoPrimary: waiting for filerep backends to shutdown");
 			return stepWaitForFilerepBackendsShutdown(TSDoneFilerepBackendsShutdown, stateInOut);
 		case TSDoneFilerepBackendsShutdown:
 			*stateInOut = TSDoFilerepShutdown;
 			return PMTransitionSuccess;
 
 		case TSDoFilerepShutdown:
+			elog(LOG, "TransitiontoPrimary: shutting down filerep");
 			return stepDoFilerepShutdown(TSAwaitingFilerepShutdown, stateInOut);
 		case TSAwaitingFilerepShutdown:
+			elog(LOG, "TransitiontoPrimary: waiting for filerep to shutdown");
 			return stepWaitForFilerepShutdown(TSDoneFilerepShutdown, stateInOut);
 		case TSDoneFilerepShutdown:
+			elog(LOG, "TransitiontoPrimary: completed filerep to shutdown");
 			*stateInOut = TSDoFilerepStartup;
 			return PMTransitionSuccess;
 
 		case TSDoFilerepStartup:
 
 			/* do this as early as possible -- must do it before any of the new filerep processes are built */
+			elog(LOG, "TransitiontoPrimary: initializing XLog Startup");
 			XLogStartupInit();
 
 			if (args->transitionToChangeTrackingDisabledMode)
@@ -2031,11 +2045,14 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 					segState = SegmentStateInitialization;
 				}
 				copyTransitionInputParameters(args, segState);
+				elog(LOG, "TransitiontoPrimary: starting filerep");
 				return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut);
 			}
 		case TSAwaitingFilerepStartup:
+			elog(LOG, "TransitiontoPrimary: waiting for filerep startup");
 			return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut, extraResultInfoOut);
 		case TSDoneFilerepStartup:
+			elog(LOG, "TransitiontoPrimary: completed filerep startup");
 			*stateInOut = TSDoDatabaseStartup;
 			return PMTransitionSuccess;
 
@@ -2052,7 +2069,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 				}
 #endif /* USE_TEST_UTILS */
 
-				elog(getPrimaryMirrorModeDebugLogLevel(false),
+				elog(getPrimaryMirrorModeDebugLogLevel(true),
 					 "PostmasterPrimaryMirrorTransition: starting database processes");
 				pmModuleState->haveStartedDatabase = true;
 				StartMasterOrPrimaryPostmasterProcesses();
@@ -2062,6 +2079,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 			return PMTransitionSuccess;
 
 		case TSAwaitingDatabaseStartup:
+			elog(LOG, "TransitiontoPrimary: waiting for database startup");
 			if (IsDatabaseInRunMode())
 			{
 				*stateInOut = TSDoneDatabaseStartup;
@@ -2077,6 +2095,7 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 			return PMTransitionSuccess;
 
 		case TSDoneDatabaseStartup:
+			elog(LOG, "TransitiontoPrimary: completed database startup");
 			if (args->dataState == DataStateInResync &&
 				pmModuleState->dataState == DataStateInChangeTracking)
 			{
@@ -2142,13 +2161,16 @@ applyStepForTransitionToMirrorSegmentMode(PrimaryMirrorModeTransitionArguments *
 			}
 
 		case TSDoFilerepStartup:
+			elog(LOG, "TransitiontoMirror: starting filerep");
 			copyTransitionInputParameters(args, SegmentStateInitialization);
 			return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut);
 
 		case TSAwaitingFilerepStartup:
+			elog(LOG, "TransitiontoMirror: waiting for filerep startup");
 			return stepWaitForFilerepStartup(TSDoneFilerepStartup, stateInOut, extraResultInfoOut);
 
 		case TSDoneFilerepStartup:
+			elog(LOG, "TransitiontoMirror: completed filerep startup");
 			*stateInOut = TSDone;
 			return PMTransitionSuccess;
 

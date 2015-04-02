@@ -6335,6 +6335,16 @@ static struct config_int ConfigureNamesInt[] =
 		1000, 0, INT_MAX, NULL, NULL
 	},
 
+	{
+		{"log_count_recovered_files_batch", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Logs the total number of files shipped to the mirror after every batch of size specified by this value"),
+			NULL,
+			GUC_NOT_IN_SAMPLE,
+		},
+		&log_count_recovered_files_batch,
+		1000, 0, INT_MAX, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL

@@ -2728,6 +2728,7 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	    /* disable the authentication timeout in case it takes a long time */
         if (!disable_sig_alarm(false))
             elog(FATAL, "could not disable timer for authorization timeout");
+		elog(LOG, "received transition request packet. processing the request");
 		processPrimaryMirrorTransitionRequest(port, buf);
 		return 127;
 	}

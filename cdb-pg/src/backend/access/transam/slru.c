@@ -145,6 +145,15 @@ static SlruErrorCause slru_errcause;
 static int	slru_errno;
 
 
+/*
+ * GUC variable to control the batch size used to display the
+ * total number of files that get shipped to the mirror.
+ * For e.g After every 1000 files have been shipped to the mirror,
+ * a log message is printed indicating the total number of
+ * files shipped to the mirror.
+ */
+int log_count_recovered_files_batch = 1000;
+
 static bool SlruPhysicalReadPage(SlruCtl ctl, int pageno, int slotno);
 static bool SlruPhysicalWritePage(SlruCtl ctl, int pageno, int slotno,
 					  SlruFlush fdata);
@@ -1299,6 +1308,8 @@ SlruRecoverMirrorDir(char *slru_dir)
 	char		*dir = NULL;
 	char		*mirrorDir = NULL;
 
+	int 		counter = 0;
+
 	if (isTxnDir(slru_dir))
         {
                 dir = makeRelativeToTxnFilespace(slru_dir);
@@ -1323,7 +1334,14 @@ SlruRecoverMirrorDir(char *slru_dir)
 				break;
 			
 		}
+		counter++;
+
+		if (counter % log_count_recovered_files_batch == 0)
+		{
+			elog(LOG, "completed recovering %d files", counter);
+		}
 	}
+	elog(LOG, "completed recovering %d files", counter);
 	FreeDir(cldir);
 
 	pfree(dir);
@@ -1336,31 +1354,37 @@ SlruRecoverMirror(void)
 {
 	int retval;
 
+	elog(LOG, "recovering %s", CLOG_DIR);
 	retval = SlruRecoverMirrorDir(CLOG_DIR);
 
 	if (retval != 0)
 		return retval;	
 	
+	elog(LOG, "recovering %s", DISTRIBUTEDLOG_DIR);
 	retval = SlruRecoverMirrorDir(DISTRIBUTEDLOG_DIR);
 
 	if (retval != 0)
 		return retval;	
 	
+	elog(LOG, "recovering %s", DISTRIBUTEDXIDMAP_DIR);
 	retval = SlruRecoverMirrorDir(DISTRIBUTEDXIDMAP_DIR);
 
 	if (retval != 0)
 		return retval;	
 	
+	elog(LOG, "recovering %s", MULTIXACT_MEMBERS_DIR);
 	retval = SlruRecoverMirrorDir(MULTIXACT_MEMBERS_DIR);
 
 	if (retval != 0)
 		return retval;	
 	
+	elog(LOG, "recovering %s", MULTIXACT_OFFSETS_DIR);
 	retval = SlruRecoverMirrorDir(MULTIXACT_OFFSETS_DIR);
 
 	if (retval != 0)
 		return retval;	
 	
+	elog(LOG, "recovering %s", SUBTRANS_DIR);
 	retval = SlruRecoverMirrorDir(SUBTRANS_DIR);
 
 	return retval;

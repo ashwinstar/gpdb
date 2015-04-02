@@ -476,6 +476,16 @@ extern char  *gp_hadoop_home;    /* $HADOOP_HOME on all segments */
 extern char  *gp_auth_time_override_str;
 
 extern char  *gp_default_storage_options;
+
+/*
+ * This is the batch size used when we want to display the number of files that
+ * have been shipped to the mirror during crash recovery.
+ * For e.g if this value is set to 1000, after shipping 1000 files during
+ * a message gets printed out which indicates the total number of files shipped to
+ * the mirror for a particular directory.
+ */
+extern int log_count_recovered_files_batch;
+
 /* Storage option names */
 #define SOPT_FILLFACTOR    "fillfactor"
 #define SOPT_APPENDONLY    "appendonly"
