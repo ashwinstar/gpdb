@@ -217,7 +217,7 @@ typedef struct
  */
 extern Acl *acldefault(GrantObjectType objtype, Oid ownerId);
 extern Acl *aclupdate(const Acl *old_acl, const AclItem *mod_aip,
-		  int modechg, Oid ownerId, DropBehavior behavior);
+		  int modechg, Oid ownerId, DropBehavior behavior, char *objName);
 extern Acl *aclnewowner(const Acl *old_acl, Oid oldOwnerId, Oid newOwnerId);
 
 extern AclMode aclmask(const Acl *acl, Oid roleid, Oid ownerId,

@@ -108,7 +108,7 @@ static Acl *
 merge_acl_with_grant(Acl *old_acl, bool is_grant,
 					 bool grant_option, DropBehavior behavior,
 					 List *grantees, AclMode privileges,
-					 Oid grantorId, Oid ownerId)
+					 Oid grantorId, Oid ownerId, char *objName)
 {
 	unsigned	modechg;
 	ListCell   *j;
@@ -152,7 +152,7 @@ merge_acl_with_grant(Acl *old_acl, bool is_grant,
 					(is_grant || !grant_option) ? privileges : ACL_NO_RIGHTS,
 				   (!is_grant || grant_option) ? privileges : ACL_NO_RIGHTS);
 
-		newer_acl = aclupdate(new_acl, &aclitem, modechg, ownerId, behavior);
+		newer_acl = aclupdate(new_acl, &aclitem, modechg, ownerId, behavior, objName);
 
 		/* avoid memory leak when there are many grantees */
 		pfree(new_acl);
@@ -906,7 +906,7 @@ ExecGrant_Relation(InternalGrant *istmt)
 			new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
 										   istmt->grant_option, istmt->behavior,
 										   istmt->grantees, this_privileges,
-										   grantorId, ownerId);
+										   grantorId, ownerId, NameStr(pg_class_tuple->relname));
 		}
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
@@ -1052,7 +1052,7 @@ ExecGrant_Database(InternalGrant *istmt)
 		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
 									   istmt->grant_option, istmt->behavior,
 									   istmt->grantees, this_privileges,
-									   grantorId, ownerId);
+									   grantorId, ownerId, NameStr(pg_database_tuple->datname));
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
 
@@ -1183,7 +1183,7 @@ ExecGrant_Fdw(InternalGrant *istmt)
 		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
 									   istmt->grant_option, istmt->behavior,
 									   istmt->grantees, this_privileges,
-									   grantorId, ownerId);
+									   grantorId, ownerId, NameStr(pg_fdw_tuple->fdwname));
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
 
@@ -1306,7 +1306,7 @@ ExecGrant_ForeignServer(InternalGrant *istmt)
 		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
 									   istmt->grant_option, istmt->behavior,
 									   istmt->grantees, this_privileges,
-									   grantorId, ownerId);
+									   grantorId, ownerId, NameStr(pg_server_tuple->srvname));
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
 
@@ -1428,7 +1428,7 @@ ExecGrant_Function(InternalGrant *istmt)
 		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
 									   istmt->grant_option, istmt->behavior,
 									   istmt->grantees, this_privileges,
-									   grantorId, ownerId);
+									   grantorId, ownerId, NameStr(pg_proc_tuple->proname));
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
 
@@ -1559,7 +1559,7 @@ ExecGrant_Language(InternalGrant *istmt)
 		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
 									   istmt->grant_option, istmt->behavior,
 									   istmt->grantees, this_privileges,
-									   grantorId, ownerId);
+									   grantorId, ownerId, NameStr(pg_language_tuple->lanname));
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
 
@@ -1681,7 +1681,7 @@ ExecGrant_Namespace(InternalGrant *istmt)
 		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
 									   istmt->grant_option, istmt->behavior,
 									   istmt->grantees, this_privileges,
-									   grantorId, ownerId);
+									   grantorId, ownerId, NameStr(pg_namespace_tuple->nspname));
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
 
@@ -1811,7 +1811,7 @@ ExecGrant_Tablespace(InternalGrant *istmt)
 		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
 									   istmt->grant_option, istmt->behavior,
 									   istmt->grantees, this_privileges,
-									   grantorId, ownerId);
+									   grantorId, ownerId, NameStr(pg_tablespace_tuple->spcname));
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
 
@@ -1986,7 +1986,7 @@ ExecGrant_ExtProtocol(InternalGrant *istmt)
 		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
 									   istmt->grant_option, istmt->behavior,
 									   istmt->grantees, this_privileges,
-									   grantorId, ownerId);
+									   grantorId, ownerId, NameStr(*ptcname));
 
 		nnewmembers = aclmembers(new_acl, &newmembers);
 

@@ -23,7 +23,7 @@ gp_add_truncate_priv_for_owner(PG_FUNCTION_ARGS)
 	aclitem.ai_grantor = ownerId;
 	ACLITEM_SET_PRIVS_GOPTIONS(aclitem, ACL_TRUNCATE, ACL_NO_RIGHTS);
 
-	acl = aclupdate(acl, &aclitem, modechg, ownerId, behavior);
+	acl = aclupdate(acl, &aclitem, modechg, ownerId, behavior, NULL);
 
 	PG_RETURN_ACL_P(acl);
 }
