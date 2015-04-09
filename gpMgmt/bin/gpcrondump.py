@@ -726,9 +726,13 @@ class GpCronDump(Operation):
                     logger.info("Failed to release pg_class lock, backup will proceed as normal.")
             thread_stop.wait(5)
         try:
-            os.remove(lock_file_name)
+            # Check that the file still exists and if so remove it.
+            # This avoids throwing the exception if the file has already been removed by the main thread.
+            if os.path.exists(lock_file_name):
+                os.remove(lock_file_name)
+        # This should only throw the Exception if "os.remove" fails which means there was a genuine failure.
         except Exception, e:
-            logger.info("Failed to remove signal file %s, backup will proceed without releasing pg_class lock." % lock_file_name)
+            logger.info("Could not remove signal file %s, backup will proceed without releasing pg_class lock." % lock_file_name)
 
     def execute(self):
         if bool(self.ddboost_hosts) or bool(self.ddboost_user):
