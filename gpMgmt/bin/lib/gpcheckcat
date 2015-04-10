@@ -3002,9 +3002,10 @@ def checkTableMissingEntry(cat):
             log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
                 log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
-            processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "missing")
-           
-
+            results = curs.getresult()
+            processMissingDuplicateEntryResult(catname, fields, results, "missing")
+            if catname == 'pg_type':
+            	generateVerifyFile(catname, fields, results, 'missing_extraneous')
     except Exception, e:
         setError(ERROR_NOREPAIR)
         GV.missingEntryStatus = False
@@ -3153,7 +3154,10 @@ def checkTableInconsistentEntry(cat):
             log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
                 log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
-            processInconsistentEntryResult(catname, pkey, fields, curs.getresult())
+            results = curs.getresult()
+            processInconsistentEntryResult(catname, pkey, fields, results)
+            if catname == 'pg_type':
+                generateVerifyFile(catname, fields, results, 'duplicate')
 
 
     except Exception, e:
@@ -3287,8 +3291,10 @@ def checkTableDuplicateEntry(cat):
             log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
             for row in curs.getresult():
                 log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
-            processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "duplicate")
-
+            results = curs.getresult()
+            processMissingDuplicateEntryResult(catname, fields, results, "duplicate")
+            if catname == 'pg_type':
+                generateVerifyFile(catname, fields, results, 'duplicate')
     except Exception, e:
         setError(ERROR_NOREPAIR)
         myprint('[ERROR] executing: duplicate entries check for ' + catname)
@@ -3362,8 +3368,10 @@ def checkDuplicatePersistentEntry():
             log_literal(logger, logging.ERROR, "    " + " | ".join(fields))
             for row in curs.getresult():
                 log_literal(logger, logging.ERROR, "    " + " | ".join(map(str, row)))
-            processMissingDuplicateEntryResult(catname, fields, curs.getresult(), "duplicate")
-
+            results = curs.getresult()
+            processMissingDuplicateEntryResult(catname, fields, results, "duplicate")
+            if catname == 'pg_type':
+            	generateVerifyFile(catname, fields, results, 'duplicate_persistent')
     except Exception, e:
         setError(ERROR_NOREPAIR)
         myprint('[ERROR] Executing: duplicate persistent entries check for ' + catname)
@@ -3980,31 +3988,6 @@ def getOidFromPK(catname, pkeys):
 
 
 #-------------------------------------------------------------------------------
-# TODO: use execSQLForSingletonRow
-#-------------------------------------------------------------------------------
-def getClassOidForType(oid):
-    # For FK check: pg_type entry is missing, so we need to use pg_class
-    qry = """ 
-          SELECT oid
-          FROM ( 
-               SELECT oid FROM pg_class WHERE reltype=%d
-               UNION ALL
-               SELECT oid FROM gp_dist_random('pg_class') WHERE reltype=%d
-          ) alltyprelids
-          GROUP BY oid ORDER BY count(*) desc LIMIT 1
-          """ % (oid, oid)
-
-    try:
-        db = connect()
-        curs = db.query(qry)
-        if len(curs.dictresult()) == 0: return 0
-        return curs.dictresult().pop()['oid']
-    except Exception, e:
-        setError(ERROR_NOREPAIR)
-        myprint('  Execution error: ' + str(e))
-
-
-#-------------------------------------------------------------------------------
 def getClassOidForRelfilenode(relfilenode):
     qry = "SELECT oid FROM pg_class WHERE relfilenode = %d;" % (relfilenode)
     try:
@@ -4069,7 +4052,7 @@ def processMissingDuplicateEntryResult(catname, colname, allValues, type):
         gpObjName = TableMainColumn[catname][1]
     elif 'oid' in pknames:
         gpColName = 'oid'
-        
+
     # Process entries
     for row in allValues:
         rowObjName = gpObjName
@@ -4086,12 +4069,6 @@ def processMissingDuplicateEntryResult(catname, colname, allValues, type):
         if catname == 'pg_constraint' and oid == 0:
             oid = row[colname.index('contypid')]
             rowObjName = 'pg_type'
-        # Special case: if composite type, report as part of RelationObject
-        if rowObjName == 'pg_type':
-            typrelid = getClassOidForType(oid)
-            if typrelid != 0: 
-                oid = typrelid
-                rowObjName = 'pg_class'
         # Special case: persistent table
         if catname == 'gp_persistent_relation_node':
             relfilenode = oid
@@ -4159,12 +4136,6 @@ def processInconsistentEntryResult(catname, pknames, colname, allValues):
         if catname == 'pg_constraint' and oid == 0:
             oid = values[0][colname.index('contypid')]
             rowObjName = 'pg_type'
-        # Special case: if composite type, report as part of RelationObject
-        if rowObjName == 'pg_type':
-            typrelid = getClassOidForType(oid)
-            if typrelid != 0:
-                oid = typrelid
-                rowObjName = 'pg_class'
 
         gpObj = getGPObject(oid, rowObjName)
         gpObj.setInconsistentIssue(issue)
@@ -4728,6 +4699,23 @@ def checkcatReport():
 def myprint(str):
     log_literal(logger,logging.CRITICAL,str)
 
+def generateVerifyFile(catname, fields, results, testname):
+    in_clause = reduce(lambda x, y: x + ('' if not x else ',') + str(y[fields.index('oid')]), results, '')
+    verify_sql = '''
+          SELECT *
+          FROM (
+               SELECT relname, oid FROM pg_class WHERE reltype IN ({in_clause})
+               UNION ALL
+               SELECT relname, oid FROM gp_dist_random('pg_class') WHERE reltype IN ({in_clause})
+          ) alltyprelids
+          GROUP BY relname, oid ORDER BY count(*) desc
+    '''.format(in_clause=in_clause)
+    filename = 'gpcheckcat.verify.%s.%s.%s.%s.sql' % (GV.dbname, catname, testname, TIMESTAMP)
+    try:
+        with open(filename, 'w') as fp:
+            fp.write(verify_sql + '\n')
+    except Exception as e:
+        logger.warning('Unable to generate verify file for %s (%s)' % (catname, str(e)))
 
 #############
 if __name__ == '__main__':
