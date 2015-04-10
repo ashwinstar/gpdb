@@ -521,7 +521,8 @@ CTranslatorDXLToScalar::PwindowrefFromDXLNodeScWindowRef
 	pwindowref->windistinct = pdxlop->FDistinct();
 	pwindowref->winlevelsup = 0;
 	pwindowref->location = -1;
-	pwindowref->winlevel = pdxlop->UlWinSpecPos();
+	pwindowref->winlevel = 0;
+	pwindowref->winspec = pdxlop->UlWinSpecPos();
 	pwindowref->restype = CMDIdGPDB::PmdidConvert(pdxlop->PmdidRetType())->OidObjectId();
 
 	EdxlWinStage edxlwinstage = pdxlop->Edxlwinstage();
