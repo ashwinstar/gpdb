@@ -39,7 +39,7 @@
 
 mmon_options_t opt = { 0 };
 
-static const apr_uint64_t smon_terminate_safe_factor = 240;
+static const apr_uint64_t smon_terminate_safe_factor = 10;
 static const apr_uint64_t recv_timeout_factor = 10;
 
 // If smon doesn't receive any request from mmon,
@@ -243,8 +243,29 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 	gp_smon_to_mmon_packet_t* pkt = 0;
 	TR2(("recv_from_gx sock %d host %s port %d\n", sock, h->hostname, ax.port));
 
-	if (!(event & EV_READ))
+	if (event & EV_TIMEOUT)
+	{
+		// no response from gpsmon for a long time
+		// retry connecting
+		TR1(("Connection to %s timeout\n",h->hostname));
+		h->eflag = 1;
+	} 
+	else if (event & EV_READ) 
+	{
+		// reset timer of timeout event
+		struct timeval tv;
+		tv.tv_sec = 10 * gpmmon_quantum();
+		tv.tv_usec = 0;
+		if (event_add(h->event, &tv))
+		{
+			gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno), "event_add failed");
+		}
+	}
+	else
+	{
+		// bad event
 		return;
+	}
 
 	apr_thread_mutex_lock(h->mutex);
 
@@ -346,9 +367,12 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 					{
 						/* set up the event */
 						h->event = &h->_event;
-						event_set(h->event, h->sock, EV_READ | EV_PERSIST,
+						struct timeval tv;
+						tv.tv_sec = recv_timeout_factor * gpmmon_quantum();
+						tv.tv_usec = 0;
+						event_set(h->event, h->sock, EV_READ | EV_PERSIST | EV_TIMEOUT,
 								recv_from_gx, h);
-						if (event_add(h->event, 0))
+						if (event_add(h->event, &tv))
 						{
 							interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 							gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_add failed");

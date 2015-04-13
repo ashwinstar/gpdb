@@ -1037,7 +1037,6 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 		return;
 	}
 	apr_hash_t* querysegtab;
-
 	n = recv(sock, &dump, 1, 0);
 	if (n == 0)
 		gx_exit("peer closed");
@@ -1267,7 +1266,13 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	{
 		apr_pool_destroy(oldpool);
 	}
-
+	struct timeval tv;
+	tv.tv_sec = opt.terminate_timeout;
+	tv.tv_usec = 0;
+	if (event_add(&gx.tcp_event, &tv)) //reset timeout
+        {
+		gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno), "event_add failed");
+        }
 	return;
 }
 
@@ -1348,8 +1353,11 @@ static void gx_accept(SOCKET sock, short event, void* arg)
 	TR2(("accepted pkt.magic = %x\n", (int) pkt.header.magic));
 	send_smon_to_mon_pkt(nsock, &pkt);
 
-	event_set(&gx.tcp_event, nsock, EV_READ | EV_PERSIST, gx_gettcpcmd, 0);
-	if (event_add(&gx.tcp_event, 0))
+	struct timeval tv;
+	tv.tv_sec = opt.terminate_timeout;
+	tv.tv_usec = 0;
+	event_set(&gx.tcp_event, nsock, EV_READ | EV_PERSIST | EV_TIMEOUT, gx_gettcpcmd, 0);
+	if (event_add(&gx.tcp_event, &tv))
 	{
 		gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno), "event_add failed");
 		close(nsock);
