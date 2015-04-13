@@ -12,7 +12,7 @@ from gppylib.gpversion import GpVersion
 from gppylib.commands.base import Command, CommandResult, ExecutionError
 from mock import patch, MagicMock, Mock, mock_open
 from gppylib.operations.persistent_rebuild import ValidateContentID, DbIdInfo, GetDbIdInfo, BackupPersistentTableFiles,\
-                                                  RebuildTable, ResetXlog, RebuildPersistentTables, ValidatePersistentBackup,\
+                                                  RebuildTable, RebuildPersistentTables, ValidatePersistentBackup,\
                                                   RunBackupRestore, ValidateMD5Sum
 
 class ValidateContentIDTestCase(unittest.TestCase):
@@ -310,7 +310,7 @@ class GetDbIdInfoTestCase(unittest.TestCase):
         gparray.getDbList.return_value = mock_segs
         self.dbid_info.gparray = gparray
         self.dbid_info.content_id = [1, 10]
-        expected = [DbIdInfo(1, 2, 5001, 'mdw1', {1000: '/tmp/f1', 1001: '/tmp/f2'}, {1000: [2000, 2002], 1001: [2001, 2003]},
+        expected = [DbIdInfo(1, 'p', 2, 5001, 'mdw1', {1000: '/tmp/f1', 1001: '/tmp/f2'}, {1000: [2000, 2002], 1001: [2001, 2003]},
                     {2000: [12345], 2001: [2345, 4567], 2002: [8765, 4634], 2003: [3456]})]
         self.assertEqual(expected, self.dbid_info.get_info())
 
@@ -333,7 +333,7 @@ class GetDbIdInfoTestCase(unittest.TestCase):
         gparray.getDbList.return_value = mock_segs
         self.dbid_info.gparray = gparray
         self.dbid_info.content_id = [1, 10]
-        expected = [DbIdInfo(1, 2, 5001, 'mdw1', {}, {}, {})]
+        expected = [DbIdInfo(1, 'p', 2, 5001, 'mdw1', {}, {}, {})]
         self.assertEqual(expected, self.dbid_info.get_info())
 
     @patch('gppylib.operations.persistent_rebuild.GetDbIdInfo._get_filespace_to_tablespace_map', return_value={})
@@ -355,7 +355,7 @@ class GetDbIdInfoTestCase(unittest.TestCase):
         gparray.getDbList.return_value = mock_segs
         self.dbid_info.gparray = gparray
         self.dbid_info.content_id = [1, 10]
-        expected = [DbIdInfo(1, 2, 5001, 'mdw1', {1000: '/tmp/f1', 1001: '/tmp/f2'}, {}, {})]
+        expected = [DbIdInfo(1, 'p', 2, 5001, 'mdw1', {1000: '/tmp/f1', 1001: '/tmp/f2'}, {}, {})]
         self.assertEqual(expected, self.dbid_info.get_info())
 
     @patch('gppylib.operations.persistent_rebuild.GetDbIdInfo._get_filespace_to_tablespace_map', return_value={})
@@ -377,7 +377,7 @@ class GetDbIdInfoTestCase(unittest.TestCase):
         gparray.getDbList.return_value = mock_segs
         self.dbid_info.gparray = gparray
         self.dbid_info.content_id = [1, 10]
-        expected = [DbIdInfo(1, 2, 5001, 'mdw1', {1000: '/tmp/f1', 1001: '/tmp/f2'}, {}, {})]
+        expected = [DbIdInfo(1, 'p', 2, 5001, 'mdw1', {1000: '/tmp/f1', 1001: '/tmp/f2'}, {}, {})]
         self.assertEqual(expected, self.dbid_info.get_info())
 
     @patch('gppylib.operations.persistent_rebuild.GetDbIdInfo._get_filespace_to_tablespace_map', return_value={})
@@ -399,7 +399,7 @@ class GetDbIdInfoTestCase(unittest.TestCase):
         gparray.getDbList.return_value = mock_segs
         self.dbid_info.gparray = gparray
         self.dbid_info.content_id = [1, 10]
-        expected = [DbIdInfo(1, 2, 5001, 'mdw1', {1000: '/tmp/f1', 1001: '/tmp/f2'}, {}, {})]
+        expected = [DbIdInfo(1, 'p', 2, 5001, 'mdw1', {1000: '/tmp/f1', 1001: '/tmp/f2'}, {}, {})]
         self.assertEqual(expected, self.dbid_info.get_info())
 
     @patch('gppylib.operations.persistent_rebuild.GetDbIdInfo._get_filespace_to_tablespace_map', return_value={})
@@ -421,10 +421,33 @@ class GetDbIdInfoTestCase(unittest.TestCase):
         gparray.getDbList.return_value = mock_segs
         self.dbid_info.gparray = gparray
         self.dbid_info.content_id = [1, 10]
-        expected = []
+        expected = [DbIdInfo(1, 'p', 2, 5001, 'mdw1', {1000: '/tmp/f1', 1001: '/tmp/f2'}, {}, {})]
         self.assertEqual(expected, self.dbid_info.get_info())
 
 class BackupPersistentTableFilesTestCase(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        # create persistent table files under new filespace/tablespace/database, 
+        # and also the default filespace, tablespace/database
+        try:
+            os.makedirs(os.path.join('/tmp/p1', '2000', '123'))
+            os.makedirs(os.path.join('/tmp/p2', '2001', '234'))
+            os.makedirs(os.path.join('/tmp/p2', 'base', '234'))
+            os.makedirs(os.path.join('/tmp/p2', 'global'))
+            os.makedirs(os.path.join('/tmp/p2', 'pg_xlog'))
+            os.makedirs(os.path.join('/tmp/p2', 'pg_clog'))
+        except OSError:
+            pass
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            shutil.rmtree('/tmp/p1')
+            shutil.rmtree('/tmp/p2')
+        except Exception:
+            pass
+
     def setUp(self):
         self.backup_persistent_files = BackupPersistentTableFiles(dbid_info=None,
                                                                   perdb_pt_filenames={2:{17088L:['5094', '5095'],1L: [5094L, 5095L]},
@@ -434,250 +457,302 @@ class BackupPersistentTableFilesTestCase(unittest.TestCase):
                                                                   timestamp='20140604101010')
 
     @patch('os.makedirs')
-    def test_copy_pt_files(self, mock1):
+    def test_copy_files(self, mock1):
         src_ptfiles = ['/tmp/global/5090', '/tmp/global/5091']
         dst_ptfiles = ['/tmp1/global/5090', '/tmp1/global/5091']
-        host = 'mdw1'
         self.backup_persistent_files.pool = Mock()
+        content = -1
+        actionType = 'backup'
         m = Mock()
-        m.validate.side_effect = [{'f1': 'abdfe'}, {'f1': 'abdfe'}] 
+        m.validate.return_value = {'/tmp/global/5090': 'abdfe', '/tmp/global/5091': 'abdfe',
+                                  '/tmp1/global/5090': 'abdfe', '/tmp1/global/5091': 'abdfe'}
         self.backup_persistent_files.md5_validator = m 
-        self.backup_persistent_files._copy_pt_files(src_ptfiles, dst_ptfiles, host)
+        self.backup_persistent_files._copy_files(src_ptfiles, dst_ptfiles, content, actionType)
 
     @patch('os.makedirs')
     @patch('gppylib.operations.persistent_rebuild.Command.run')
-    def test_copy_pt_files_with_restore(self, mock1, mock2):
+    def test_copy_files_with_restore(self, mock1, mock2):
         src_ptfiles = ['/tmp/global/5090', '/tmp/global/5091']
         dst_ptfiles = ['/tmp1/global/5090', '/tmp1/global/5091']
-        host = 'mdw1'
         self.backup_persistent_files.pool = Mock()
         m = Mock()
-        m.validate.side_effect = [{'f1': 'abdfe'}, {'f1': 'abdfe'}] 
+        content = -1
+        actionType = 'restore'
+        m.validate.return_value = {'/tmp/global/5090': 'abdfe', '/tmp/global/5091': 'abdfe',
+                                  '/tmp1/global/5090': 'abdfe', '/tmp1/global/5091': 'abdfe'}
         self.backup_persistent_files.md5_validator = m 
-        self.backup_persistent_files._copy_pt_files(src_ptfiles, dst_ptfiles, host, restore=True)
+        self.backup_persistent_files._copy_files(src_ptfiles, dst_ptfiles, content, actionType)
 
     @patch('os.makedirs')
-    def test_copy_pt_files_without_errors_with_no_files(self, mock1):
+    def test_copy_files_without_errors_with_no_files(self, mock1):
         src_ptfiles = []
         dst_ptfiles = []
-        host = 'mdw1'
         self.backup_persistent_files.pool = Mock() 
         m = Mock()
+        content = -1
+        actionType = 'backup'
         m.validate.side_effect = [{}, {}]
         self.backup_persistent_files.md5_validator = m
-        self.backup_persistent_files._copy_pt_files(src_ptfiles, dst_ptfiles, host)
+        self.backup_persistent_files._copy_files(src_ptfiles, dst_ptfiles, content, actionType)
 
     @patch('os.makedirs')
     @patch('gppylib.operations.persistent_rebuild.Command.run')
-    def test_copy_pt_files_without_errors_with_no_files_with_restore(self, mock1, mock2):
+    def test_copy_files_without_errors_with_no_files_with_restore(self, mock1, mock2):
         src_ptfiles = []
         dst_ptfiles = []
-        host = 'mdw1'
         self.backup_persistent_files.pool = Mock() 
         m = Mock()
+        content = -1
+        actionType = 'restore'
         m.validate.side_effect = [{}, {}]
         self.backup_persistent_files.md5_validator = m
         self.backup_persistent_files.restore=True
-        self.backup_persistent_files._copy_pt_files(src_ptfiles, dst_ptfiles, host)
+        self.backup_persistent_files._copy_files(src_ptfiles, dst_ptfiles, content, actionType)
 
     @patch('os.makedirs')
-    def test_copy_pt_files_with_md5_mismatch(self, mock1):
-        src_ptfiles = []
-        dst_ptfiles = []
-        host = 'mdw1'
+    def test_copy_files_with_md5_mismatch(self, mock1):
+        src_ptfiles = ['/tmp/global/5090', '/tmp/global/5091']
+        dst_ptfiles = ['/tmp1/global/5090', '/tmp1/global/5091']
         self.backup_persistent_files.pool = Mock()
         m = Mock()
-        m.validate.side_effect = [{'f1': 'asdfads'}, {'f1': 'asdfadsf'}]
+        content = -1
+        actionType = 'backup'
+        m.validate.return_value = {'/tmp/global/5090': 'asdfads', '/tmp/global/5091': 'abdfe',
+                                  '/tmp1/global/5090': 'asdfadsf', '/tmp1/global/5091': 'abdfe'}
         self.backup_persistent_files.md5_validator = m 
-        with self.assertRaisesRegexp(Exception, 'MD5 sums do not match! Expected md5 = "{\'f1\': \'asdfads\'}",\
- but actual md5 = "{\'f1\': \'asdfadsf\'}"'):
-            self.backup_persistent_files._copy_pt_files(src_ptfiles, dst_ptfiles, host)
+        with self.assertRaisesRegexp(Exception, 'MD5 sums do not match! Expected md5 = "{\'/tmp/global/5090\': \'asdfads\'}",\
+ but actual md5 = "{\'/tmp1/global/5090\': \'asdfadsf\'}"'):
+            self.backup_persistent_files._copy_files(src_ptfiles, dst_ptfiles, content, actionType)
 
     @patch('os.makedirs')
     @patch('gppylib.operations.persistent_rebuild.ValidateMD5Sum.validate', return_value={'5090': 'sdfadsf', '5091': 'sdfadsf'})
-    def test_copy_pt_files_with_errors(self, mock1, mock2):
+    def test_copy_files_with_errors(self, mock1, mock2):
         src_ptfiles = ['/tmp/global/5090', '/tmp/global/5091']
         dst_ptfiles = ['/tmp1/global/5090', '/tmp1/global/5091']
-        host = 'mdw1'
         m = Mock()
+        content = -1
+        actionType = 'backup'
         m.check_results.side_effect = ExecutionError('Error !!!', Mock())
         self.backup_persistent_files.pool = m
         m.validate.return_value = {'5090': 'sdfadsf', '5091': 'sdfadsf'}
         self.backup_persistent_files.md5_validator = m
         with self.assertRaisesRegexp(ExecutionError, 'Error !!!'):
-            self.backup_persistent_files._copy_pt_files(src_ptfiles, dst_ptfiles, host)
+            self.backup_persistent_files._copy_files(src_ptfiles, dst_ptfiles, content, actionType)
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
     def test_copy_global_pt_files(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         self.assertEqual(None, self.backup_persistent_files._copy_global_pt_files())
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files',
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files',
             side_effect=[Mock(), Exception('Error while backing up files')])
     def test_copy_global_pt_files_with_errors(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         with self.assertRaisesRegexp(Exception, 'Backup of global persistent files failed'):
             self.backup_persistent_files._copy_global_pt_files()
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
     def test_copy_global_pt_files_without_errors(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         self.assertEqual(None, self.backup_persistent_files._copy_global_pt_files())
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
     def test_copy_global_pt_files_with_restore_without_errors(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         self.assertEqual(None, self.backup_persistent_files._copy_global_pt_files(restore=True))
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files',
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files',
             side_effect=[Mock(), Exception('Error while backing up files')])
     def test_copy_global_pt_files_with_restore_with_errors(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         with self.assertRaisesRegexp(Exception, 'Restore of global persistent files failed'):
             self.backup_persistent_files._copy_global_pt_files(restore=True)
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
     def test_copy_per_db_pt_files(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         self.assertEqual(None, self.backup_persistent_files._copy_per_db_pt_files())
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files', 
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files', 
             side_effect=[Mock(), Exception('Error while backing up files')])
     def test_copy_per_db_pt_files_with_errors(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
-        with self.assertRaisesRegexp(Exception, 'Backup of per db persistent files failed'):
+        with self.assertRaisesRegexp(Exception, 'Backup of per database persistent files failed'):
             self.backup_persistent_files._copy_per_db_pt_files()
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
     def test_copy_per_db_pt_files_without_errors(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         self.assertEqual(None, self.backup_persistent_files._copy_per_db_pt_files())
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
     def test_copy_per_db_pt_files_with_unused_filespace(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         self.assertEqual(None, self.backup_persistent_files._copy_per_db_pt_files())
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
     def test_copy_per_db_pt_files_with_unused_tablespace(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         self.assertEqual(None, self.backup_persistent_files._copy_per_db_pt_files())
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
     def test_copy_per_db_pt_files_with_restore_without_errors(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         self.assertEqual(None, self.backup_persistent_files._copy_per_db_pt_files(restore=True))
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files',
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
+    def test_copy_Xactlog_files_without_restore_without_errors(self, mock1):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        self.backup_persistent_files.dbid_info = [d1, d2]
+        self.assertEqual(None, self.backup_persistent_files._copy_Xactlog_files())
+
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
+    def test_copy_Xactlog_files_with_restore_without_errors(self, mock1):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        self.backup_persistent_files.dbid_info = [d1, d2]
+        self.assertEqual(None, self.backup_persistent_files._copy_Xactlog_files(restore=True))
+
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
+    def test_copy_pg_control_files_without_restore_without_errors(self, mock1):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        self.backup_persistent_files.dbid_info = [d1, d2]
+        self.assertEqual(None, self.backup_persistent_files._copy_pg_control_file())
+
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
+    def test_copy_pg_control_files_with_restore_without_errors(self, mock1):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        self.backup_persistent_files.dbid_info = [d1, d2]
+        self.assertEqual(None, self.backup_persistent_files._copy_pg_control_file(restore=True))
+
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files',
             side_effect=[Mock(), Mock(), Mock(), Exception('Error while backing up files')])
     def test_copy_per_db_pt_files_with_restore_with_errors(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
-        with self.assertRaisesRegexp(Exception, 'Restore of per db persistent files failed'):
+        with self.assertRaisesRegexp(Exception, 'Restore of per database persistent files failed'):
             self.backup_persistent_files._copy_per_db_pt_files(restore=True)
 
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pt_files')
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_files')
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_global_pt_files', return_value=None)
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_per_db_pt_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_Xactlog_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pg_control_file', return_value=None)
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.Command')
     @patch('gppylib.operations.persistent_rebuild.ValidateMD5Sum.init')
-    def test_restore_without_errors(self, mock1, mock2, mock3, mock4, mock5):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+    def test_restore_without_errors(self, mock1, mock2, mock3, mock4, mock5, mock6, mock7, mock8):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         self.assertEqual(None, self.backup_persistent_files.restore())
 
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_global_pt_files', side_effect=Exception('Error'))
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_per_db_pt_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_Xactlog_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pg_control_file', return_value=None)
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.Command')
     @patch('gppylib.operations.persistent_rebuild.ValidateMD5Sum.init')
-    def test_restore_with_global_file_bkup_error(self, mock1, mock2, mock3, mock4, mock5):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+    def test_restore_with_global_file_bkup_error(self, mock1, mock2, mock3, mock4, mock5, mock6, mock7):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         with self.assertRaisesRegexp(Exception, 'Error'):
             self.backup_persistent_files.restore()
 
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_global_pt_files', return_value=None)
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_per_db_pt_files', side_effect=Exception('Error'))
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_Xactlog_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pg_control_file', return_value=None)
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.Command')
     @patch('gppylib.operations.persistent_rebuild.ValidateMD5Sum.init')
-    def test_restore_with_per_db_bkup_error(self, mock1, mock2, mock3, mock4, mock5):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+    def test_restore_with_per_db_bkup_error(self, mock1, mock2, mock3, mock4, mock5, mock6, mock7):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         with self.assertRaisesRegexp(Exception, 'Error'):
             self.backup_persistent_files.restore()
 
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_global_pt_files', return_value=None)
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_per_db_pt_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_Xactlog_files', side_effect=Exception('Error'))
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pg_control_file', return_value=None)
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.Command')
     @patch('gppylib.operations.persistent_rebuild.ValidateMD5Sum.init')
-    def test_restore_without_errors(self, mock1, mock2, mock3, mock4, mock5):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        self.backup_persistent_files.dbid_info = [d1, d2]
-        self.assertEqual(None, self.backup_persistent_files.restore())
-
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_global_pt_files', side_effect=Exception('Error'))
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_per_db_pt_files', return_value=None)
-    @patch('gppylib.operations.persistent_rebuild.WorkerPool')
-    @patch('gppylib.operations.persistent_rebuild.Command')
-    @patch('gppylib.operations.persistent_rebuild.ValidateMD5Sum.init')
-    def test_restore_with_global_file_bkup_error(self, mock1, mock2, mock3, mock4, mock5):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+    def test_restore_with_xlog_bkup_error(self, mock1, mock2, mock3, mock4, mock5, mock6, mock7):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         with self.assertRaisesRegexp(Exception, 'Error'):
             self.backup_persistent_files.restore()
 
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_global_pt_files', return_value=None)
-    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_per_db_pt_files', side_effect=Exception('Error'))
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_per_db_pt_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_Xactlog_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pg_control_file', side_effect=Exception('Error'))
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.Command')
     @patch('gppylib.operations.persistent_rebuild.ValidateMD5Sum.init')
-    def test_restore_with_per_db_bkup_error(self, mock1, mock2, mock3, mock4, mock5):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+    def test_restore_with_pg_control_bkup_error(self, mock1, mock2, mock3, mock4, mock5, mock6, mock7):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         with self.assertRaisesRegexp(Exception, 'Error'):
             self.backup_persistent_files.restore()
 
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_global_pt_files', side_effect=Exception('Error'))
     @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_per_db_pt_files', side_effect=Exception('Error'))
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_Xactlog_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pg_control_file', return_value=None)
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.Command')
     @patch('gppylib.operations.persistent_rebuild.ValidateMD5Sum.init')
-    def test_restore_with_global_and_per_db_bkup_error(self, mock1, mock2, mock3, mock4, mock5):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+    def test_restore_with_global_and_per_db_bkup_error(self, mock1, mock2, mock3, mock4, mock5, mock6, mock7):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        self.backup_persistent_files.dbid_info = [d1, d2]
+        with self.assertRaisesRegexp(Exception, 'Error'):
+            self.backup_persistent_files.restore()
+
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_global_pt_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_per_db_pt_files', return_value=None)
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_Xactlog_files', side_effect=Exception('Error'))
+    @patch('gppylib.operations.persistent_rebuild.BackupPersistentTableFiles._copy_pg_control_file', side_effect=Exception('Error'))
+    @patch('gppylib.operations.persistent_rebuild.WorkerPool')
+    @patch('gppylib.operations.persistent_rebuild.Command')
+    @patch('gppylib.operations.persistent_rebuild.ValidateMD5Sum.init')
+    def test_restore_with_xlog_and_pg_control_bkup_error(self, mock1, mock2, mock3, mock4, mock5, mock6, mock7):
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.backup_persistent_files.dbid_info = [d1, d2]
         with self.assertRaisesRegexp(Exception, 'Error'):
             self.backup_persistent_files.restore()
@@ -777,7 +852,7 @@ class RebuildTableTestCase(unittest.TestCase):
         with self.assertRaisesRegexp(Exception, 'Segment .* is in resync. Cannot continue with persistent table rebuild'):
             self.rebuild_table._get_valid_dbids(content_ids)
 
-    @patch('gppylib.operations.persistent_rebuild.ValidatePersistentBackup.validate', return_value=Mock())
+    @patch('gppylib.operations.persistent_rebuild.ValidatePersistentBackup.validate_backups', return_value=Mock())
     def test_get_valid_dbids_content_ids_are_mirrors(self, mock1):
         content_ids = [1, 2, 3]
         expected = [1]
@@ -796,21 +871,13 @@ class RebuildTableTestCase(unittest.TestCase):
         self.rebuild_table.gparray = m
         self.assertEqual(expected, self.rebuild_table._get_valid_dbids(content_ids))
 
-    def test_get_host_to_dbid_info_map(self):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        expected = {'h1': [d1]}
-        self.assertEqual(expected, self.rebuild_table._get_host_to_dbid_info_map([d1]))
-
-    def test_get_host_to_dbid_info_map_empty(self):
-        self.assertEqual({}, self.rebuild_table._get_host_to_dbid_info_map([]))
-
     @patch('gppylib.operations.persistent_rebuild.GpArray')
     @patch('gppylib.operations.persistent_rebuild.RebuildTable._validate_backups')
     @patch('gppylib.operations.persistent_rebuild.RebuildTable._get_valid_dbids', return_value=[1, 2, 3])
     @patch('gppylib.operations.persistent_rebuild.ParallelOperation.run')
     def test_rebuild(self, mock1, mock2, mock3, mock4):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.rebuild_table.dbid_info = [d1, d2]
         expected_success = [d1, d2]
         expected_failure = []
@@ -822,124 +889,19 @@ class RebuildTableTestCase(unittest.TestCase):
     @patch('gppylib.operations.persistent_rebuild.ParallelOperation.run')
     @patch('gppylib.operations.persistent_rebuild.RemoteOperation.get_ret', side_effect=[Mock(), Exception('Error')])
     def test_rebuild_with_errors(self, mock1, mock2, mock3, mock4, mock5):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.rebuild_table.dbid_info = [d1, d2]
         expected_success = [d1]
         expected_failure = [(d2, 'Error')]
         self.assertEqual((expected_success, expected_failure), self.rebuild_table.rebuild())
-
-class ResetXlogTestCase(unittest.TestCase):
-    def setUp(self):
-        self.reset_xlog = ResetXlog(failures=None, gparray=None)
-
-    @patch('gppylib.operations.persistent_rebuild.Command')
-    def test_reset_with_no_failures(self, mock1):
-        mock_segs = []
-        for i in range(3):
-            m = Mock()
-            m.getSegmentContentId.return_value = i - 1
-            mock_segs.append(m)
-        m = Mock()
-        m.getDbList.return_value = mock_segs 
-        self.reset_xlog.gparray = m
-        m1 = Mock()
-        m1.get_results.return_value = CommandResult(0, '', '', True, False)
-        m2 = Mock()
-        m2.get_results.return_value = CommandResult(0, '', '', True, False)
-        m.getCompletedItems.return_value = [m1, m2]
-        self.reset_xlog.failures = []
-        with patch('gppylib.operations.persistent_rebuild.WorkerPool', return_value=m):
-            self.assertEquals([], self.reset_xlog.reset())
-
-    @patch('gppylib.operations.persistent_rebuild.Command')
-    def test_reset_with_failures(self, mock1):
-        d = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        mock_segs = []
-        for i in range(3):
-            m = Mock()
-            m.getSegmentContentId.return_value = i + 1
-            mock_segs.append(m)
-        m = Mock()
-        m.getDbList.return_value = mock_segs 
-        self.reset_xlog.gparray = m
-        m1 = Mock()
-        m1.get_results.return_value = CommandResult(0, '', '', True, False)
-        m2 = Mock()
-        m2.get_results.return_value = CommandResult(0, '', '', True, False)
-        m.getCompletedItems.return_value = [m1, m2]
-        self.reset_xlog.failures = [(d, Exception('Error'))]
-        with patch('gppylib.operations.persistent_rebuild.WorkerPool', return_value=m):
-            self.assertEqual([], self.reset_xlog.reset())
-
-    @patch('gppylib.operations.persistent_rebuild.Command.get_results', side_effect=[Mock(), CommandResult(1, '/tmp/f1', '', True, False)])
-    def test_reset_with_failures_with_error(self, mock1):
-        d = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        mock_segs = []
-        for i in range(3):
-            m = Mock()
-            m.getSegmentContentId.return_value = i + 1
-            mock_segs.append(m)
-        m = Mock()
-        m.getDbList.return_value = mock_segs 
-        self.reset_xlog.gparray = m
-        m1 = Mock()
-        m1.get_results.return_value = CommandResult(1, 'Error', '', True, False)
-        m2 = Mock()
-        m2.get_results.return_value = CommandResult(0, '', '', True, False)
-        m.getCompletedItems.return_value = [m1, m2]
-        self.reset_xlog.failures = [(d, Exception('Error'))]
-        with patch('gppylib.operations.persistent_rebuild.WorkerPool', return_value=m):
-            self.assertEqual([(d, 'Error')], self.reset_xlog.reset())
-
-    @patch('gppylib.operations.persistent_rebuild.Command.run')
-    def test_reset_with_mirrors(self, mock1):
-        d = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        mock_segs = []
-        for i in range(6):
-            m = Mock()
-            m.getSegmentContentId.return_value = i + 1
-            m.isSegmentMirror.return_vale = True if i > 3 else False
-            mock_segs.append(m)
-        m = Mock()
-        m.getDbList.return_value = mock_segs 
-        self.reset_xlog.gparray = m
-        m1 = Mock()
-        m1.get_results.return_value = CommandResult(0, '', '', True, False)
-        m2 = Mock()
-        m2.get_results.return_value = CommandResult(0, '', '', True, False)
-        m.getCompletedItems.return_value = [m1, m2]
-        self.reset_xlog.failures = [(d, Exception('Error'))]
-        with patch('gppylib.operations.persistent_rebuild.WorkerPool', return_value=m):
-            self.assertEqual([], self.reset_xlog.reset())
-
-    @patch('gppylib.operations.persistent_rebuild.Command.run')
-    def test_reset_without_mirrors(self, mock1):
-        d = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        mock_segs = []
-        for i in range(6):
-            m = Mock()
-            m.getSegmentContentId.return_value = i + 1
-            m.isSegmentMirror.return_vale = True
-            mock_segs.append(m)
-        m = Mock()
-        m.getDbList.return_value = mock_segs 
-        self.reset_xlog.gparray = m
-        m1 = Mock()
-        m1.get_results.return_value = CommandResult(0, '', '', True, False)
-        m2 = Mock()
-        m2.get_results.return_value = CommandResult(0, '', '', True, False)
-        m.getCompletedItems.return_value = [m1, m2]
-        self.reset_xlog.failures = [(d, Exception('Error'))]
-        with patch('gppylib.operations.persistent_rebuild.WorkerPool', return_value=m):
-            self.assertEqual([], self.reset_xlog.reset())
 
 class ValidatePersistentBackupTestCase(unittest.TestCase):
     def setUp(self):
         self.validate_persistent_backup = ValidatePersistentBackup(dbid_info=None, timestamp='20140605101010')
 
     def test_process_results(self):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         m1 = Mock()
         m1.get_results.return_value = CommandResult(0, '/tmp/f1', '', True, False)
         m2 = Mock()
@@ -949,7 +911,7 @@ class ValidatePersistentBackupTestCase(unittest.TestCase):
         self.validate_persistent_backup._process_results(d1, m)
 
     def test_process_results_with_errors(self):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         m1 = Mock()
         m1.get_results.return_value = CommandResult(0, '/tmp/f1', '', True, False)
         m2 = Mock()
@@ -960,7 +922,7 @@ class ValidatePersistentBackupTestCase(unittest.TestCase):
             self.validate_persistent_backup._process_results(d1, m)
 
     def test_process_results_with_missing_backup(self):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         m1 = Mock()
         m1.get_results.return_value = CommandResult(0, '/tmp/f1', '', True, False)
         m2 = Mock()
@@ -972,19 +934,19 @@ class ValidatePersistentBackupTestCase(unittest.TestCase):
 
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     def test_validate(self, mock1):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.validate_persistent_backup.dbid_info = [d1, d2]
-        self.validate_persistent_backup.validate()
+        self.validate_persistent_backup.validate_backups()
 
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.ValidatePersistentBackup._process_results', side_effect=Exception('Failed to validate backups'))
     def test_validate_error_in_workerpool(self, mock1, mock2):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.validate_persistent_backup.dbid_info = [d1, d2]
         with self.assertRaisesRegexp(Exception, 'Failed to validate backups'):
-            self.validate_persistent_backup.validate()
+            self.validate_persistent_backup.validate_backups()
 
 class RunBackupRestoreTestCase(unittest.TestCase):
     def setUp(self):
@@ -993,16 +955,16 @@ class RunBackupRestoreTestCase(unittest.TestCase):
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.RunBackupRestore._process_results')
     def test_run_backup_restore(self, mock1, mock2):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         host_to_dbid_info_map = {'h1': [d1], 'h2': [d2]}
         self.run_backup_restore._run_backup_restore(host_to_dbid_info_map)
 
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.RunBackupRestore._process_results', side_effect=Exception('ERROR'))
     def test_run_backup_restore_with_errors(self, mock1, mock2):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         host_to_dbid_info_map = {'h1': [d1], 'h2': [d2]}
         with self.assertRaisesRegexp(Exception, 'ERROR'):
             self.run_backup_restore._run_backup_restore(host_to_dbid_info_map)
@@ -1010,16 +972,16 @@ class RunBackupRestoreTestCase(unittest.TestCase):
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.RunBackupRestore._process_results')
     def test_run_backup_restore_with_restore(self, mock1, mock2):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         host_to_dbid_info_map = {'h1': [d1], 'h2': [d2]}
         self.run_backup_restore._run_backup_restore(host_to_dbid_info_map, restore=True)
     
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.RunBackupRestore._process_results', side_effect=Exception('ERROR'))
     def test_run_backup_restore_with_errors_with_restore(self, mock1, mock2):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         host_to_dbid_info_map = {'h1': [d1], 'h2': [d2]}
         with self.assertRaisesRegexp(Exception, 'ERROR'):
             self.run_backup_restore._run_backup_restore(host_to_dbid_info_map, restore=True)
@@ -1027,37 +989,40 @@ class RunBackupRestoreTestCase(unittest.TestCase):
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.RunBackupRestore._process_results')
     def test_run_backup_restore_with_validate(self, mock1, mock2):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         host_to_dbid_info_map = {'h1': [d1], 'h2': [d2]}
-        self.run_backup_restore._run_backup_restore(host_to_dbid_info_map, validate=True)
+        self.run_backup_restore._run_backup_restore(host_to_dbid_info_map, validate_backups=True)
     
     @patch('gppylib.operations.persistent_rebuild.WorkerPool')
     @patch('gppylib.operations.persistent_rebuild.RunBackupRestore._process_results', side_effect=Exception('ERROR'))
     def test_run_backup_restore_with_errors_with_validate(self, mock1, mock2):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         host_to_dbid_info_map = {'h1': [d1], 'h2': [d2]}
         with self.assertRaisesRegexp(Exception, 'ERROR'):
-            self.run_backup_restore._run_backup_restore(host_to_dbid_info_map, validate=True)
+            self.run_backup_restore._run_backup_restore(host_to_dbid_info_map, validate_backups=True)
 
     def test_get_host_to_dbid_info_map(self):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h2', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         expected = {'h1': [d1], 'h2': [d2]}
-        self.assertEqual(expected, self.run_backup_restore._get_host_to_dbid_info_map([d1, d2]))
+        self.run_backup_restore.dbid_info = [d1, d2]
+        self.assertEqual(expected, self.run_backup_restore._get_host_to_dbid_info_map())
 
     def test_get_host_to_dbid_info_map_empty(self):
-        self.assertEqual({}, self.run_backup_restore._get_host_to_dbid_info_map([]))
+        self.run_backup_restore.dbid_info = []
+        self.assertEqual({}, self.run_backup_restore._get_host_to_dbid_info_map())
 
     def test_get_host_to_dbid_info_map_multiple_entries_per_host(self):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
-        d2 = DbIdInfo(2, 3, 5002, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]}) 
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d2 = DbIdInfo(2, 'p', 3, 5002, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         expected = {'h1': [d1, d2]}
-        self.assertEqual(expected, self.run_backup_restore._get_host_to_dbid_info_map([d1, d2]))
+        self.run_backup_restore.dbid_info = [d1, d2]
+        self.assertEqual(expected, self.run_backup_restore._get_host_to_dbid_info_map())
 
     def test_process_results(self):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         m1 = Mock()
         m1.get_results.return_value = CommandResult(0, '/tmp/f1', '', True, False)
         m2 = Mock()
@@ -1067,7 +1032,7 @@ class RunBackupRestoreTestCase(unittest.TestCase):
         self.run_backup_restore._process_results(m, 'ERR')
 
     def test_process_results_with_errors(self):
-        d1 = DbIdInfo(1, 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(1, 'p', 2, 5001, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         m1 = Mock()
         m1.get_results.return_value = CommandResult(0, '/tmp/f1', '', True, False)
         m2 = Mock()
@@ -1167,7 +1132,8 @@ class RebuildPersistentTableTestCase(unittest.TestCase):
                                                                 contentid_file = None,
                                                                 backup=None,
                                                                 restore=None,
-                                                                batch_size=None)
+                                                                batch_size=None,
+                                                                backup_dir=None)
 
     @patch('gppylib.operations.persistent_rebuild.platform.system', return_value='Linux')
     def test_check_platform_linux(self, mock1):
@@ -1178,7 +1144,7 @@ class RebuildPersistentTableTestCase(unittest.TestCase):
         with self.assertRaisesRegexp(Exception, 'This tool is only supported on Linux and OSX platforms'):
             self.rebuild_persistent_table._check_platform()
 
-    def test_validate_has_mirrors(self):
+    def test_validate_has_mirrors_and_standby(self):
         mock_segs = []
         for i in range(6):
             m = Mock()
@@ -1188,9 +1154,10 @@ class RebuildPersistentTableTestCase(unittest.TestCase):
         m = Mock()
         m.getDbList.return_value = mock_segs 
         self.rebuild_persistent_table.gparray = m
-        self.assertTrue(self.rebuild_persistent_table._validate_has_mirrors())
+        self.rebuild_persistent_table._validate_has_mirrors_and_standby()
+        self.assertTrue(self.rebuild_persistent_table.has_mirrors)
 
-    def test_validate_has_mirrors_with_no_mirrors(self):
+    def test_validate_has_mirrors_and_standby_with_no_mirrors(self):
         mock_segs = []
         for i in range(6):
             m = Mock()
@@ -1200,9 +1167,10 @@ class RebuildPersistentTableTestCase(unittest.TestCase):
         m = Mock()
         m.getDbList.return_value = mock_segs 
         self.rebuild_persistent_table.gparray = m
-        self.assertFalse(self.rebuild_persistent_table._validate_has_mirrors())
+        self.rebuild_persistent_table._validate_has_mirrors_and_standby()
+        self.assertFalse(self.rebuild_persistent_table.has_mirrors)
 
-    def test_validate_has_mirrors_with_mirrors_for_master(self):
+    def test_validate_has_mirrors_and_standby_with_mirrors_for_master(self):
         mock_segs = []
         for i in range(6):
             m = Mock()
@@ -1212,7 +1180,8 @@ class RebuildPersistentTableTestCase(unittest.TestCase):
         m = Mock()
         m.getDbList.return_value = mock_segs 
         self.rebuild_persistent_table.gparray = m
-        self.assertFalse(self.rebuild_persistent_table._validate_has_mirrors())
+        self.rebuild_persistent_table._validate_has_mirrors_and_standby()
+        self.assertTrue(self.rebuild_persistent_table.has_standby)
 
     @patch('gppylib.operations.persistent_rebuild.findCmdInPath', return_value=True)
     def test_check_md5_prog(self, mock1):
@@ -1237,15 +1206,15 @@ class RebuildPersistentTableTestCase(unittest.TestCase):
     @patch('gppylib.operations.persistent_rebuild.dbconn.connect')
     @patch('gppylib.operations.persistent_rebuild.dbconn.DbURL')
     def test_get_persistent_table_filenames(self, mock1, mock2, mock3):
-        d1 = DbIdInfo(2, 3, 5002, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
+        d1 = DbIdInfo(2, 'p', 3, 5002, 'h1', {1000: '/tmp/p1', 3052: '/tmp/p2'}, {1000: [2000], 3052: [2001]}, {2000: [123], 2001: [234]})
         self.rebuild_persistent_table.dbid_info = [d1]
         self.rebuild_persistent_table._get_persistent_table_filenames()
         expected_global = defaultdict(defaultdict)
-        expected_files = [5090, 5091, 5092, 5093]
+        expected_files = ['5090', '5091', '5092', '5093']
         expected_dbid = {3:expected_files}
         expected_global = {'h1':expected_dbid}
         expected_perdb_pt_files = defaultdict(defaultdict)
-        exp_pt_files = [5094, 16992]
+        exp_pt_files = ['5094', '16992']
         exp_dboid = {123:exp_pt_files}
         exp_dbid = {3:exp_dboid}
         expected_perdb_pt_file = {'h1':exp_dbid}

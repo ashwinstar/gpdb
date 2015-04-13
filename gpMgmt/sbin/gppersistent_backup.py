@@ -22,9 +22,11 @@ class PersistentBackupRestore:
     def __init__(self, options, args):
         self.backup = options.backup
         self.restore = options.restore
-        self.validate = options.validate
+        self.validate_backups = options.validate_backups
+        self.validate_backup_dir = options.validate_backup_dir
         self.timestamp = options.timestamp
         self.batch_size = options.batch_size
+        self.backup_dir = options.backup_dir
         self.perdbpt = options.perdbpt
         self.globalpt = options.globalpt
 
@@ -38,22 +40,25 @@ class PersistentBackupRestore:
         if not self.timestamp:
             raise Exception('Please specify --timestamp option')
 
-        if (self.backup and self.restore) or (self.validate and self.backup) or (self.restore and self.validate):
+        if (self.backup and self.restore) or (self.validate_backups and self.backup) or (self.restore and self.validate_backups):
             raise Exception('Please specify either --backup or --restore or --validate')
 
         if self.backup:
             dbid_info = pickle.loads(base64.urlsafe_b64decode(self.backup))
             perdb_pt_filenames = pickle.loads(base64.urlsafe_b64decode(self.perdbpt))
             global_pt_filenames = pickle.loads(base64.urlsafe_b64decode(self.globalpt))
-            BackupPersistentTableFiles(dbid_info, self.timestamp, perdb_pt_filenames, global_pt_filenames, self.batch_size).backup()
+            BackupPersistentTableFiles(dbid_info, self.timestamp, perdb_pt_filenames, global_pt_filenames, self.batch_size, self.backup_dir).backup()
         elif self.restore:
             dbid_info = pickle.loads(base64.urlsafe_b64decode(self.restore))
             perdb_pt_filenames = pickle.loads(base64.urlsafe_b64decode(self.perdbpt))
             global_pt_filenames = pickle.loads(base64.urlsafe_b64decode(self.globalpt))
-            BackupPersistentTableFiles(dbid_info, self.timestamp, perdb_pt_filenames, global_pt_filenames, self.batch_size).restore()
-        elif self.validate:
-            dbid_info = pickle.loads(base64.urlsafe_b64decode(self.validate))
-            ValidatePersistentBackup(dbid_info, self.timestamp, self.batch_size).validate()
+            BackupPersistentTableFiles(dbid_info, self.timestamp, perdb_pt_filenames, global_pt_filenames, self.batch_size, self.backup_dir).restore()
+        elif self.validate_backups:
+            dbid_info = pickle.loads(base64.urlsafe_b64decode(self.validate_backups))
+            ValidatePersistentBackup(dbid_info, self.timestamp, self.batch_size, self.backup_dir).validate_backups()
+        elif self.validate_backup_dir:
+            dbid_info = pickle.loads(base64.urlsafe_b64decode(self.validate_backup_dir))
+            ValidatePersistentBackup(dbid_info, self.timestamp, self.batch_size, self.backup_dir).validate_backup_dir()
 
         return 0
 
@@ -76,12 +81,16 @@ def create_parser():
                      help="A list of dbid info where backups need to be done in pickled format")
     addTo.add_option('--restore', metavar="<pickled dbid info>", type="string",
                      help="A list of dbid info where restore needs to be done in pickled format")
-    addTo.add_option('--validate', metavar="<pickled dbid info>", type="string",
+    addTo.add_option('--validate-backups', metavar="<pickled dbid info>", type="string",
+                     help="A list of dbid info where validation needs to be done in pickled format")
+    addTo.add_option('--validate-backup-dir', metavar="<pickled dbid info>", type="string",
                      help="A list of dbid info where validation needs to be done in pickled format")
     addTo.add_option('--timestamp', metavar="<timestamp of backup>", type="string",
                      help="A timestamp for the backup that needs to be validated") 
     addTo.add_option('--batch-size', metavar="<batch size for the worker pool>", type="int",
                       help="Batch size for parallelism in worker pool")
+    addTo.add_option('--backup-dir', metavar="<backup directory>", type="string",
+                      help="Backup directory for persistent tables and transaction logs")
     addTo.add_option('--perdbpt', metavar="<per database pt filename>", type="string",  
                       help="Filenames for per database persistent files")
     addTo.add_option('--globalpt', metavar="<global pt filenames>", type="string",
