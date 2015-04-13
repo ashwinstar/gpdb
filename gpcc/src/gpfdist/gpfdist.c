@@ -157,6 +157,7 @@ static struct
 	int			last_port;
 	int			v; /* verbose */
 	int			V; /* very verbose */
+	int			s;
 	const char* d; /* directory */
 	const char* l; /* log filename */
 	const char*	f; /* forced filename */
@@ -171,7 +172,7 @@ static struct
 	const char* ssl; /* path to certificates in case we use gpfdist with ssl */
 	int 		sslclean; /* Defines the time to wait [sec] untill cleanup the SSL resources (internal, not documented) */
 	int			w; /* The time used for session timeout in seconds */
-} opt = { 8080, 8080, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0, 5, 0 };
+} opt = { 8080, 8080, 0, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0, 5, 0 };
 
 
 typedef union address
@@ -470,7 +471,7 @@ static void usage_error(const char* msg, int print_usage)
 		{
 			fprintf(stderr,
 					"gpfdist -- file distribution web server\n\n"
-						"usage: gpfdist [--ssl <certificates_directory>] [-d <directory>] [-p <http(s)_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <maxlen>] [-w <timeout>]"
+						"usage: gpfdist [--ssl <certificates_directory>] [-d <directory>] [-p <http(s)_port>] [-l <log_file>] [-t <timeout>] [-v | -V | -s] [-m <maxlen>] [-w <timeout>]"
 #ifdef GPFXDIST
 					    "[-c file]"
 #endif
@@ -479,6 +480,7 @@ static void usage_error(const char* msg, int print_usage)
 						"        -?, --help : print this screen\n"
 						"        -v         : verbose mode\n"
 						"        -V         : more verbose\n"
+						"        -s         : simplified minimum log\n"
 						"        -p port    : port to serve HTTP(S), default is 8080\n"
 						"        -d dir     : serve files under the specified directory,  default is '.'\n"
 						"        -l logfn   : log filename\n"
@@ -531,6 +533,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ "help", '?', 0, "print help screen" },
 	{ NULL, 'V', 0, "very verbose" },
 	{ NULL, 'v', 0, "verbose mode" },
+	{ NULL, 's', 0, "simplified log without request header" },
 	{ NULL, 'p', 1, "which port to serve HTTP(S)" },
 	{ NULL, 'P', 1, "last port of range of ports to serve HTTP(S)" },
 	{ NULL, 'd', 1, "serve files under this directory" },
@@ -572,6 +575,9 @@ static void parse_command_line(int argc, const char* const argv[],
 			break;
 		case 'V':
 			opt.v = opt.V = 1;
+			break;
+		case 's':
+			opt.s = 1;
 			break;
 		case 'h':
 			print_q_x_h_are_gone();
@@ -816,7 +822,7 @@ static void http_empty(request_t* r)
 		"X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
 		"Cache-Control: no-cache\r\n"
 		"Connection: close\r\n\r\n";
-	gprint(r, "HTTP EMPTY: %s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	gprintln(r, "HTTP EMPTY: %s %s %s - OK", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 	local_send(r, buf, sizeof buf -1);
 }
 
@@ -1259,7 +1265,7 @@ session_get_block(const request_t* r, block_t* retblock, char* line_delim_str, i
 
 	if (session->is_error || 0 == session->fstream)
 	{
-		gprint(NULL, "session_get_block: end session is_error: %d\n", session->is_error);
+		gprintln(NULL, "session_get_block: end session is_error: %d", session->is_error);
 		session_end(session, 0);
 		return 0;
 	}
@@ -1272,7 +1278,7 @@ session_get_block(const request_t* r, block_t* retblock, char* line_delim_str, i
 
 	if (size == 0)
 	{
-		gprint(NULL, "session_get_block end session due to EOF\n");
+		gprintln(NULL, "session_get_block: end session due to EOF");
 		gcb.read_bytes += fstream_get_compressed_size(session->fstream);
 		session_end(session, 0);
 		return 0;
@@ -1314,7 +1320,7 @@ static void session_end(session_t* session, int error)
 /* deallocate session, remove from hashtable */
 static void session_free(session_t* session)
 {
-	gprint(NULL, "free session %s\n", session->key);
+	gprintln(NULL, "free session %s", session->key);
 
 	if (session->fstream)
 	{
@@ -1401,7 +1407,7 @@ static void sessions_cleanup(void)
 	session_t*			s;
 	int 				numses;
 
-	gprint(NULL, "remove sessions\n");
+	gprintln(NULL, "remove sessions");
 
 	numses = apr_hash_count(gcb.session.tab);
 
@@ -1803,6 +1809,10 @@ static void do_write(int fd, short event, void* arg)
 static void log_request_header(const request_t *r)
 {
 	int i;
+
+	if (opt.s) {
+		return;
+	}
 
 	/* Hurray, got a request !!! */
 	gprintln(r, "%s requests %s", r->peer,
@@ -2645,6 +2655,10 @@ void gprint(const request_t *r, const char *fmt, ...)
 
 void gprintln(const request_t *r, const char *fmt, ...)
 {
+	if (opt.s) {
+		return;
+	}
+
 	va_list args;
 	va_start(args, fmt);
 	_gprint(r, "INFO", fmt, args);
@@ -2659,6 +2673,10 @@ void gprintlnif(const request_t *r, const char *fmt, ...)
 {
 	if (r != NULL && ! r->is_get && ! opt.V)
 		return;
+
+	if (opt.s) {
+		return;
+	}
 
 	va_list args;
 	va_start(args, fmt);
