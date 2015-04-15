@@ -402,7 +402,8 @@ class GpInjectFaultProgram:
 			      "procarray_add (inject fault while adding PGPROC to procarray), " \
 			      "exec_hashjoin_new_batch (inject fault before switching to a new batch in Hash Join), " \
 			      "fts_wait_for_shutdown (pause FTS before committing changes), " \
-			      "runaway_cleanup (inject fault before starting the cleanup for a runaway query)" \
+			      "runaway_cleanup (inject fault before starting the cleanup for a runaway query), " \
+                  "opt_task_allocate_string_buffer (inject fault while allocating string buffer), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",

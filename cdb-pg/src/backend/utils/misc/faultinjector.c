@@ -299,6 +299,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* pause FTS process before committing changes, until shutdown */
 	_("runaway_cleanup"),
 		/* inject fault before cleaning up a runaway query */		
+	_("opt_task_allocate_string_buffer"),
+		/* inject fault while allocating string buffer */
 	_("not recognized"),
 };
 
@@ -1124,7 +1126,8 @@ FaultInjector_NewHashEntry(
 		case DtmBroadcastPrepare:
 		case DtmBroadcastCommitPrepared:
 		case DtmBroadcastAbortPrepared:
-		case DtmXLogDistributedCommit:			
+		case DtmXLogDistributedCommit:
+		case OptTaskAllocateStringBuffer:
 			
 			if (fileRepRole != FileRepNoRoleConfigured)
 			{

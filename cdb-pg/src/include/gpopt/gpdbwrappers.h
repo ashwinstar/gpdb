@@ -20,6 +20,7 @@
 
 #include "postgres.h"
 #include "access/attnum.h"
+#include "utils/faultinjector.h"
 
 // fwd declarations
 typedef struct SysScanDescData *SysScanDesc;
@@ -602,6 +603,9 @@ namespace gpdb {
 
 	// static partition selection given a PartitionSelector node
 	SelectedParts *SpStaticPartitionSelection(PartitionSelector *ps);
+
+	// simple fault injector used by COptTasks.cpp to inject GPDB fault
+	FaultInjectorType_e OptTasksFaultInjector(FaultInjectorIdentifier_e identifier);
 
 } //namespace gpdb
 

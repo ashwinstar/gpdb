@@ -2904,4 +2904,22 @@ gpdb::SpStaticPartitionSelection
 	return NULL;
 }
 
+FaultInjectorType_e
+gpdb::OptTasksFaultInjector
+	(
+	FaultInjectorIdentifier_e identifier
+	)
+{
+	// use gpfaultinjector to activate
+	// e.g. gpfaultinjector -f opt_task_allocate_string_buffer -y <fault_type> --seg_dbid 1
+	// use 'reset' as <fault_type> to clear injected fault
+	GP_WRAP_START;
+	{
+		return FaultInjector_InjectFaultIfSet(identifier, DDLNotSpecified, "", "");
+	}
+	GP_WRAP_END;
+	return FaultInjectorTypeNotSpecified;
+}
+
+
 // EOF

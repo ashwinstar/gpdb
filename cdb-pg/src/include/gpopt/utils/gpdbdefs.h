@@ -64,6 +64,7 @@ extern "C" {
 #include "commands/trigger.h"
 #include "parser/parse_coerce.h"
 #include "utils/selfuncs.h"
+#include "utils/faultinjector.h"
 
 extern
 Query *preprocess_query_optimizer(Query *pquery, ParamListInfo boundParams);
@@ -97,6 +98,12 @@ TupleTableSlot *ExecutorRun(QueryDesc *pqueryDesc, ScanDirection direction, long
 
 extern
 void ExecutorEnd(QueryDesc *pqueryDesc);
+
+extern FaultInjectorType_e FaultInjector_InjectFaultIfSet(
+							   FaultInjectorIdentifier_e identifier,
+							   DDLStatement_e			 ddlStatement,
+							   char*					 databaseName,
+							   char*					 tableName);
 
 } // end extern C
 

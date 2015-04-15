@@ -312,6 +312,48 @@ COptTasks::SOptimizeMinidumpContext::PoptmdpConvert
 	return reinterpret_cast<SOptimizeMinidumpContext*>(pv);
 }
 
+//---------------------------------------------------------------------------
+//	@function:
+//		SzAllocate
+//
+//	@doc:
+//		Allocate string buffer with protection against OOM
+//
+//---------------------------------------------------------------------------
+CHAR *
+COptTasks::SzAllocate
+	(
+	IMemoryPool *pmp,
+	ULONG ulSize
+	)
+{
+	CHAR *sz = NULL;
+	GPOS_TRY
+	{
+		// allocation of string buffer may happen outside gpos_exec() function,
+		// we must guard against system OOM here
+#ifdef FAULT_INJECTOR
+		gpdb::OptTasksFaultInjector(OptTaskAllocateStringBuffer);
+#endif // FAULT_INJECTOR
+
+		if (NULL == pmp)
+		{
+			sz = (CHAR *) gpdb::GPDBAlloc(ulSize);
+		}
+		else
+		{
+			sz = New(pmp) CHAR[ulSize];
+		}
+	}
+	GPOS_CATCH_EX(ex)
+	{
+		elog(ERROR, "no available memory to allocate string buffer");
+	}
+	GPOS_CATCH_END;
+
+	return sz;
+}
+
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -332,7 +374,9 @@ COptTasks::SzFromWsz
 	const ULONG ulInputLength = GPOS_WSZ_LENGTH(wsz);
 	const ULONG ulWCHARSize = GPOS_SIZEOF(WCHAR);
 	const ULONG ulMaxLength = (ulInputLength + 1) * ulWCHARSize;
-	CHAR *sz = (CHAR *) gpdb::GPDBAlloc(ulMaxLength);
+
+	CHAR *sz = SzAllocate(NULL, ulMaxLength);
+
 	gpos::clib::LWcsToMbs(sz, const_cast<WCHAR *>(wsz), ulMaxLength);
 	sz[ulMaxLength - 1] = '\0';
 
@@ -493,22 +537,7 @@ COptTasks::Execute
 
 	CAutoMemoryPool amp(CAutoMemoryPool::ElcNone, CMemoryPoolManager::EatMalloc, optimizer_parallel);
 	IMemoryPool *pmp = amp.Pmp();
-
-	CHAR *err_buf = NULL;
-	GPOS_TRY
-	{
-		// allocation of error buffer happens outside gpos_exec() function,
-		// we must guard against system OOM here
-		err_buf = New(pmp) CHAR[GPOPT_ERROR_BUFFER_SIZE];
-	}
-	GPOS_CATCH_EX(ex)
-	{
-		// failure to allocate error buffer means that we do not have memory
-		// to run optimizer, we error out in this case
-		elog(ERROR, "no available memory to allocate optimizer error buffer");
-		return;
-	}
-	GPOS_CATCH_END;
+	CHAR *err_buf = SzAllocate(pmp, GPOPT_ERROR_BUFFER_SIZE);
 
 	gpos_exec_params params;
 	params.func = pfunc;
