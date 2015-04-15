@@ -301,6 +301,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before cleaning up a runaway query */		
 	_("opt_task_allocate_string_buffer"),
 		/* inject fault while allocating string buffer */
+	_("opt_relcache_translator_catalog_access"),
+		/* inject fault while translating relcache entries */
 	_("not recognized"),
 };
 
@@ -1128,6 +1130,7 @@ FaultInjector_NewHashEntry(
 		case DtmBroadcastAbortPrepared:
 		case DtmXLogDistributedCommit:
 		case OptTaskAllocateStringBuffer:
+		case OptRelcacheTranslatorCatalogAccess:
 			
 			if (fileRepRole != FileRepNoRoleConfigured)
 			{

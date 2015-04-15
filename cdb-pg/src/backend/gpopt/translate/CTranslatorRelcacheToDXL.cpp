@@ -319,16 +319,33 @@ CTranslatorRelcacheToDXL::PdrgpmdidRelIndexes
 		// only add supported indexes
 		Relation relIndex = gpdb::RelGetRelation(oidIndex);
 
-		GPOS_ASSERT(NULL != relIndex);
-		GPOS_ASSERT (NULL != relIndex->rd_indextuple);
-
-		if (FIndexSupported(relIndex))
+		if (NULL == relIndex)
 		{
-			CMDIdGPDB *pmdidIndex = New(pmp) CMDIdGPDB(oidIndex);
-			pdrgpmdidIndexes->Append(pmdidIndex);
+			WCHAR wsz[1024];
+			CWStringStatic str(wsz, 1024);
+			COstreamString oss(&str);
+			oss << (ULONG) oidIndex;
+			GPOS_RAISE(gpdxl::ExmaMD, gpdxl::ExmiMDCacheEntryNotFound, str.Wsz());
 		}
 
-		gpdb::CloseRelation(relIndex);
+		GPOS_ASSERT(NULL != relIndex->rd_indextuple);
+
+		GPOS_TRY
+		{
+			if (FIndexSupported(relIndex))
+			{
+				CMDIdGPDB *pmdidIndex = New(pmp) CMDIdGPDB(oidIndex);
+				pdrgpmdidIndexes->Append(pmdidIndex);
+			}
+
+			gpdb::CloseRelation(relIndex);
+		}
+		GPOS_CATCH_EX(ex)
+		{
+			gpdb::CloseRelation(relIndex);
+			GPOS_RETHROW(ex);
+		}
+		GPOS_CATCH_END;
 	}
 
 	return pdrgpmdidIndexes;
@@ -473,66 +490,91 @@ CTranslatorRelcacheToDXL::Pmdrel
 		GPOS_RAISE(gpdxl::ExmaMD, gpdxl::ExmiMDCacheEntryNotFound, pmdid->Wsz());
 	}
 
-	// get rel name
-	CMDName *pmdname = PmdnameRel(pmp, rel);
-
-	// get storage type
-	IMDRelation::Erelstoragetype erelstorage = Erelstorage(rel->rd_rel->relstorage);
-
-	// get relation columns
-	DrgPmdcol *pdrgpmdcol = Pdrgpmdcol(pmp, pmda, rel, erelstorage);
-	const ULONG ulMaxCols = GPDXL_SYSTEM_COLUMNS + (ULONG) rel->rd_att->natts + 1;
-	ULONG *pulAttnoMapping = PulAttnoMapping(pmp, pdrgpmdcol, ulMaxCols);
-
-	// get distribution policy
-	GpPolicy *pgppolicy = gpdb::Pdistrpolicy(rel);
-	IMDRelation::Ereldistrpolicy ereldistribution = Ereldistribution(pgppolicy);
-	BOOL fChildDistributionMismatch = gpdb::FChildPartDistributionMismatch(rel);
-	
-	// get distribution columns
+	CMDName *pmdname = NULL;
+	IMDRelation::Erelstoragetype erelstorage = IMDRelation::ErelstorageSentinel;
+	DrgPmdcol *pdrgpmdcol = NULL;
+	IMDRelation::Ereldistrpolicy ereldistribution = IMDRelation::EreldistrSentinel;
 	DrgPul *pdrpulDistrCols = NULL;
-	if (IMDRelation::EreldistrHash == ereldistribution)
-	{
-		pdrpulDistrCols = PdrpulDistrCols(pmp, pgppolicy, pdrgpmdcol, ulMaxCols);
-	}
-
-	// collect relation indexes
-	DrgPmdid *pdrgpmdidIndexes = PdrgpmdidRelIndexes(pmp, rel);
-
-	// collect relation triggers
-	DrgPmdid *pdrgpmdidTriggers = PdrgpmdidTriggers(pmp, rel);
-
-	// get partition keys
+	DrgPmdid *pdrgpmdidIndexes = NULL;
+	DrgPmdid *pdrgpmdidTriggers = NULL;
 	DrgPul *pdrgpulPartKeys = NULL;
-	if (IMDRelation::ErelstorageExternal != erelstorage)
-	{
-		 pdrgpulPartKeys = PdrgpulPartKeys(pmp, rel, oid);
-	}
-	 BOOL fPartitioned = (NULL != pdrgpulPartKeys && 0 < pdrgpulPartKeys->UlLength()); 
-	
-	if (fPartitioned && IMDRelation::ErelstorageAppendOnlyParquet != erelstorage && IMDRelation::ErelstorageExternal != erelstorage)
-	{
-		// mark relation as Parquet if one of its children is parquet
-		if (gpdb::FHasParquetChildren(oid))
-		{
-			erelstorage = IMDRelation::ErelstorageAppendOnlyParquet;
-		}
-	}
-	// get key sets
-	BOOL fAddDefaultKeys = FHasSystemColumns(rel->rd_rel->relkind);
-	DrgPdrgPul *pdrgpdrgpulKeys = PdrgpdrgpulKeys(pmp, oid, fAddDefaultKeys, fPartitioned, pulAttnoMapping);
-
-	// collect all check constraints
-	DrgPmdid *pdrgpmdidCheckConstraints = PdrgpmdidCheckConstraints(pmp, oid);
-
+	BOOL fChildDistributionMismatch = false;
+	DrgPdrgPul *pdrgpdrgpulKeys = NULL;
+	DrgPmdid *pdrgpmdidCheckConstraints = NULL;
+	BOOL fTemporary = false;
+	BOOL fHasOids = false;
 	IMDRelation *pmdrel = NULL;
+
+
+	GPOS_TRY
+	{
+		// get rel name
+		pmdname = PmdnameRel(pmp, rel);
+
+		// get storage type
+		erelstorage = Erelstorage(rel->rd_rel->relstorage);
+
+		// get relation columns
+		pdrgpmdcol = Pdrgpmdcol(pmp, pmda, rel, erelstorage);
+		const ULONG ulMaxCols = GPDXL_SYSTEM_COLUMNS + (ULONG) rel->rd_att->natts + 1;
+		ULONG *pulAttnoMapping = PulAttnoMapping(pmp, pdrgpmdcol, ulMaxCols);
+
+		// get distribution policy
+		GpPolicy *pgppolicy = gpdb::Pdistrpolicy(rel);
+		ereldistribution = Ereldistribution(pgppolicy);
+		fChildDistributionMismatch = gpdb::FChildPartDistributionMismatch(rel);
+
+		// get distribution columns
+		if (IMDRelation::EreldistrHash == ereldistribution)
+		{
+			pdrpulDistrCols = PdrpulDistrCols(pmp, pgppolicy, pdrgpmdcol, ulMaxCols);
+		}
+
+		// collect relation indexes
+		pdrgpmdidIndexes = PdrgpmdidRelIndexes(pmp, rel);
+
+		// collect relation triggers
+		pdrgpmdidTriggers = PdrgpmdidTriggers(pmp, rel);
+
+		// get partition keys
+		if (IMDRelation::ErelstorageExternal != erelstorage)
+		{
+			 pdrgpulPartKeys = PdrgpulPartKeys(pmp, rel, oid);
+		}
+		BOOL fPartitioned = (NULL != pdrgpulPartKeys && 0 < pdrgpulPartKeys->UlLength());
+
+		if (fPartitioned && IMDRelation::ErelstorageAppendOnlyParquet != erelstorage && IMDRelation::ErelstorageExternal != erelstorage)
+		{
+			// mark relation as Parquet if one of its children is parquet
+			if (gpdb::FHasParquetChildren(oid))
+			{
+				erelstorage = IMDRelation::ErelstorageAppendOnlyParquet;
+			}
+		}
+		// get key sets
+		BOOL fAddDefaultKeys = FHasSystemColumns(rel->rd_rel->relkind);
+		pdrgpdrgpulKeys = PdrgpdrgpulKeys(pmp, oid, fAddDefaultKeys, fPartitioned, pulAttnoMapping);
+
+		// collect all check constraints
+		pdrgpmdidCheckConstraints = PdrgpmdidCheckConstraints(pmp, oid);
+
+		fTemporary = rel->rd_istemp;
+		fHasOids = rel->rd_rel->relhasoids;
+	
+		delete [] pulAttnoMapping;
+		gpdb::CloseRelation(rel);
+	}
+	GPOS_CATCH_EX(ex)
+	{
+		gpdb::CloseRelation(rel);
+		GPOS_RETHROW(ex);
+	}
+	GPOS_CATCH_END;
+
+	GPOS_ASSERT(IMDRelation::ErelstorageSentinel != erelstorage);
+	GPOS_ASSERT(IMDRelation::EreldistrSentinel != ereldistribution);
+
 	pmdid->AddRef();
-
-	BOOL fTemporary = rel->rd_istemp;
-	BOOL fHasOids = rel->rd_rel->relhasoids;
-
-	gpdb::CloseRelation(rel);
-	delete [] pulAttnoMapping;
 
 	if (IMDRelation::ErelstorageExternal == erelstorage)
 	{
@@ -905,60 +947,78 @@ CTranslatorRelcacheToDXL::Pmdindex
 		 GPOS_RAISE(gpdxl::ExmaMD, gpdxl::ExmiMDCacheEntryNotFound, pmdidIndex->Wsz());
 	}
 
-	if (!FIndexSupported(relIndex))
-	{
-		gpdb::CloseRelation(relIndex);
-		GPOS_RAISE(gpdxl::ExmaMD, gpdxl::ExmiMDObjUnsupported, GPOS_WSZ_LIT("Index type"));
-	}
-	
-	Form_pg_index pgIndex = relIndex->rd_index;
-	GPOS_ASSERT (NULL != pgIndex);
-	
-	OID oidRel = pgIndex->indrelid;
-	
-	if (gpdb::FLeafPartition(oidRel))
-	{
-		oidRel = gpdb::OidRootPartition(oidRel);
-	}
-	
-	CMDIdGPDB *pmdidRel = New(pmp) CMDIdGPDB(oidRel);
-	
-	const IMDRelation *pmdrel = pmda->Pmdrel(pmdidRel);
-
-	if (pmdrel->FPartitioned())
-	{
-		LogicalIndexes *plgidx = gpdb::Plgidx(oidRel);
-		GPOS_ASSERT(NULL != plgidx);
-		
-		IMDIndex *pmdindex = PmdindexPartTable(pmp, pmda, pmdidIndex, pmdrel, plgidx);
-		
-		// cleanup
-		pmdidRel->Release();
-
-		gpdb::CloseRelation(relIndex);
-		gpdb::GPDBFree(plgidx);
-		
-		return pmdindex;
-	}
-
-
-	IMDIndex::EmdindexType emdindt = IMDIndex::EmdindBtree;
-	IMDRelation::Erelstoragetype erelstorage = pmdrel->Erelstorage();
+	const IMDRelation *pmdrel = NULL;
+	Form_pg_index pgIndex = NULL;
+	CMDName *pmdname = NULL;
+	IMDIndex::EmdindexType emdindt = IMDIndex::EmdindSentinel;
 	IMDId *pmdidItemType = NULL;
-	if (BITMAP_AM_OID == relIndex->rd_rel->relam || IMDRelation::ErelstorageAppendOnlyRows == erelstorage || IMDRelation::ErelstorageAppendOnlyCols == erelstorage)
-	{
-		emdindt = IMDIndex::EmdindBitmap;
-		pmdidItemType = New(pmp) CMDIdGPDB(GPDB_ANY);
-	}
-	
-	// get the index name
-	CHAR *szIndexName = NameStr(relIndex->rd_rel->relname);
-	CWStringDynamic *pstrName = CDXLUtils::PstrFromSz(pmp, szIndexName);
-	CMDName *pmdname = New(pmp) CMDName(pmp, pstrName);
-	delete pstrName;
 
+	GPOS_TRY
+	{
+		if (!FIndexSupported(relIndex))
+		{
+			GPOS_RAISE(gpdxl::ExmaMD, gpdxl::ExmiMDObjUnsupported, GPOS_WSZ_LIT("Index type"));
+		}
+
+		pgIndex = relIndex->rd_index;
+		GPOS_ASSERT (NULL != pgIndex);
+
+		OID oidRel = pgIndex->indrelid;
+
+		if (gpdb::FLeafPartition(oidRel))
+		{
+			oidRel = gpdb::OidRootPartition(oidRel);
+		}
+#ifdef FAULT_INJECTOR
+		gpdb::OptTasksFaultInjector(OptRelcacheTranslatorCatalogAccess);
+#endif // FAULT_INJECTOR
+
+		CMDIdGPDB *pmdidRel = New(pmp) CMDIdGPDB(oidRel);
+
+		pmdrel = pmda->Pmdrel(pmdidRel);
+	
+		if (pmdrel->FPartitioned())
+		{
+			LogicalIndexes *plgidx = gpdb::Plgidx(oidRel);
+			GPOS_ASSERT(NULL != plgidx);
+
+			IMDIndex *pmdindex = PmdindexPartTable(pmp, pmda, pmdidIndex, pmdrel, plgidx);
+
+			// cleanup
+			pmdidRel->Release();
+	
+			gpdb::CloseRelation(relIndex);
+			gpdb::GPDBFree(plgidx);
+
+			return pmdindex;
+		}
+	
+		emdindt = IMDIndex::EmdindBtree;
+		IMDRelation::Erelstoragetype erelstorage = pmdrel->Erelstorage();
+		if (BITMAP_AM_OID == relIndex->rd_rel->relam || IMDRelation::ErelstorageAppendOnlyRows == erelstorage || IMDRelation::ErelstorageAppendOnlyCols == erelstorage)
+		{
+			emdindt = IMDIndex::EmdindBitmap;
+			pmdidItemType = New(pmp) CMDIdGPDB(GPDB_ANY);
+		}
+		
+		// get the index name
+		CHAR *szIndexName = NameStr(relIndex->rd_rel->relname);
+		CWStringDynamic *pstrName = CDXLUtils::PstrFromSz(pmp, szIndexName);
+		pmdname = New(pmp) CMDName(pmp, pstrName);
+		delete pstrName;
+		pmdidRel->Release();
+		gpdb::CloseRelation(relIndex);
+	}
+	GPOS_CATCH_EX(ex)
+	{
+		gpdb::CloseRelation(relIndex);
+		GPOS_RETHROW(ex);
+	}
+	GPOS_CATCH_END;
+	
 	Relation relTable = gpdb::RelGetRelation(CMDIdGPDB::PmdidConvert(pmdrel->Pmdid())->OidObjectId());
 	ULONG ulRgSize = GPDXL_SYSTEM_COLUMNS + (ULONG) relTable->rd_att->natts + 1;
+	gpdb::CloseRelation(relTable); // close relation as early as possible
 
 	ULONG *pul = PulAttnoPositionMap(pmp, pmdrel, ulRgSize);
 
@@ -995,9 +1055,7 @@ CTranslatorRelcacheToDXL::Pmdindex
 										);
 
 	delete [] pul;
-	pmdidRel->Release();
-	gpdb::CloseRelation(relIndex);
-	gpdb::CloseRelation(relTable);
+
 	return pmdindex;
 }
 
@@ -1090,7 +1148,6 @@ CTranslatorRelcacheToDXL::PmdindexPartTable
 
 	if (NULL == relIndex)
 	{
-		gpdb::CloseRelation(relIndex);
 		GPOS_RAISE(gpdxl::ExmaMD, gpdxl::ExmiMDCacheEntryNotFound, pmdidIndex->Wsz());
 	}
 
@@ -1101,15 +1158,17 @@ CTranslatorRelcacheToDXL::PmdindexPartTable
 	}
 	
 	// get the index name
-	GPOS_ASSERT (NULL != relIndex->rd_index);
+	GPOS_ASSERT(NULL != relIndex->rd_index);
 	Form_pg_index pgIndex = relIndex->rd_index;
 	
 	CHAR *szIndexName = NameStr(relIndex->rd_rel->relname);
 	CMDName *pmdname = CDXLUtils::PmdnameFromSz(pmp, szIndexName);
+	gpdb::CloseRelation(relIndex);
 
 	OID oidRel = CMDIdGPDB::PmdidConvert(pmdrel->Pmdid())->OidObjectId();
 	Relation relTable = gpdb::RelGetRelation(oidRel);
 	ULONG ulRgSize = GPDXL_SYSTEM_COLUMNS + (ULONG) relTable->rd_att->natts + 1;
+	gpdb::CloseRelation(relTable);
 
 	ULONG *pulAttrMap = PulAttnoPositionMap(pmp, pmdrel, ulRgSize);
 
@@ -1202,9 +1261,6 @@ CTranslatorRelcacheToDXL::PmdindexPartTable
 										pmdpartcnstr
 										);
 	
-	gpdb::CloseRelation(relIndex);
-	gpdb::CloseRelation(relTable);
-
 	delete [] pulAttrMap;
 	
 	return pmdindex;
@@ -2107,26 +2163,39 @@ CTranslatorRelcacheToDXL::PimdobjRelStats
 	{
 		GPOS_RAISE(gpdxl::ExmaMD, gpdxl::ExmiMDCacheEntryNotFound, pmdid->Wsz());
 	}
-	// get rel name
-	CHAR *szRelName = NameStr(rel->rd_rel->relname);
-	CWStringDynamic *pstrRelName = CDXLUtils::PstrFromSz(pmp, szRelName);
-	CMDName *pmdname = New(pmp) CMDName(pmp, pstrRelName);
-	// CMDName ctor created a copy of the string
-	delete pstrRelName;
 
 	double rows = 0.0;
-	BlockNumber pages = 0;
-	GpPolicy *pgppolicy = gpdb::Pdistrpolicy(rel);
-	if (!pgppolicy ||pgppolicy->ptype != POLICYTYPE_PARTITIONED)
-	{
-		gpdb::EstimateRelationSize(rel, NULL, &pages, &rows);
-	}
-	else
-	{
-		rows = rel->rd_rel->reltuples;
-	}
+	CMDName *pmdname = NULL;
 
-	pmdidRelStats->AddRef();
+	GPOS_TRY
+	{
+		// get rel name
+		CHAR *szRelName = NameStr(rel->rd_rel->relname);
+		CWStringDynamic *pstrRelName = CDXLUtils::PstrFromSz(pmp, szRelName);
+		pmdname = New(pmp) CMDName(pmp, pstrRelName);
+		// CMDName ctor created a copy of the string
+		delete pstrRelName;
+
+		BlockNumber pages = 0;
+		GpPolicy *pgppolicy = gpdb::Pdistrpolicy(rel);
+		if (!pgppolicy ||pgppolicy->ptype != POLICYTYPE_PARTITIONED)
+		{
+			gpdb::EstimateRelationSize(rel, NULL, &pages, &rows);
+		}
+		else
+		{
+			rows = rel->rd_rel->reltuples;
+		}
+
+		pmdidRelStats->AddRef();
+		gpdb::CloseRelation(rel);
+	}
+	GPOS_CATCH_EX(ex)
+	{
+		gpdb::CloseRelation(rel);
+		GPOS_RETHROW(ex);
+	}
+	GPOS_CATCH_END;
 	
 	BOOL fEmptyStats = false;
 	if (rows == 0.0)
@@ -2142,7 +2211,7 @@ CTranslatorRelcacheToDXL::PimdobjRelStats
 												CDouble(rows),
 												fEmptyStats
 												);
-	gpdb::CloseRelation(rel);
+
 
 	return pdxlrelstats;
 }
