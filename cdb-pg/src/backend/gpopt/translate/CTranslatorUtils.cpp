@@ -79,6 +79,7 @@ using namespace gpos;
 using namespace gpopt;
 
 extern bool optimizer_enable_master_only_queries;
+extern bool optimizer_multilevel_partitioning;
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -316,7 +317,7 @@ CTranslatorUtils::Pdxltabdesc
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Inherited tables"));
 	}
 	
-	if (1 < pmdrel->UlPartColumns())
+	if (!optimizer_multilevel_partitioning && 1 < pmdrel->UlPartColumns())
 	{
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Multi-level partitioned tables"));
 	}

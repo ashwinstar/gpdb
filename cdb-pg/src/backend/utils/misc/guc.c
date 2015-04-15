@@ -777,6 +777,7 @@ bool		optimizer_enable_partial_index;
 bool		optimizer_dml_triggers;
 bool		optimizer_dml_constraints;
 bool 		optimizer_enable_master_only_queries;
+bool 		optimizer_multilevel_partitioning;
 
 /* Security */
 bool		gp_reject_internal_tcp_conn = true;
@@ -4055,6 +4056,16 @@ static struct config_bool ConfigureNamesBool[] =
                         GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
                 },
                 &optimizer_enable_master_only_queries,
+                false, NULL, NULL
+        },
+
+        {
+                {"optimizer_multilevel_partitioning", PGC_USERSET, DEVELOPER_OPTIONS,
+                        gettext_noop("Enable optimization of queries on multilevel partitioned tables."),
+                        NULL,
+                        GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                },
+                &optimizer_multilevel_partitioning,
                 false, NULL, NULL
         },
 
