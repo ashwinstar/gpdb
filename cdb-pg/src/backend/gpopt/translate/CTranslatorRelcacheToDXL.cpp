@@ -987,8 +987,8 @@ CTranslatorRelcacheToDXL::Pmdindex
 			// cleanup
 			pmdidRel->Release();
 	
-			gpdb::CloseRelation(relIndex);
 			gpdb::GPDBFree(plgidx);
+			gpdb::CloseRelation(relIndex);
 
 			return pmdindex;
 		}
@@ -2839,7 +2839,8 @@ CTranslatorRelcacheToDXL::Erelstorage
 //		CTranslatorRelcacheToDXL::PdrgpulPartKeys
 //
 //	@doc:
-//		Get partition keys for relation or NULL if relation not partitioned
+//		Get partition keys for relation or NULL if relation not partitioned.
+//		Caller responsible for closing the relation if an exception is raised
 //
 //---------------------------------------------------------------------------
 DrgPul *
@@ -2868,7 +2869,6 @@ CTranslatorRelcacheToDXL::PdrgpulPartKeys
 	
 	if (gpdb::FHashPartitioned(pn->part->parkind))
 	{
-		gpdb::CloseRelation(rel);
 		GPOS_RAISE(gpdxl::ExmaMD, gpdxl::ExmiMDObjUnsupported, GPOS_WSZ_LIT("Hash partitioning"));
 	}
 	
@@ -2881,7 +2881,6 @@ CTranslatorRelcacheToDXL::PdrgpulPartKeys
 
 		if (1 < gpdb::UlListLength(plPartKey))
 		{
-			gpdb::CloseRelation(rel);
 			GPOS_RAISE(gpdxl::ExmaMD, gpdxl::ExmiMDObjUnsupported, GPOS_WSZ_LIT("Composite part key"));
 		}
 
