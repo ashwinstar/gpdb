@@ -81,8 +81,8 @@ snmp_module_params_t snmp_module_params;
 
 void interuptable_sleep(unsigned int seconds);
 
-// lock when accessing the debug log file 
-apr_thread_mutex_t *logfile_mutex = NULL; 
+// lock when accessing the debug log file
+apr_thread_mutex_t *logfile_mutex = NULL;
 
 
 /* Default option values */
@@ -127,10 +127,10 @@ void update_mmonlog_filename()
 		snprintf(
 			mmon_log_filename,
 	 		MMON_LOG_FILENAME_SIZE,
- 			"%s/gpmmon.%d.%02d.%02d_%02d%02d%02d.log", 
+			"%s/gpmmon.%d.%02d.%02d_%02d%02d%02d.log",
 			opt.log_dir,
-			tm->tm_year + 1900, 
-			tm->tm_mon + 1, 
+			tm->tm_year + 1900,
+			tm->tm_mon + 1,
 			tm->tm_mday,
 			tm->tm_hour,
 			tm->tm_min,
@@ -442,7 +442,7 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port, b
 		sockaddrlive = (struct sockaddr *)&sa;
 		length = sizeof(sa);
 	}
-	
+
 	if (-1 == (sock = socket(family, SOCK_STREAM, 0)))
 	{
 		gpmon_warningx(FLINE, 0, "error %d from socket system call", sock);
@@ -576,13 +576,13 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 					// smon will log to gpperfmon directory on master, specified location on smon, or one of the gpperfmon subdir of one of the data directories as default
 					if (h->is_master)
 					{
-						ptr_smon_log_location = opt.log_dir;	
-						ptr_smon_log_location_suffix = empty_string;	
+						ptr_smon_log_location = opt.log_dir;
+						ptr_smon_log_location_suffix = empty_string;
 					}
 					else if (opt.smon_log_dir)
 					{
 						ptr_smon_log_location = opt.smon_log_dir;
-						ptr_smon_log_location_suffix = empty_string;	
+						ptr_smon_log_location_suffix = empty_string;
 					}
 					else
 					{
@@ -590,21 +590,22 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 						ptr_smon_log_location_suffix = gpperfmon_string;
 					}
 
-					const char *ignore_qexec_packet = "";
+					const char *ignore_qexec_packet_opt = "";
 					if (opt.ignore_qexec_packet)
 					{
-						ignore_qexec_packet = "-i";
+						ignore_qexec_packet_opt = "-i";
 					}
+					ignore_qexec_packet = opt.ignore_qexec_packet;
 
 					if (h->smon_bin_location) { //if this if filled, then use it as the directory for smon istead of the default
 						snprintf(line, line_size, "ssh -v -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
 								" %s 'echo -e \"%" APR_INT64_T_FMT "\\n\\n\" | %s -m %" FMT64 " %s -t %" FMT64 " -l %s%s -v %d %s%d' 2>&1",
-								active_hostname, ax.signature, h->smon_bin_location, opt.max_log_size, ignore_qexec_packet, smon_terminate_timeout, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
+								active_hostname, ax.signature, h->smon_bin_location, opt.max_log_size, ignore_qexec_packet_opt, smon_terminate_timeout, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
 								((opt.iterator_aggregate)?"-a ":""), ax.port);
 					} else {
 						snprintf(line, line_size, "ssh -v -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
 								" %s 'echo -e \"%" APR_INT64_T_FMT "\\n\\n\" | %s/bin/gpsmon -m %" FMT64 " %s -t %" FMT64 " -l %s%s -v %d %s%d' 2>&1",
-								active_hostname, ax.signature, ax.gphome, opt.max_log_size, ignore_qexec_packet, smon_terminate_timeout, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
+								active_hostname, ax.signature, ax.gphome, opt.max_log_size, ignore_qexec_packet_opt, smon_terminate_timeout, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v,
 								((opt.iterator_aggregate)?"-a ":""), ax.port);
 					}
 
@@ -738,7 +739,7 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 		return NULL;
 	}
 
-	snmp_report(ax.hosttab, ax.hosttabsz); 
+	snmp_report(ax.hosttab, ax.hosttabsz);
 
 	if (snmp_module_params.healthmon_running_separately)
 	{
@@ -748,7 +749,7 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 	{
 		sleep_interval = opt.snmp_interval;
 	}
-	
+
 	for (loop = 1; !ax.exit; loop++)
 	{
 		apr_sleep(apr_time_from_sec(1));
@@ -762,7 +763,7 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 				gpmon_warningx(FLINE, 0, "failure collecting snmp data from cluster code %d", retVal);
 				fflush(stdout);
 
-				// wait a while before trying to do the report again 
+				// wait a while before trying to do the report again
 				ticks_since_last_snmp_report = -60;
 			}
 			else
@@ -798,7 +799,7 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 		if (0 == (loop % opt.harvest_interval))
 		{
 			int e;
-			/* 	
+			/*
 				PROCESS:
 				1) WITH TAIL MUTEX: rename tail files to stage files
 				2) WITH TAIL MUTEX: create new tail files
@@ -812,7 +813,7 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 				   thread uses the tail files
 
 				2) tail files are renamed/moved because this operation is safe to be done while the clients are
-				   reading the files.  
+				   reading the files.
 
 				3) The stage files are written over every harvest cycle, so the idea is no client
 				   will still be reading the tail files for an entire harvest cycle.  (this is not perfect logic but ok)
@@ -858,7 +859,7 @@ static void* harvest_main(apr_thread_t* thread_, void* arg_)
 					consecutive_failures > 100 ||
 					(ax._tail_buffer_bytes > opt.tail_buffer_max))
 			{
-				/* 
+				/*
 					delete the data in the _tail file because it has been inserted successfully into history
 					we also delete the data without loading if it loading failed more than 100 times as a defensive measure for corrupted data in the file
 					better to lose some perf data and self fix than calling support to have them manually find the corrupted perf data and clear it themselves
@@ -937,8 +938,8 @@ int is_gpdb_appliance()
 		{
 			strncpy(gpdb_appliance_version, buffer, MAXPATHLEN);
 			buffer[MAXPATHLEN] = 0;
-		}	
- 
+		}
+
 		fclose(fd);
 		return 1;
 	}
@@ -1032,7 +1033,7 @@ static void gpmmon_main(void)
 		gpmon_fatalx(FLINE, e, "apr_threadattr_detach_set failed");
 	}
 
-	// generate signature 
+	// generate signature
 	// this used to use apr_generate_random_bytes but that hangs on entropy in the system being available
 	// this is not used for security or protecting against attacks, so a simpler random number will do
 	srand(time(NULL));
@@ -1373,7 +1374,7 @@ static int read_conf_file(char *conffile)
 			else if (apr_strnatcasecmp(pName, "warning_disk_space_percentage") == 0)
 			{
 				opt.warning_disk_space_percentage = atoi(pVal);
-			} 
+			}
 			else if (apr_strnatcasecmp(pName, "error_disk_space_percentage") == 0)
 			{
 				opt.error_disk_space_percentage = atoi(pVal);
@@ -1595,12 +1596,12 @@ static void parse_command_line(int argc, const char* const argv[])
 
 void interuptable_sleep(unsigned int seconds)
 {
-    int i;
-    for (i = 0; i < seconds && !ax.exit; i++)
+	int i;
+	for (i = 0; i < seconds && !ax.exit; i++)
 	    apr_sleep(apr_time_from_sec(1));
 
-    if (ax.exit)
-        exit(0);
+	if (ax.exit)
+		exit(0);
 }
 
 int main(int argc, const char* const argv[])
@@ -1799,23 +1800,23 @@ char* get_ip_for_host(char* host, bool* returnParamIsIpv6)
 
 	ipstr = malloc(128);
 	/* just grab the first address... it should be fine */
-    if (addrs->ai_family == AF_INET)
-    {
-        struct sockaddr_in* sock = (struct sockaddr_in*)addrs->ai_addr;
-	    inet_ntop(addrs->ai_family, &sock->sin_addr, ipstr, 128);
+	if (addrs->ai_family == AF_INET)
+	{
+		struct sockaddr_in* sock = (struct sockaddr_in*)addrs->ai_addr;
+		inet_ntop(addrs->ai_family, &sock->sin_addr, ipstr, 128);
 		*returnParamIsIpv6 = false;
-    }
-    else if (addrs->ai_family == AF_INET6)
-    {
-        struct sockaddr_in6* sock = (struct sockaddr_in6*)addrs->ai_addr;
-	    inet_ntop(addrs->ai_family, &sock->sin6_addr, ipstr, 128);
+	}
+	else if (addrs->ai_family == AF_INET6)
+	{
+		struct sockaddr_in6* sock = (struct sockaddr_in6*)addrs->ai_addr;
+		inet_ntop(addrs->ai_family, &sock->sin6_addr, ipstr, 128);
 		*returnParamIsIpv6 = true;
-    }
-    else
-    {
+	}
+	else
+	{
 	    interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, 0, "Bad address family for host: %s %d", host, addrs->ai_family);
-    }
+	}
 	freeaddrinfo(addrs);
 
 	return ipstr;
@@ -1840,7 +1841,7 @@ static void gethostlist()
 			populate_smdw_aliases(&ax.hosttab[i]);
 		}
 
-		addressinfo = ax.hosttab[i].addressinfo_head;		
+		addressinfo = ax.hosttab[i].addressinfo_head;
 		while (addressinfo)
 		{
 			addressinfo->ipstr = get_ip_for_host(addressinfo->address, &addressinfo->ipv6);
@@ -1862,7 +1863,7 @@ static void gethostlist()
 		int counter = 0;
 
 		TR0(("HOST: (hostname %s) (is_master %d) (datadir %s) (host_alias_count %d) (hdm %d) (hdw %d) (hbw %d) (hdc %d) (dia %d)\n",
-			ax.hosttab[i].hostname, 
+			ax.hosttab[i].hostname,
 			ax.hosttab[i].is_master,
 			ax.hosttab[i].data_dir,
 			ax.hosttab[i].address_count,
@@ -1872,7 +1873,7 @@ static void gethostlist()
 			ax.hosttab[i].is_hdc,
 			ax.hosttab[i].is_etl));
 
-		addressinfo = ax.hosttab[i].addressinfo_head;		
+		addressinfo = ax.hosttab[i].addressinfo_head;
 		while (addressinfo)
 		{
 			// extra sanity checking
@@ -1887,7 +1888,7 @@ static void gethostlist()
 				ipv6on = YES_TEXT;
 			else
 				ipv6on = NO_TEXT;
-			
+
 			TR1(("\tALIAS: (host %s) (ipstr %s) (ipv6 %s)\n", addressinfo->address, addressinfo->ipstr, ipv6on));
 			addressinfo = addressinfo->next;
 		}
@@ -1937,7 +1938,7 @@ static apr_status_t recv_data(int sock, char* data, size_t data_size)
 		// because we use blocking recv, it indicates gpsmon
 		// shutdown or closed connection when n = 0.
 		if (n == 0)
-			return APR_FROM_OS_ERROR(EINTR);	
+			return APR_FROM_OS_ERROR(EINTR);
 		p += n;
 	}
 

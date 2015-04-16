@@ -54,7 +54,7 @@ static struct
 	apr_uint64_t terminate_timeout;
 	// If gpsmon ignores query exec packets. We add this flag
 	// due to out of memory issue on gpmmon when segment number or
-	// splice number or partition number is big. [JIRA: MPP-25017]. 
+	// splice number or partition number is big. [JIRA: MPP-25017].
 	bool do_ignore_qexec_packet;
 } opt = { 0 };
 
@@ -85,12 +85,12 @@ struct gx_t
 	int is_appliance;
 
 	sigar_t* sigar;
-	
+
 	/*fslist Does not incude remote filesystems and used for reporting metrics, not space avaliable & free.*/
 	const char** fslist;
 	const char** devlist;
 	const char** netlist;
-	
+
 	/*This fs list includes remote filesystems and is used for reporting space avaliable & free. */
 	const char** allfslist;
 
@@ -113,6 +113,7 @@ struct gx_t
 	apr_hash_t* segmenttab; /* stores segment packets */
 	apr_hash_t* pidtab; /* key=pid, value=pidrec_t */
 	apr_hash_t* filereptab; /* stores gpmon_filerepinfo_t packets */
+	apr_hash_t* querysegtab; /* stores gpmon_query_seginfo_t */
 };
 
 typedef struct qexec_agg_hash_key_t {
@@ -164,10 +165,10 @@ struct disk_device_t
 char log_filename[LOG_FILENAME_SIZE];
 void update_log_filename()
 {
-    time_t stamp = time(NULL);
+	time_t stamp = time(NULL);
 	struct tm* tm = gmtime(&stamp);
-	snprintf(log_filename, LOG_FILENAME_SIZE, "gpsmon.%d.%02d.%02d_%02d%02d%02d.log", 
-		tm->tm_year + 1900, 
+	snprintf(log_filename, LOG_FILENAME_SIZE, "gpsmon.%d.%02d.%02d_%02d%02d%02d.log",
+		tm->tm_year + 1900,
 		tm->tm_mon + 1,
 		tm->tm_mday,
 		tm->tm_hour,
@@ -175,19 +176,18 @@ void update_log_filename()
 		tm->tm_sec);
 }
 
-typedef struct gpsmon_filerepinfo_t 
+typedef struct gpsmon_filerepinfo_t
 {
 	// KEY
-	char primary_hostname[NAMEDATALEN];				
+	char primary_hostname[NAMEDATALEN];
 	apr_uint16_t primary_port;
-	char mirror_hostname[NAMEDATALEN];				
+	char mirror_hostname[NAMEDATALEN];
 	apr_uint16_t mirror_port;
 	bool isPrimary;
 
 } gpsmon_filerepinfo_t;
 
 
-	
 
 static void gx_accept(SOCKET sock, short event, void* arg);
 static void gx_recvfrom(SOCKET sock, short event, void* arg);
@@ -221,6 +221,7 @@ static inline void copy_union_packet_gp_smon_to_mmon(gp_smon_to_mmon_packet_t* p
 		case GPMON_PKTTYPE_FSINFO:
 			memcpy(&pkt->u.fsinfo, &pkt_src->u.fsinfo, sizeof(gpmon_fsinfo_t));
 			break;
+		case GPMON_PKTTYPE_QUERYSEG:
 		case GPMON_PKTTYPE_QEXEC:
 		default:
 			gpmon_fatal(FLINE, "Invalid pkttype %d for copy_union_packet_gp_smon_to_mmon\n", pkt_src->pkttype);
@@ -387,28 +388,28 @@ static void send_fsinfo(SOCKET sock)
 	gp_smon_to_mmon_packet_t  pkt;
 	const char**              fsdir;
 	int                       status = 0;
-	
+
 	memset(&fsusage, 0, sizeof(sigar_file_system_usage_t));
-	
+
 	for (fsdir = gx.fslist; *fsdir; fsdir++)
-	{	
+	{
 		status = sigar_file_system_usage_get(gx.sigar, *fsdir, &fsusage);
 		if (status == SIGAR_OK)
 		{
 			TR2(("sigar_file_system_usage_get() succeeded. fsdir: %s total: %lu free: %lu used: %lu \n", *fsdir, fsusage.total, fsusage.free, fsusage.used));
 			memset(&pkt, 0, sizeof(gp_smon_to_mmon_packet_t));
-			
+
 			gp_smon_to_mmon_set_header(&pkt,GPMON_PKTTYPE_FSINFO);
 
 			strncpy(pkt.u.fsinfo.key.fsname, *fsdir, sizeof(pkt.u.fsinfo.key.fsname) - 1);
-			
+
 			pkt.u.fsinfo.bytes_used = FSUSAGE_TOBYTES(fsusage.used);
 			pkt.u.fsinfo.bytes_available = FSUSAGE_TOBYTES(fsusage.free);
 			pkt.u.fsinfo.bytes_total = FSUSAGE_TOBYTES(fsusage.total);
 			strncpy(pkt.u.fsinfo.key.hostname, gx.hostname, sizeof(pkt.u.fsinfo.key.hostname) - 1);
 
 			send_smon_to_mon_pkt(sock, &pkt);
-		} 
+		}
 		else
 		{
 			TR2(("sigar_file_system_usage_get() failed.  fsdir: %s status: %i \n", *fsdir, status));
@@ -450,7 +451,7 @@ static float calc_diff_percentage(sigar_uint64_t newvalue, sigar_uint64_t oldval
 		TR0(("calc_diff_percentage: new value %" APR_UINT64_T_FMT " is less than old value %" APR_UINT64_T_FMT " for metric %s; set to 0.\n",
 				newvalue, oldvalue, itemname));
 		result = 0.0;
-	} 
+	}
 	else if (result > 100)
 	{
 		TR0(("calc_diff_percentage: new value %" APR_UINT64_T_FMT " old value %" APR_UINT64_T_FMT " total diff %d for metric %s; set to 100.\n",
@@ -510,7 +511,7 @@ static void send_machine_metrics(SOCKET sock)
 
 	memset(&cpu, 0, sizeof(cpu));
 	sigar_cpu_get(gx.sigar, &cpu);
-	TR2(("cpu user: %" FMT64 " sys: %" FMT64 " idle: %" FMT64 " wait: %" FMT64 " nice: %" FMT64 " total: %" FMT64 "\n", 
+	TR2(("cpu user: %" FMT64 " sys: %" FMT64 " idle: %" FMT64 " wait: %" FMT64 " nice: %" FMT64 " total: %" FMT64 "\n",
 			cpu.user, cpu.sys, cpu.idle, cpu.wait, cpu.nice, cpu.total));
 
 	memset(&loadavg, 0, sizeof(loadavg));
@@ -1026,6 +1027,16 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	apr_hash_t* pidtab;
 	apr_hash_t* segtab;
 	apr_hash_t* filereptab;
+	if (event & EV_TIMEOUT) // didn't get command from gpmmon, quit
+	{
+		if(gx.tcp_sock)
+		{
+			close(gx.tcp_sock);
+			gx.tcp_sock=0;
+		}
+		return;
+	}
+	apr_hash_t* querysegtab;
 
 	n = recv(sock, &dump, 1, 0);
 	if (n == 0)
@@ -1044,6 +1055,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	pidtab = gx.pidtab;
 	segtab = gx.segmenttab;
 	filereptab = gx.filereptab;
+	querysegtab = gx.querysegtab;
 
 	oldpool = apr_hash_pool_get(qetab);
 
@@ -1070,6 +1082,10 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 		gx.filereptab = apr_hash_make(newpool);
 		CHECKMEM(gx.filereptab);
 
+		/* queryseg hash table */
+		gx.querysegtab = apr_hash_make(newpool);
+		CHECKMEM(gx.querysegtab);
+
 		/* pidtab hash table */
 		gx.pidtab = apr_hash_make(newpool);
 		CHECKMEM(gx.pidtab);
@@ -1078,7 +1094,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	/* push out a metric of the machine */
 	send_machine_metrics(sock);
 	send_fsinfo(sock);
-	
+
 	/* push out records */
 	{
 		void* vptr;
@@ -1094,6 +1110,18 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 			apr_hash_this(hi, 0, 0, &vptr);
 			ppkt = vptr;
 			if (ppkt->header.pkttype != GPMON_PKTTYPE_FILEREP)
+				continue;
+
+			TR2(("sending magic %x, pkttype %d\n", ppkt->header.magic, ppkt->header.pkttype));
+			send_smon_to_mon_pkt(sock, ppkt);
+			count++;
+		}
+
+		for (hi = apr_hash_first(0, querysegtab); hi; hi = apr_hash_next(hi))
+		{
+			apr_hash_this(hi, 0, 0, &vptr);
+			ppkt = vptr;
+			if (ppkt->header.pkttype != GPMON_PKTTYPE_QUERYSEG)
 				continue;
 
 			TR2(("sending magic %x, pkttype %d\n", ppkt->header.magic, ppkt->header.pkttype));
@@ -1204,7 +1232,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 		}
 
 		// reset packet to 0
- 		ppkt = &localPacketObject;
+		ppkt = &localPacketObject;
 		memset(ppkt, 0, sizeof(gp_smon_to_mmon_packet_t));
 		gp_smon_to_mmon_set_header(ppkt,GPMON_PKTTYPE_QUERY_HOST_METRICS);
 
@@ -1225,7 +1253,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 			ppkt->u.qlog.p_metrics.cpu_pct = pidrec->p_metrics.cpu_pct;
 
 			TR2(("SEND tmid %d ssid %d ccnt %d (CPU elapsed %d CPU Percent %.2f)\n",
-				ppkt->u.qlog.key.tmid, ppkt->u.qlog.key.ssid, ppkt->u.qlog.key.ccnt, 
+				ppkt->u.qlog.key.tmid, ppkt->u.qlog.key.ssid, ppkt->u.qlog.key.ccnt,
 				ppkt->u.qlog.cpu_elapsed, ppkt->u.qlog.p_metrics.cpu_pct));
 
 			send_smon_to_mon_pkt(sock, ppkt);
@@ -1255,7 +1283,7 @@ static void gx_accept(SOCKET sock, short event, void* arg)
 	if (event & EV_TIMEOUT)
 	{
 		if (gx.tcp_sock)
-		{ 
+		{
 			/* start watching connect request again */
 			if (event_add(&gx.listen_event, 0))
 			{
@@ -1379,17 +1407,17 @@ static void update_count_value(apr_uint32_t* total, apr_uint32_t newdata)
 
 static void accumulate_filerep_primary_data(gpmon_filerep_primarystats_s* total, gpmon_filerep_primarystats_s* newdata)
 {
- 	// ALWAYS UPDATE AVERAGES BEFORE COUNTS ... AVERAGE UPDATE USES COUNT
+	// ALWAYS UPDATE AVERAGES BEFORE COUNTS ... AVERAGE UPDATE USES COUNT
 
 	// write_syscall_size_avg
-	update_avg_value(total->write_syscall_count, &total->write_syscall_size_avg, 
+	update_avg_value(total->write_syscall_count, &total->write_syscall_size_avg,
 			 newdata->write_syscall_count, newdata->write_syscall_size_avg);
 
 	// write_syscall_size_max
 	update_max_value(&total->write_syscall_size_max, newdata->write_syscall_size_max);
 
 	// write_syscall_time_avg
-	update_avg_value(total->write_syscall_count, &total->write_syscall_time_avg, 
+	update_avg_value(total->write_syscall_count, &total->write_syscall_time_avg,
 			 newdata->write_syscall_count, newdata->write_syscall_time_avg);
 
 	// write_syscall_time_max
@@ -1399,7 +1427,7 @@ static void accumulate_filerep_primary_data(gpmon_filerep_primarystats_s* total,
 	update_count_value(&total->write_syscall_count, newdata->write_syscall_count);
 
 	// fsync_syscall_time_avg
-	update_avg_value(total->fsync_syscall_count, &total->fsync_syscall_time_avg, 
+	update_avg_value(total->fsync_syscall_count, &total->fsync_syscall_time_avg,
 			 newdata->fsync_syscall_count, newdata->fsync_syscall_time_avg);
 
 	// fsync_syscall_time_max
@@ -1409,14 +1437,14 @@ static void accumulate_filerep_primary_data(gpmon_filerep_primarystats_s* total,
 	update_count_value(&total->fsync_syscall_count, newdata->fsync_syscall_count);
 
 	// write_shmem_size_avg
-	update_avg_value(total->write_shmem_count, &total->write_shmem_size_avg, 
+	update_avg_value(total->write_shmem_count, &total->write_shmem_size_avg,
 			 newdata->write_shmem_count, newdata->write_shmem_size_avg);
 
 	// write_shmem_size_max
 	update_max_value(&total->write_shmem_size_max, newdata->write_shmem_size_max);
 
 	// write_shmem_time_avg
-	update_avg_value(total->write_shmem_count, &total->write_shmem_time_avg, 
+	update_avg_value(total->write_shmem_count, &total->write_shmem_time_avg,
 			 newdata->write_shmem_count, newdata->write_shmem_time_avg);
 
 	// write_shmem_time_max
@@ -1426,7 +1454,7 @@ static void accumulate_filerep_primary_data(gpmon_filerep_primarystats_s* total,
 	update_count_value(&total->write_shmem_count, newdata->write_shmem_count);
 
 	// fsync_shmem_time_avg
-	update_avg_value(total->fsync_shmem_count, &total->fsync_shmem_time_avg, 
+	update_avg_value(total->fsync_shmem_count, &total->fsync_shmem_time_avg,
 			 newdata->fsync_shmem_count, newdata->fsync_shmem_time_avg);
 
 	// fsync_shmem_time_max
@@ -1436,7 +1464,7 @@ static void accumulate_filerep_primary_data(gpmon_filerep_primarystats_s* total,
 	update_count_value(&total->fsync_shmem_count, newdata->fsync_shmem_count);
 
 	// roundtrip_fsync_msg_time_avg
-	update_avg_value(total->roundtrip_fsync_msg_count, &total->roundtrip_fsync_msg_time_avg, 
+	update_avg_value(total->roundtrip_fsync_msg_count, &total->roundtrip_fsync_msg_time_avg,
 			 newdata->roundtrip_fsync_msg_count, newdata->roundtrip_fsync_msg_time_avg);
 
 	// roundtrip_fsync_msg_time_max
@@ -1446,7 +1474,7 @@ static void accumulate_filerep_primary_data(gpmon_filerep_primarystats_s* total,
 	update_count_value(&total->roundtrip_fsync_msg_count, newdata->roundtrip_fsync_msg_count);
 
 	// roundtrip_test_msg_time_avg
-	update_avg_value(total->roundtrip_test_msg_count, &total->roundtrip_test_msg_time_avg, 
+	update_avg_value(total->roundtrip_test_msg_count, &total->roundtrip_test_msg_time_avg,
 			 newdata->roundtrip_test_msg_count, newdata->roundtrip_test_msg_time_avg);
 
 	// roundtrip_test_msg_time_max
@@ -1458,17 +1486,17 @@ static void accumulate_filerep_primary_data(gpmon_filerep_primarystats_s* total,
 
 static void accumulate_filerep_mirror_data(gpmon_filerep_mirrorstats_s* total, gpmon_filerep_mirrorstats_s* newdata)
 {
- 	// ALWAYS UPDATE AVERAGES BEFORE COUNTS ... AVERAGE UPDATE USES COUNT
+	// ALWAYS UPDATE AVERAGES BEFORE COUNTS ... AVERAGE UPDATE USES COUNT
 
 	// write_syscall_size_avg
-	update_avg_value(total->write_syscall_count, &total->write_syscall_size_avg, 
+	update_avg_value(total->write_syscall_count, &total->write_syscall_size_avg,
 			 newdata->write_syscall_count, newdata->write_syscall_size_avg);
 
 	// write_syscall_size_max
 	update_max_value(&total->write_syscall_size_max, newdata->write_syscall_size_max);
 
 	// write_syscall_time_avg;
-	update_avg_value(total->write_syscall_count, &total->write_syscall_time_avg, 
+	update_avg_value(total->write_syscall_count, &total->write_syscall_time_avg,
 			 newdata->write_syscall_count, newdata->write_syscall_time_avg);
 
 	// write_syscall_time_max
@@ -1478,10 +1506,10 @@ static void accumulate_filerep_mirror_data(gpmon_filerep_mirrorstats_s* total, g
 	update_count_value(&total->write_syscall_count, newdata->write_syscall_count);
 
 	// fsync_syscall_time_avg;
-	update_avg_value(total->fsync_syscall_count, &total->fsync_syscall_time_avg, 
+	update_avg_value(total->fsync_syscall_count, &total->fsync_syscall_time_avg,
 			 newdata->fsync_syscall_count, newdata->fsync_syscall_time_avg);
 
-	// fsync_syscall_time_max	
+	// fsync_syscall_time_max
 	update_max_value(&total->fsync_syscall_time_max, newdata->fsync_syscall_time_max);
 
 	// fsync_syscall_count
@@ -1691,6 +1719,56 @@ static apr_uint32_t create_qexec_packet(const gpmon_qexec_t* qexec, gp_smon_to_m
 	return 1;
 }
 
+static void extract_segments_exec(gpmon_packet_t* pkt)
+{
+	gpmon_qexec_t				*p;
+	gp_smon_to_mmon_packet_t	*rec;
+	gpmon_query_seginfo_key_t	qseg_key;
+	pidrec_t					*pidrec;
+
+	if (pkt->pkttype != GPMON_PKTTYPE_QEXEC)
+		gpsmon_fatal(FLINE, "assert failed; expected pkttype qexec");
+
+	p = &pkt->u.qexec;
+	qseg_key.qkey.tmid = p->key.tmid;
+	qseg_key.qkey.ssid = p->key.ssid;
+	qseg_key.qkey.ccnt = p->key.ccnt;
+	qseg_key.segid = p->key.hash_key.segid;
+
+	rec = apr_hash_get(gx.querysegtab, &qseg_key, sizeof(qseg_key));
+	pidrec = apr_hash_get(gx.pidtab, &p->key.hash_key.pid, sizeof(p->key.hash_key.pid));
+	ASSERT(pidrec);
+
+	if (rec)
+	{
+		rec->u.queryseg.sum_cpu_elapsed += pidrec->cpu_elapsed;
+		rec->u.queryseg.sum_measures_rows_in += p->measures[GPMON_QEXEC_M_ROWSIN];
+		if (p->key.hash_key.segid == -1 && p->key.hash_key.nid == 1)
+		{
+			rec->u.queryseg.final_rowsout = p->rowsout;
+		}
+	}
+	else
+	{
+		rec = apr_palloc(apr_hash_pool_get(gx.querysegtab),
+					sizeof(gp_smon_to_mmon_packet_t));
+		CHECKMEM(rec);
+		gp_smon_to_mmon_set_header(rec, GPMON_PKTTYPE_QUERYSEG);
+		rec->u.queryseg.key = qseg_key;
+		if (p->key.hash_key.segid == -1 && p->key.hash_key.nid == 1)
+		{
+			rec->u.queryseg.final_rowsout = p->rowsout;
+		}
+		else
+		{
+			rec->u.queryseg.final_rowsout = -1;
+		}
+		rec->u.queryseg.sum_cpu_elapsed = pidrec->cpu_elapsed;
+		rec->u.queryseg.sum_measures_rows_in = p->measures[GPMON_QEXEC_M_ROWSIN];
+		apr_hash_set(gx.querysegtab, &rec->u.queryseg.key, sizeof(rec->u.queryseg.key), rec);
+	}
+}
+
 static void gx_recvqexec(gpmon_packet_t* pkt)
 {
 	gpmon_qexec_t* p;
@@ -1699,13 +1777,20 @@ static void gx_recvqexec(gpmon_packet_t* pkt)
 	if (pkt->pkttype != GPMON_PKTTYPE_QEXEC)
 		gpsmon_fatal(FLINE, "assert failed; expected pkttype qexec");
 
+	p = &pkt->u.qexec;
 	if (opt.do_ignore_qexec_packet)
 	{
+		get_pid_metrics(p->key.hash_key.pid,
+						p->key.tmid,
+						p->key.ssid,
+						p->key.ccnt);
+		// Store some aggregated information somewhere for metrics in
+		// queries_* tables, like cpu_elapsed, rows_out, and etc.
+		extract_segments_exec(pkt);
 		// We don't call gpmon_warning here because the number of
 		// packet is big, and we would make log boating.
 		return;
 	}
-	p = &pkt->u.qexec;
 
 	/* fill in the tstart / tduration */
 	if (p->tstart == 0) {
@@ -1960,8 +2045,8 @@ static void setup_udp()
 	 * we let the system pick the TCP port here so we don't have to
 	 * manage port resources ourselves.
 	 */
-    snprintf(service,32,"%d",gx.port);
-    memset(&hints, 0, sizeof(struct addrinfo));
+	snprintf(service,32,"%d",gx.port);
+	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;    	/* Allow IPv4 or IPv6 */
 	hints.ai_socktype = SOCK_DGRAM; 	/* UDP socket */
 	hints.ai_flags = AI_PASSIVE;    	/* For wildcard IP address */
@@ -2047,7 +2132,7 @@ static void setup_udp()
 	}
 }
 
-// return pointer to trimmed hostname 
+// return pointer to trimmed hostname
 // pass in an allocated buffer and its size
 // return NULL if fails to get name
 char* get_dca_hostname(char* buffer, size_t buffer_size){
@@ -2140,6 +2225,10 @@ static void setup_gx(int port, apr_int64_t signature)
 	gx.filereptab = apr_hash_make(subpool);
 	CHECKMEM(gx.filereptab);
 
+	/* queryseg hash table */
+	gx.querysegtab = apr_hash_make(subpool);
+	CHECKMEM(gx.querysegtab);
+
 	/* pidtab */
 	gx.pidtab = apr_hash_make(subpool);
 	CHECKMEM(gx.pidtab);
@@ -2219,7 +2308,7 @@ static void setup_sigar(void)
 			cnt++;
 		}
 	}
-	
+
 	cnt = 0;
 	for (i = 0; i < sigar_fslist.number; i++)
 	{
@@ -2231,7 +2320,7 @@ static void setup_sigar(void)
 	}
 	gx.allfslist = apr_pcalloc(gx.pool, sizeof(const char*) * (cnt + 1));
 	CHECKMEM(gx.allfslist);
-	
+
 	cnt = 0;
 	for (i = 0; i < sigar_fslist.number; i++)
 	{
@@ -2244,7 +2333,7 @@ static void setup_sigar(void)
 			cnt++;
 		}
 	}
-	
+
 	if (do_destroy)
 		sigar_file_system_list_destroy(gx.sigar, &sigar_fslist);
 }

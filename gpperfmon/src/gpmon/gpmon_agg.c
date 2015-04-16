@@ -43,6 +43,14 @@ typedef struct mmon_qexec_t
 	char*				line;
 } mmon_qexec_t;  //The qexec structure used in mmon
 
+typedef struct mmon_query_seginfo_t
+{
+	gpmon_query_seginfo_key_t	key;
+	apr_int64_t					final_rowsout;
+	apr_uint64_t				sum_cpu_elapsed;
+	apr_uint64_t				sum_measures_rows_in;
+} mmon_query_seginfo_t;  //The agg value at segment level for query
+
 typedef struct qdnode_t {
 	apr_int64_t last_updated_generation;
 	int recorded;
@@ -50,6 +58,7 @@ typedef struct qdnode_t {
 	int num_metrics_packets;
 	gpmon_qlog_t qlog;
 	apr_hash_t* qexec_hash;
+	apr_hash_t*	query_seginfo_hash;
 } qdnode_t;
 
 typedef struct gpmon_filrep_holder_t
@@ -84,6 +93,7 @@ extern int min_query_time;
 extern int min_detailed_query_time;
 extern mmon_options_t opt;
 extern apr_queue_t* message_queue;
+bool ignore_qexec_packet;
 
 extern void incremement_tail_bytes(apr_uint64_t bytes);
 static bool is_query_not_active(apr_int32_t tmid, apr_int32_t ssid,
@@ -237,6 +247,49 @@ static apr_status_t agg_put_fsinfo(agg_t* agg, const gpmon_fsinfo_t* met)
 	return 0;
 }
 
+static apr_status_t agg_put_queryseg(agg_t* agg, const gpmon_query_seginfo_t* met, apr_int64_t generation)
+{
+	qdnode_t* dp;
+	gpmon_qlogkey_t key;
+	mmon_query_seginfo_t* rec = 0;
+
+	/* find qdnode of this qexec */
+	key.tmid = met->key.qkey.tmid;
+	key.ssid = met->key.qkey.ssid;
+	key.ccnt = met->key.qkey.ccnt;
+	dp = apr_hash_get(agg->qtab, &key, sizeof(key));
+
+	if (!dp) { /* not found, internal SPI query.  Ignore. */
+		return 0;
+	}
+
+	rec = apr_hash_get(dp->query_seginfo_hash, &met->key.segid, sizeof(met->key.segid));
+
+	/* if found, replace it */
+	if (rec) {
+		rec->final_rowsout = met->final_rowsout;
+		rec->sum_cpu_elapsed += met->sum_cpu_elapsed;
+		rec->sum_measures_rows_in += met->sum_measures_rows_in;
+	}
+	else {
+		/* not found, make new hash entry */
+
+		if (!(rec = apr_palloc(agg->pool, sizeof(mmon_query_seginfo_t)))){
+
+			return APR_ENOMEM;
+		}
+		memcpy(&rec->key, &met->key, sizeof(gpmon_query_seginfo_key_t));
+		rec->final_rowsout = met->final_rowsout;
+		rec->sum_cpu_elapsed = met->sum_cpu_elapsed;
+		rec->sum_measures_rows_in = met->sum_measures_rows_in;
+
+		apr_hash_set(dp->query_seginfo_hash, &rec->key.segid, sizeof(rec->key.segid), rec);
+	}
+
+	dp->last_updated_generation = generation;
+	return 0;
+}
+
 static apr_status_t agg_put_metrics(agg_t* agg, const gpmon_metrics_t* met)
 {
 	gpmon_metrics_t* rec;
@@ -359,6 +412,12 @@ static apr_status_t agg_put_qlog(agg_t* agg, const gpmon_qlog_t* qlog,
 		node->qexec_hash = apr_hash_make(agg->pool);
 		if (!node->qexec_hash) {
 			TR2(("agg_put_qlog: qexec_hash = apr_hash_make(agg->pool) returned null\n"));
+			return APR_ENOMEM;
+		}
+
+		node->query_seginfo_hash = apr_hash_make(agg->pool);
+		if (!node->query_seginfo_hash) {
+			TR2(("agg_put_qlog: query_seginfo_hash = apr_hash_make(agg->pool) returned null\n"));
 			return APR_ENOMEM;
 		}
 
@@ -581,6 +640,28 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool, apr
 			TR2( ("\t    %d: (%d, %d)\n", ++cnt, new_qexec->key.hash_key.segid, new_qexec->key.hash_key.nid));
 		}
 
+		newdp->query_seginfo_hash = apr_hash_make(newagg->pool);
+		if (!newdp->query_seginfo_hash) {
+			agg_destroy(newagg);
+			return APR_ENOMEM;
+		}
+
+		cnt = 0;
+		// Copy the query_seginfo hash table
+		for (hj = apr_hash_first(newagg->pool, dp->query_seginfo_hash); hj; hj = apr_hash_next(hj)) {
+			mmon_query_seginfo_t* new_query_seginfo;
+			apr_hash_this(hj, 0, 0, &vptr);
+
+			if (!(new_query_seginfo = apr_pcalloc(newagg->pool, sizeof(mmon_query_seginfo_t)))) {
+				agg_destroy(newagg);
+				return APR_ENOMEM;
+			}
+			*new_query_seginfo = *((mmon_query_seginfo_t*)vptr);
+
+			apr_hash_set(newdp->query_seginfo_hash, &(new_query_seginfo->key.segid), sizeof(new_query_seginfo->key.segid), new_query_seginfo);
+			TR2( ("\t    %d: (%d)\n", ++cnt, new_query_seginfo->key.segid));
+		}
+
 		// reset metrics that are accumulated each quantum
 		newdp->qlog.cpu_elapsed = 0;
 		newdp->qlog.p_metrics.cpu_pct = 0.0;
@@ -614,6 +695,8 @@ apr_status_t agg_put(agg_t* agg, const gp_smon_to_mmon_packet_t* pkt)
 		return agg_put_query_metrics(agg, &pkt->u.qlog, agg->generation);
 	if (pkt->header.pkttype == GPMON_PKTTYPE_FSINFO)
 		return agg_put_fsinfo(agg, &pkt->u.fsinfo);
+	if (pkt->header.pkttype == GPMON_PKTTYPE_QUERYSEG)
+		return agg_put_queryseg(agg, &pkt->u.queryseg, agg->generation);
 
 	gpmon_warning(FLINE, "unknown packet type %d", pkt->header.pkttype);
 	return 0;
@@ -1253,16 +1336,36 @@ static apr_int64_t get_rowsout(qdnode_t* qdnode)
 	apr_int64_t rowsout = 0;
 	void* valptr;
 	mmon_qexec_t* qexec;
+	mmon_query_seginfo_t *query_seginfo;
 
-	for (hi = apr_hash_first(NULL, qdnode->qexec_hash); hi; hi = apr_hash_next(hi)) {
-	//for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next) {
-		apr_hash_this(hi, 0, 0, &valptr);
-		qexec = (mmon_qexec_t*) valptr;
-		if (qexec->key.hash_key.segid == -1 && qexec->key.hash_key.nid == 1) {
-			rowsout = qexec->rowsout;
-			break;
+	if (ignore_qexec_packet)
+	{
+		for (hi = apr_hash_first(NULL, qdnode->query_seginfo_hash); hi; hi = apr_hash_next(hi))
+		{
+			apr_hash_this(hi, 0, 0, &valptr);
+			query_seginfo = (mmon_query_seginfo_t*) valptr;
+			if (query_seginfo->final_rowsout != -1)
+			{
+				rowsout = query_seginfo->final_rowsout;
+				break;
+			}
 		}
 	}
+	else
+	{
+		for (hi = apr_hash_first(NULL, qdnode->qexec_hash); hi; hi = apr_hash_next(hi))
+		{
+		//for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next) {
+			apr_hash_this(hi, 0, 0, &valptr);
+			qexec = (mmon_qexec_t*) valptr;
+			if (qexec->key.hash_key.segid == -1 && qexec->key.hash_key.nid == 1)
+			{
+				rowsout = qexec->rowsout;
+				break;
+			}
+		}
+	}
+
 	return rowsout;
 }
 
@@ -1301,27 +1404,51 @@ static double get_cpu_skew(qdnode_t* qdnode)
 
 	/* Calc mean per segment */
 	TR2( ("Calc mean per segment\n"));
-	for (hi = apr_hash_first(NULL, qdnode->qexec_hash); hi; hi = apr_hash_next(hi))
+	if (ignore_qexec_packet)
 	{
-		mmon_qexec_t* qexec;
-		apr_hash_this(hi, 0, 0, &valptr);
-		qexec = (mmon_qexec_t*) valptr;
+		for (hi = apr_hash_first(NULL, qdnode->query_seginfo_hash); hi; hi = apr_hash_next(hi))
+		{
+			mmon_query_seginfo_t	*rec;
+			apr_hash_this(hi, 0, 0, &valptr);
+			rec = (mmon_query_seginfo_t*) valptr;
 
-		/* Skip QD */
-		if (qexec->key.hash_key.segid == -1)
-			continue;
+			if (rec->key.segid == -1)
+				continue;
 
-		seg_cpu_sum = apr_hash_get(segtab, &qexec->key.hash_key.segid,
-				sizeof(qexec->key.hash_key.segid));
+			seg_cpu_sum = apr_hash_get(segtab, &rec->key.segid, sizeof(rec->key.segid));
 
-		if (!seg_cpu_sum) {
-			seg_cpu_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
-			*seg_cpu_sum = 0;
+			if (!seg_cpu_sum) {
+				seg_cpu_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
+				*seg_cpu_sum = 0;
+			}
+			*seg_cpu_sum += rec->sum_cpu_elapsed;
+			apr_hash_set(segtab, &rec->key.segid, sizeof(rec->key.segid), seg_cpu_sum);
 		}
+	}
+	else
+	{
+		for (hi = apr_hash_first(NULL, qdnode->qexec_hash); hi; hi = apr_hash_next(hi))
+		{
+			mmon_qexec_t* qexec;
+			apr_hash_this(hi, 0, 0, &valptr);
+			qexec = (mmon_qexec_t*) valptr;
 
-		*seg_cpu_sum += qexec->_cpu_elapsed;
-		TR2( ("(SKEW) Iterator data for seg %d.  CPU Elapsed: %" FMT64 "\n", qexec->key.hash_key.segid, qexec->_cpu_elapsed));
-		apr_hash_set(segtab, &qexec->key.hash_key.segid, sizeof(qexec->key.hash_key.segid), seg_cpu_sum);
+			/* Skip QD */
+			if (qexec->key.hash_key.segid == -1)
+				continue;
+
+			seg_cpu_sum = apr_hash_get(segtab, &qexec->key.hash_key.segid,
+					sizeof(qexec->key.hash_key.segid));
+
+			if (!seg_cpu_sum) {
+				seg_cpu_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
+				*seg_cpu_sum = 0;
+			}
+
+			*seg_cpu_sum += qexec->_cpu_elapsed;
+			TR2( ("(SKEW) Iterator data for seg %d.  CPU Elapsed: %" FMT64 "\n", qexec->key.hash_key.segid, qexec->_cpu_elapsed));
+			apr_hash_set(segtab, &qexec->key.hash_key.segid, sizeof(qexec->key.hash_key.segid), seg_cpu_sum);
+		}
 	}
 
     /* Calc mean across all segments */
@@ -1400,28 +1527,51 @@ static double get_row_skew(qdnode_t* qdnode)
 
 	/* Calc rows in sum per segment */
 	TR2( ("Calc rows in sum  per segment\n"));
-	for (hi = apr_hash_first(NULL, qdnode->qexec_hash); hi; hi = apr_hash_next(hi))
+	if (ignore_qexec_packet)
 	{
-		mmon_qexec_t* qexec;
-		apr_hash_this(hi, 0, 0, &valptr);
-		qexec = (mmon_qexec_t*) valptr;
+		for (hi = apr_hash_first(NULL, qdnode->query_seginfo_hash); hi; hi = apr_hash_next(hi))
+		{
+			mmon_query_seginfo_t	*rec;
+			apr_hash_this(hi, 0, 0, &valptr);
+			rec = (mmon_query_seginfo_t*) valptr;
 
-		/* Skip QD */
-		if (qexec->key.hash_key.segid == -1)
-			continue;
+			if (rec->key.segid == -1)
+				continue;
 
-		seg_row_out_sum = apr_hash_get(segtab, &qexec->key.hash_key.segid, sizeof(qexec->key.hash_key.segid));
+			seg_row_out_sum = apr_hash_get(segtab, &rec->key.segid, sizeof(rec->key.segid));
 
-		if (!seg_row_out_sum) {
-			seg_row_out_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
-			*seg_row_out_sum = 0;
+			if (!seg_row_out_sum) {
+				seg_row_out_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
+				*seg_row_out_sum = 0;
+			}
+			*seg_row_out_sum += rec->sum_measures_rows_in;
+			apr_hash_set(segtab, &rec->key.segid, sizeof(rec->key.segid), seg_row_out_sum);
 		}
-
-		*seg_row_out_sum += qexec->measures_rows_in;
-		TR2(("(SKEW) Iterator data for seg %d.  Rows out: %" FMT64 "\n", qexec->key.hash_key.segid, qexec->rowsout));
-		apr_hash_set(segtab, &qexec->key.hash_key.segid, sizeof(qexec->key.hash_key.segid), seg_row_out_sum);
 	}
+	else
+	{
+		for (hi = apr_hash_first(NULL, qdnode->qexec_hash); hi; hi = apr_hash_next(hi))
+		{
+			mmon_qexec_t* qexec;
+			apr_hash_this(hi, 0, 0, &valptr);
+			qexec = (mmon_qexec_t*) valptr;
 
+			/* Skip QD */
+			if (qexec->key.hash_key.segid == -1)
+				continue;
+
+			seg_row_out_sum = apr_hash_get(segtab, &qexec->key.hash_key.segid, sizeof(qexec->key.hash_key.segid));
+
+			if (!seg_row_out_sum) {
+				seg_row_out_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
+				*seg_row_out_sum = 0;
+			}
+
+			*seg_row_out_sum += qexec->measures_rows_in;
+			TR2(("(SKEW) Iterator data for seg %d.  Rows out: %" FMT64 "\n", qexec->key.hash_key.segid, qexec->rowsout));
+			apr_hash_set(segtab, &qexec->key.hash_key.segid, sizeof(qexec->key.hash_key.segid), seg_row_out_sum);
+		}
+	}
 
     /* Calc rows in mean across all segments */
     for (hi = apr_hash_first(NULL, segtab); hi; hi = apr_hash_next(hi))

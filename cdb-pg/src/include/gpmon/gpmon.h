@@ -23,6 +23,8 @@ typedef struct gpmon_seginfo_t gpmon_seginfo_t;
 typedef struct gpmon_filerepinfo_t gpmon_filerepinfo_t;
 typedef struct gpmon_fsinfokey_t gpmon_fsinfokey_t;
 typedef struct gpmon_fsinfo_t gpmon_fsinfo_t;
+typedef struct gpmon_query_seginfo_key_t gpmon_query_seginfo_key_t;
+typedef struct gpmon_query_seginfo_t gpmon_query_seginfo_t;
 
 /*
  * this dir sits in $MASTER_DATA_DIRECTORY. always include the
@@ -66,7 +68,7 @@ extern void gpmon_gettmid(apr_int32_t*);
          FSINFO
    ------------------------------------------------------------------ */
 
-struct gpmon_fsinfokey_t 
+struct gpmon_fsinfokey_t
 {
 	char fsname [GPMON_FSINFO_MAX_PATH];
 	char hostname[NAMEDATALEN];
@@ -75,7 +77,7 @@ struct gpmon_fsinfokey_t
 struct gpmon_fsinfo_t
 {
 	gpmon_fsinfokey_t key;
-	
+
 	apr_int64_t bytes_used;
 	apr_int64_t bytes_available;
 	apr_int64_t bytes_total;
@@ -84,37 +86,37 @@ struct gpmon_fsinfo_t
 /* ------------------------------------------------------------------
          METRICS
    ------------------------------------------------------------------ */
-struct gpmon_metrics_t 
+struct gpmon_metrics_t
 {
 	/* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
 
 	char hname[NAMEDATALEN];
-	struct 
+	struct
 	{
 		apr_uint64_t total, used, actual_used, actual_free;
 	} mem;
 
-	struct 
+	struct
 	{
 		apr_uint64_t total, used, page_in, page_out;
 	} swap;
 
-	struct 
+	struct
 	{
 		float user_pct, sys_pct, idle_pct;
 	} cpu;
 
-	struct 
+	struct
 	{
 		float value[3];
 	} load_avg;
 
-	struct 
+	struct
 	{
 		apr_uint64_t ro_rate, wo_rate, rb_rate, wb_rate;
 	} disk;
 
-	struct 
+	struct
 	{
 		apr_uint64_t rp_rate, wp_rate, rb_rate, wb_rate;
 	} net;
@@ -130,6 +132,27 @@ struct gpmon_qlogkey_t {
 	apr_int32_t tmid;  /* transaction time */
     apr_int32_t ssid; /* session id */
     apr_int32_t ccnt; /* command count */
+};
+
+/* ------------------------------------------------------------------
+         QUERY SEGINFO
+   ------------------------------------------------------------------ */
+struct gpmon_query_seginfo_key_t
+{
+	gpmon_qlogkey_t		qkey;
+	apr_int16_t			segid; /* segment id */
+};
+
+struct gpmon_query_seginfo_t
+{
+	gpmon_query_seginfo_key_t	key;
+	/*
+	 * final rowsout for segid = -1 and sliceid = 1, otherwise -1
+	 * if not exist for this segment.
+	 */
+	apr_int64_t					final_rowsout;
+	apr_uint64_t				sum_cpu_elapsed;
+	apr_uint64_t				sum_measures_rows_in;
 };
 
 /* process metrics ... filled in by gpsmon */
@@ -153,7 +176,7 @@ struct gpmon_proc_metrics_t {
 
 #define GPMON_NUM_SEG_CPU 10
 
-struct gpmon_qlog_t 
+struct gpmon_qlog_t
 {
 	gpmon_qlogkey_t key;
 	char        user[NAMEDATALEN];
@@ -162,7 +185,7 @@ struct gpmon_qlog_t
 	apr_int32_t status;		/* GPMON_QLOG_STATUS_XXXXXX */
 	apr_int32_t cost;
 	apr_int64_t cpu_elapsed; /* CPU elapsed for query */
-	gpmon_proc_metrics_t p_metrics; 
+	gpmon_proc_metrics_t p_metrics;
 };
 
 
@@ -200,7 +223,7 @@ enum {
 };
 
 /* there is an array of 10 measurements in the array inside a gpmon packet
-   however the gpperfmon DB will contain 16 measurements. 
+   however the gpperfmon DB will contain 16 measurements.
    long term we need a more extensible solution. short term we limit size of packets
    to what is actually used to conserve resources
 */
@@ -235,15 +258,15 @@ struct gpmon_seginfo_t {
 //we could clean up the primary and mirror stats using this basicStat struct
 typedef struct gpmon_filerep_basicStat_s
 {
-		apr_uint32_t count; 
-		apr_uint32_t time_avg; 
-		apr_uint32_t time_max; 
-		apr_uint32_t size_avg; 
-		apr_uint32_t size_max; 
+		apr_uint32_t count;
+		apr_uint32_t time_avg;
+		apr_uint32_t time_max;
+		apr_uint32_t size_avg;
+		apr_uint32_t size_max;
 
 } gpmon_filerep_basicStat_s;
 */
-/* 
+/*
  * Filerep related statistics
  */
 typedef struct gpmon_filerep_primarystats_s
@@ -255,24 +278,24 @@ typedef struct gpmon_filerep_primarystats_s
 	apr_uint32_t write_syscall_size_max;
 	apr_uint32_t write_syscall_time_avg; // microseconds;
 	apr_uint32_t write_syscall_time_max; // microseconds;
-	apr_uint32_t write_syscall_count; 
+	apr_uint32_t write_syscall_count;
 
 	// EVENT: fsync systemcall on primary
 	apr_uint32_t fsync_syscall_time_avg; // microseconds;
 	apr_uint32_t fsync_syscall_time_max; // microseconds;
-	apr_uint32_t fsync_syscall_count; 
+	apr_uint32_t fsync_syscall_count;
 
 	// EVENT: putting write message into shared memory
 	apr_uint32_t write_shmem_size_avg;
 	apr_uint32_t write_shmem_size_max;
 	apr_uint32_t write_shmem_time_avg; // microseconds;
 	apr_uint32_t write_shmem_time_max; // microseconds;
-	apr_uint32_t write_shmem_count; 
+	apr_uint32_t write_shmem_count;
 
 	// EVENT: putting fsync message into shared memory
 	apr_uint32_t fsync_shmem_time_avg; // microseconds;
 	apr_uint32_t fsync_shmem_time_max; // microseconds;
-	apr_uint32_t fsync_shmem_count; 
+	apr_uint32_t fsync_shmem_count;
 
 	// EVENT: Roundtrip from sending fsync message to mirror to get ack back on primary
 	apr_uint32_t roundtrip_fsync_msg_time_avg; // microseconds;
@@ -292,12 +315,12 @@ typedef struct gpmon_filerep_mirrorstats_s
 	apr_uint32_t write_syscall_size_max;
 	apr_uint32_t write_syscall_time_avg; // microseconds;
 	apr_uint32_t write_syscall_time_max; // microseconds;
-	apr_uint32_t write_syscall_count; 
+	apr_uint32_t write_syscall_count;
 
 	// EVENT: fsync systemcall on mirror
 	apr_uint32_t fsync_syscall_time_avg; // microseconds;
 	apr_uint32_t fsync_syscall_time_max; // microseconds;
-	apr_uint32_t fsync_syscall_count; 
+	apr_uint32_t fsync_syscall_count;
 } gpmon_filerep_mirrorstats_s;
 
 
@@ -308,9 +331,9 @@ typedef union gpmon_filerep_stats_u {
 
 typedef struct gpmmon_filerep_key_t
 {
-	char primary_hostname[NAMEDATALEN];				
+	char primary_hostname[NAMEDATALEN];
 	apr_uint16_t primary_port;
-	char mirror_hostname[NAMEDATALEN];				
+	char mirror_hostname[NAMEDATALEN];
 	apr_uint16_t mirror_port;
 
 } gpmmon_filerep_key_t;
@@ -322,7 +345,7 @@ typedef struct gpsmon_filerep_key_t
 } gpsmon_filerep_key_t;
 
 
-struct gpmon_filerepinfo_t 
+struct gpmon_filerepinfo_t
 {
 	gpsmon_filerep_key_t key;
 
@@ -346,7 +369,7 @@ struct gpmon_hello_t {
 /*
  *  When updating the format of the packets update these variables
  *  in order to make sure that the communication between the GPDB
- *  and perfmon is compatible 
+ *  and perfmon is compatible
  */
 #define GPMON_PACKET_VERSION   5
 #define GPMMON_PACKET_VERSION_STRING "gpmmon packet version 5\n"
@@ -361,7 +384,8 @@ enum gpmon_pkttype_t {
     GPMON_PKTTYPE_FILEREP = 6,
     GPMON_PKTTYPE_QUERY_HOST_METRICS = 7, // query metrics update from a segment such as CPU per query
     GPMON_PKTTYPE_FSINFO = 8,
-    
+    GPMON_PKTTYPE_QUERYSEG = 9,
+
     GPMON_PKTTYPE_MAX
 };
 
@@ -459,7 +483,7 @@ typedef enum PerfmonNodeType
     PMNT_SetOpExceptAll,
     PMNT_SharedScan,
     PMNT_Sort,
-    PMNT_SplitUpdate,    
+    PMNT_SplitUpdate,
     PMNT_SubqueryScan,
     PMNT_TableFunctionScan,
     PMNT_TableScan,
