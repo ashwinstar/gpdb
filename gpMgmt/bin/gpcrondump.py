@@ -732,7 +732,7 @@ class GpCronDump(Operation):
                 os.remove(lock_file_name)
         # This should only throw the Exception if "os.remove" fails which means there was a genuine failure.
         except Exception, e:
-            logger.info("Could not remove signal file %s, backup will proceed without releasing pg_class lock." % lock_file_name)
+            logger.warning("Could not remove signal file %s, backup will proceed without releasing pg_class lock." % lock_file_name)
 
     def execute(self):
         if bool(self.ddboost_hosts) or bool(self.ddboost_user):
