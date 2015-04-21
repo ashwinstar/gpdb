@@ -5466,7 +5466,7 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *rel, AlterTableCmd *cm
 			break;
 		case AT_ColumnDefault:	/* ALTER COLUMN DEFAULT */
 		case AT_ColumnDefaultRecurse:
-			ATExecColumnDefault(rel, cmd->name, (ColumnDef *) cmd->def);
+			ATExecColumnDefault(*rel, cmd->name, (ColumnDef *) cmd->def);
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
 			ATExecDropNotNull(*rel, cmd->name);
@@ -15134,7 +15134,8 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		ok = map_part_attrs(rel, oldrel, &oldmap, FALSE);
 		Assert(ok);
 
-		newcons = cdb_exchange_part_constraints(rel, oldrel, newrel, validate, is_split);
+		newcons = cdb_exchange_part_constraints(
+				rel, oldrel, newrel, validate, is_split, pc);
 		tab->constraints = list_concat(tab->constraints, newcons);
 		CommandCounterIncrement();
 

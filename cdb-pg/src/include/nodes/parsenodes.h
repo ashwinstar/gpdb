@@ -1216,6 +1216,7 @@ typedef struct AlterPartitionCmd/* one subcmd of an ALTER TABLE...PARTITION */
 	Node	   *arg1;			/* argument 1 */
 	Node	   *arg2;			/* argument 2 */
 	int					location;	/* token location, or -1 if unknown */
+	List	   *newOids;	/* If applicable, list of new OIDs for constraints */
 } AlterPartitionCmd;
 
 typedef struct InheritPartitionCmd

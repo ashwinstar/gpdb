@@ -2992,16 +2992,23 @@ def checkTableMissingEntry(cat):
         if nrows == 0:
             logger.info('[OK] Checking for missing or extraneous entries for ' + catname)
         else:
-            GV.testStatus = False
-            setError(ERROR_NOREPAIR)
-            GV.missingEntryStatus = False
-            logger.info('[FAIL] Checking for missing or extraneous entries for ' + catname)
-            logger.error('  %s has %d issue(s)' % (catname, nrows))
+            if catname in ['pg_constraint']:
+                logger_with_level = logger.warning
+                log_level = logging.WARNING
+            else:
+                GV.testStatus = False
+                setError(ERROR_NOREPAIR)
+                GV.missingEntryStatus = False
+                logger_with_level = logger.error
+                log_level = logging.ERROR
 
+            logger.info(('[%s] Checking for missing or extraneous entries for ' + catname) % 
+                        ('WARNING' if log_level == logging.WARNING else 'FAIL'))
+            logger_with_level('  %s has %d issue(s)' % (catname, nrows))
             fields = curs.listfields()
-            log_literal(logger,logging.ERROR,"    " + " | ".join(fields))
+            log_literal(logger,log_level,"    " + " | ".join(fields))
             for row in curs.getresult():
-                log_literal(logger,logging.ERROR,"    " + " | ".join(map(str, row)))
+                log_literal(logger,log_level,"    " + " | ".join(map(str, row)))
             results = curs.getresult()
             processMissingDuplicateEntryResult(catname, fields, results, "missing")
             if catname == 'pg_type':
@@ -4408,6 +4415,21 @@ class GPObject:
         return True
 
     def reportAllIssues(self):
+        """
+        We want to prevent oids from certain catalog tables to appear on
+        stdout. Hence we create a separate function for myprint which
+        will log all the oid inconsistencies as WARNING instead of
+        CRITICAL in order to log it in the log file.
+        """
+        def __myprint(string):
+            if self.catname in ['pg_constraint']:
+                _myprint(string, logging.WARNING)
+            else:
+                _myprint(string)
+
+        global myprint
+        myprint = __myprint
+
         if self.__class__ == GPObject:
             myprint('')
             myprint('----------------------------------------------------')
@@ -4415,7 +4437,7 @@ class GPObject:
             myprint('Table name: %s' % (self.catname))
             myprint('')
 
-        # Report inconsistent issues 
+        # Report inconsistent issues
         if len(self.inconsistentIssues):
             for catname,issues in self.inconsistentIssues.iteritems():
                 myprint('    Name of test which found this issue: inconsistent_%s' % catname)
@@ -4433,7 +4455,7 @@ class GPObject:
                         myprint('    Name of test which found this issue: missing_extraneous_%s' % name)
                 for each in self.missingIssues['pg_class']:
                     each.report()
-                        
+
                 for catname, issues in self.missingIssues.iteritems():
                     if catname != 'pg_class' and catname not in omitlist:
                         myprint('    Name of test which found this issue: missing_extraneous_%s' % catname)
@@ -4444,7 +4466,7 @@ class GPObject:
                     myprint('    Name of test which found this issue: missing_extraneous_%s' % catname)
                     for each in issues:
                         each.report()
-            myprint('') 
+            myprint('')
 
         # Report foreign key issues
         if len(self.foreignkeyIssues):
@@ -4452,14 +4474,14 @@ class GPObject:
                 myprint('    Name of test which found this issue: foreign_key_%s' % catname)
                 for each in issues:
                     each.report()
-            myprint('') 
+            myprint('')
 
         if len(self.duplicateIssues):
             for catname,issues in self.duplicateIssues.iteritems():
                 myprint('    Name of test which found this issue: duplicate_%s' % catname)
                 for each in issues:
                     each.report()
-            myprint('') 
+            myprint('')
 
         # Report ACL issues
         if len(self.aclIssues):
@@ -4467,9 +4489,10 @@ class GPObject:
                 myprint('    Name of test which found this issue: acl_%s' % catname)
                 for each in issues:
                     each.report()
-            myprint('') 
+            myprint('')
 
-    
+        myprint = _myprint
+
     def __cmp__(self, other):
         if isinstance(other, GPObject):
             return cmp((self.oid, self.catname), (other.oid, other.catname))
@@ -4682,8 +4705,13 @@ def checkcatReport():
     if len(GPObjectGraph) > 0:
         total = 0
         for par in GPObjectGraph:
-            if par.isTopLevel(): total += 1
-        myprint('Found a total of %d issue(s)' % total)
+            if par.isTopLevel() and par.catname not in ['pg_constraint']: total += 1
+        if total == 0:
+            myprint('Found no catalog issue\n')
+            if par.catname in ['pg_constraint']:
+                myprint('Warnings were generated, see %s for detail\n' % get_logfile())
+        else:
+            myprint('Found a total of %d issue(s)' % total)
     
         for par in sorted(GPObjectGraph):
             if par.isTopLevel():
@@ -4695,9 +4723,10 @@ def checkcatReport():
         myprint('Failed test(s) that are not reported here: %s' % (', '.join(notReported)))
         myprint('See %s for detail\n' % get_logfile())
 
+def _myprint(str, level=logging.CRITICAL):
+    log_literal(logger,level,str)
 
-def myprint(str):
-    log_literal(logger,logging.CRITICAL,str)
+myprint = _myprint
 
 def generateVerifyFile(catname, fields, results, testname):
     in_clause = reduce(lambda x, y: x + ('' if not x else ',') + str(y[fields.index('oid')]), results, '')

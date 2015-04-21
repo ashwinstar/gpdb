@@ -16,6 +16,7 @@
 #include "access/hash.h"
 #include "access/heapam.h"
 #include "access/reloptions.h"
+#include "catalog/catalog.h"
 #include "catalog/catquery.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
@@ -479,6 +480,37 @@ PartStatus rel_part_status(Oid relid)
 	return PART_STATUS_NONE;
 }
 
+/*
+ * Insert the given tuple in the list of tuples according to
+ * increasing OID value.
+ */
+static List *
+sorted_insert_list(List *list, HeapTuple tuple)
+{
+	ListCell *lc;
+	ListCell *lc_prev = NULL;
+	HeapTuple list_tup;
+	List *ret_list = list;
+	foreach(lc, ret_list)
+	{
+		list_tup = lfirst(lc);
+		if (HeapTupleGetOid(list_tup) >
+			HeapTupleGetOid(tuple))
+		{
+				break;
+		}
+		lc_prev = lc;
+	}
+	if (lc_prev == NULL)
+	{
+		ret_list = lcons(tuple, ret_list);
+	}
+	else
+	{
+		lappend_cell(ret_list, lc_prev, tuple);
+	}
+	return ret_list;
+}
 
 /* Locate all the constraints on the given open relation (rel) and 
  * record them in the hash table (hash_tbl) of ConstraintEntry 
@@ -548,22 +580,24 @@ record_constraints(Relation pgcon,
 			entry->cand_cons = NIL;
 		}
 		tuple = heap_copytuple(tuple);
-		
 		switch(xrole)
 		{
 			case PART_TABLE:
-				entry->table_cons = lappend(entry->table_cons, tuple);
+				entry->table_cons = sorted_insert_list(
+						entry->table_cons, tuple);
 				break;
 			case PART_PART:
-				entry->part_cons = lappend(entry->part_cons, tuple);
+				entry->part_cons = sorted_insert_list(
+						entry->part_cons, tuple);
 				break;
 			case PART_CAND:
-				entry->cand_cons = lappend(entry->cand_cons, tuple);
+				entry->cand_cons = sorted_insert_list(
+						entry->cand_cons, tuple);
 				break;
 			default:
 				Assert(FALSE);
 		}
-		
+
 		MemoryContextSwitchTo(oldcontext);
 	}
 	caql_endscan(pcqCtx);
@@ -584,7 +618,8 @@ cdb_exchange_part_constraints(Relation table,
 						  Relation part, 
 						  Relation cand, 
 						  bool validate,
-						  bool is_split)
+						  bool is_split,
+						  AlterPartitionCmd *pc)
 {
 	HTAB *hash_tbl;
 	HASHCTL hash_ctl;
@@ -829,10 +864,33 @@ cdb_exchange_part_constraints(Relation table,
 	}
 	
 
+	/*
+	 * This list is created on master and attached to
+	 * AlterPartitionCmd to be dispatched to segments.
+	 */
+	List *newOids = NIL;
+
+	/*
+	 * Used by segments to iterate over the list of new constraint
+	 * OIDs.
+	 */
+	ListCell *newOids_lc = list_head(pc->newOids);
+	Value *oidVal;
+
+	if (Gp_role == GP_ROLE_EXECUTE && (
+				list_length(missing_part_constraints) +
+				list_length(missing_constraints) != list_length(pc->newOids)))
+	{
+		elog(ERROR, "lengths of constraint OIDs do not match, "
+			 "master: %d, QE: %d", list_length(pc->newOids),
+			 list_length(missing_part_constraints) +
+			 list_length(missing_constraints));
+	}
+
 	if ( missing_part_constraints )
 	{
 		ListCell *lc;
-		
+
 		foreach(lc, missing_part_constraints)
 		{
 			HeapTuple missing_part_constraint = (HeapTuple)lfirst(lc);
@@ -847,15 +905,38 @@ cdb_exchange_part_constraints(Relation table,
 				elog(ERROR,"Invalid partition constration, not CHECK type");
 			
 			map_part_attrs(part, cand, &map, TRUE);
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				oidVal = palloc(sizeof(Value));
+				oidVal->type = T_Integer;
+				oidVal->val.ival = GetNewOid(pgcon);
+				newOids = lappend(newOids, oidVal);
+				HeapTupleSetOid(missing_part_constraint, (Oid)oidVal->val.ival);
+			}
+			else if (Gp_role == GP_ROLE_EXECUTE)
+			{
+				/*
+				 * Consume one new OID that master gave us.  The order
+				 * in which we use new OIDs is identical to that used
+				 * by master.
+				 */
+				oidVal = (Value *)lfirst(newOids_lc);
+				if (oidVal == NULL || !OidIsValid(oidVal))
+				{
+					elog(ERROR, "invalid constraint oid from master");
+				}
+				newOids_lc = lnext(newOids_lc);
+				HeapTupleSetOid(missing_part_constraint, (Oid)oidVal->val.ival);
+			}
 			nc = constraint_apply_mapped(missing_part_constraint, map, cand,
 										 validate, is_split, pgcon);
-			if ( nc ) 
+			if ( nc )
 				validation_list = lappend(validation_list, nc);
-			
+
 			delta_checks++;
 		}
 	}
-	
+
 	if ( missing_constraints )
 	{
 		/* We need constraints like the missing ones for the whole, but
@@ -870,16 +951,48 @@ cdb_exchange_part_constraints(Relation table,
 		{
 			HeapTuple tuple = (HeapTuple)lfirst(lc);
 			Form_pg_constraint mcon = (Form_pg_constraint)GETSTRUCT(tuple);
-			nc = constraint_apply_mapped(tuple, map, cand, 
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				oidVal = palloc(sizeof(Value));
+				oidVal->type = T_Integer;
+				oidVal->val.ival = GetNewOid(pgcon);
+				newOids = lappend(newOids, oidVal);
+				HeapTupleSetOid(tuple, (Oid)oidVal->val.ival);
+			}
+			else if (Gp_role == GP_ROLE_EXECUTE)
+			{
+				/*
+				 * Consume one new OID that master gave us.  The order
+				 * in which we use new OIDs is identical to that used
+				 * by master.
+				 */
+				oidVal = (Value *)lfirst(newOids_lc);
+				if (oidVal == NULL || !OidIsValid(oidVal))
+				{
+					elog(ERROR, "invalid constraint oid from master");
+				}
+				newOids_lc = lnext(newOids_lc);
+				HeapTupleSetOid(tuple, (Oid)oidVal->val.ival);
+			}
+			nc = constraint_apply_mapped(tuple, map, cand,
 										 validate, is_split, pgcon);
 			if ( nc )
 				validation_list = lappend(validation_list, nc);
-			
+
 			if ( mcon->contype == CONSTRAINT_CHECK )
 				delta_checks++;
 		}
 	}
-	
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		pc->newOids = newOids;
+		if (newOids)
+			Assert(list_length(newOids) ==
+				   list_length(missing_constraints) +
+				   list_length(missing_part_constraints));
+	}
+
 	if ( delta_checks )
 	{
 		SetRelationNumChecks(cand, cand->rd_rel->relchecks + delta_checks);
@@ -7580,7 +7693,7 @@ constraint_apply_mapped(HeapTuple tuple, AttrMap *map, Relation cand,
 			Assert( conexpr && conbin && consrc );
 			
 			CreateConstraintEntry(NameStr(con->conname),
-								  InvalidOid,
+								  HeapTupleGetOid(tuple),
 								  con->connamespace, // XXX should this be RelationGetNamespace(cand)?
 								  con->contype,
 								  con->condeferrable,

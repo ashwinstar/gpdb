@@ -94,7 +94,7 @@ extern PartStatus rel_part_status(Oid relid);
 
 extern List *
 cdb_exchange_part_constraints(Relation table, Relation part, Relation cand, 
-							  bool validate, bool is_split);
+							  bool validate, bool is_split, AlterPartitionCmd *pc);
 
 extern void
 add_reg_part_dependency(Oid tableconid, Oid partconid);

@@ -882,6 +882,7 @@ _readAlterPartitionCmd(const char ** str)
 	READ_NODE_FIELD(partid);
 	READ_NODE_FIELD(arg1);
 	READ_NODE_FIELD(arg2);
+	READ_NODE_FIELD(newOids);
 
 	READ_DONE();
 }

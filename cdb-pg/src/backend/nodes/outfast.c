@@ -2352,6 +2352,7 @@ _outInheritPartitionCmd(StringInfo str, InheritPartitionCmd *node)
 }
 
 static void
+
 _outAlterPartitionCmd(StringInfo str, AlterPartitionCmd *node)
 {
 	WRITE_NODE_TYPE("ALTERPARTITIONCMD");
@@ -2359,6 +2360,7 @@ _outAlterPartitionCmd(StringInfo str, AlterPartitionCmd *node)
 	WRITE_NODE_FIELD(partid);
 	WRITE_NODE_FIELD(arg1);
 	WRITE_NODE_FIELD(arg2);
+	WRITE_LIST_FIELD(newOids);
 }
 
 static void
