@@ -730,7 +730,9 @@ aclupdate(const Acl *old_acl, const AclItem *mod_aip,
 									cql("SELECT * FROM pg_authid "
 										" WHERE oid = :1", ObjectIdGetDatum(mod_aip->ai_grantee)));
 				tuple = caql_getnext(pcqCtx);
-				Assert(HeapTupleIsValid(tuple));
+				/* to keep coverity quiet */
+				if (!HeapTupleIsValid(tuple))
+					elog(ERROR, "no entry found for the grantee");
 				rolname = ((Form_pg_authid)GETSTRUCT(tuple))->rolname;
 				caql_endscan(pcqCtx);
 			}
