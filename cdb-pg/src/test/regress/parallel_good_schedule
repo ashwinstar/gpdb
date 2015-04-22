@@ -8,7 +8,7 @@ test: date time timetz timestamp timestamptz interval abstime reltime
 test: tinterval inet comments oidjoins type_sanity opr_sanity geometry
 test: horology insert create_function_1 copyselect constraints create_aggregate
 test: drop_if_exists select_having information_schema case indexjoin naivebayes distributed_transactions
-test: update delete cluster dependency table_functions conversion sirv_functions
+test: update delete cluster dependency table_functions conversion sirv_functions sublink
 
 # namespace will show diff if concurrent work has temporary tables.
 test: without_oid namespace truncate sequence gpdiffcheck gptokencheck olap_setup

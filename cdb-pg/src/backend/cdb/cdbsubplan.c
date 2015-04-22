@@ -240,6 +240,20 @@ addRemoteExecParamsToParamList(PlannedStmt *stmt, ParamListInfo extPrm, ParamExe
 			param_walker((Node*)rte->values_lists, &context);
 	}
 
+	/*
+	* mpp-25490: subplanX may is within subplan Y, try to param_walker the
+	* subplans list
+	*/
+	if (list_length(context.params) < nIntPrm)
+	{
+		ListCell *sb;
+		foreach(sb, stmt->subplans)
+		{
+			Node* subplan = lfirst(sb);
+			param_walker((Node*)subplan, &context);
+		}
+	}
+
 	if (context.params == NIL)
 	{
 		/* We apparently have an initplan with no corresponding parameter.
