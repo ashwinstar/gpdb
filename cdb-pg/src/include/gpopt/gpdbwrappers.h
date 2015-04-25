@@ -607,6 +607,9 @@ namespace gpdb {
 	// simple fault injector used by COptTasks.cpp to inject GPDB fault
 	FaultInjectorType_e OptTasksFaultInjector(FaultInjectorIdentifier_e identifier);
 
+	// return the number of leaf partition for a given table oid
+	ULONG UlLeafPartitions(Oid oidRelation);
+
 } //namespace gpdb
 
 #define ForEach(cell, l)	\

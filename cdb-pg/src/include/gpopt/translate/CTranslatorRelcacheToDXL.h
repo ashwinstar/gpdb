@@ -373,12 +373,30 @@ namespace gpdxl
 			
 			// retrieve the opclass mdids for the given scalar op
 			static
-			DrgPmdid *PdrgpmdidScOpOpClasses(IMemoryPool *pmp,	IMDId *pmdidScOp);
+			DrgPmdid *PdrgpmdidScOpOpClasses(IMemoryPool *pmp, IMDId *pmdidScOp);
 			
 			// retrieve the opclass mdids for the given index
 			static
-			DrgPmdid *PdrgpmdidIndexOpClasses(IMemoryPool *pmp,	IMDId *pmdidIndex);
+			DrgPmdid *PdrgpmdidIndexOpClasses(IMemoryPool *pmp, IMDId *pmdidIndex);
 
+            // for non-leaf partition tables return the number of child partitions
+            // else return 1
+            static
+            ULONG UlTableCount(OID oidRelation);
+
+            // generate statistics for the system level columns
+            static
+            CDXLColStats *PdxlcolstatsSystemColumn
+                              (
+                              IMemoryPool *pmp,
+                              OID oidRelation,
+                              CMDIdColStats *pmdidColStats,
+                              CMDName *pmdnameCol,
+                              OID oidAttType,
+                              AttrNumber attrnum,
+                              DrgPdxlbucket *pdrgpdxlbucket,
+                              CDouble dRows
+                              );
 		public:
 			// retrieve a metadata object from the relcache
 			static

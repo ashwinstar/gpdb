@@ -52,6 +52,7 @@
 #include "utils/typcache.h"
 #include "utils/datum.h"
 #include "utils/elog.h"
+#include "utils/guc.h"
 #include "cdb/cdbhash.h"
 #include "access/heapam.h"
 #include "catalog/pg_exttable.h"
@@ -2255,8 +2256,25 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 	OID oidAttType = CMDIdGPDB::PmdidConvert(pmdcol->PmdidType())->OidObjectId();
 	gpdb::CloseRelation(rel);
 
-	// extract out histogram and mcv information from pg_statistic
 	DrgPdxlbucket *pdrgpdxlbucket = New(pmp) DrgPdxlbucket(pmp);
+
+	if (0 > attrnum)
+	{
+		pmdidColStats->AddRef();
+		return PdxlcolstatsSystemColumn
+				(
+				pmp,
+				oidRelation,
+				pmdidColStats,
+				pmdnameCol,
+				oidAttType,
+				attrnum,
+				pdrgpdxlbucket,
+				dRows
+				);
+	}
+
+	// extract out histogram and mcv information from pg_statistic
 	HeapTuple heaptupleStats = gpdb::HtAttrStats(oidRelation, attrnum);
 
 	// if there is no colstats
@@ -2419,6 +2437,124 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 
 	return pdxlcolstats;
 }
+
+
+//---------------------------------------------------------------------------
+//      @function:
+//              CTranslatorRelcacheToDXL::PdxlcolstatsSystemColumn
+//
+//      @doc:
+//              Generate statistics for the system level columns
+//
+//---------------------------------------------------------------------------
+CDXLColStats *
+CTranslatorRelcacheToDXL::PdxlcolstatsSystemColumn
+       (
+       IMemoryPool *pmp,
+       OID oidRelation,
+       CMDIdColStats *pmdidColStats,
+       CMDName *pmdnameCol,
+       OID oidAttType,
+       AttrNumber attrnum,
+       DrgPdxlbucket *pdrgpdxlbucket,
+       CDouble dRows
+       )
+{
+       GPOS_ASSERT(NULL != pmdidColStats);
+       GPOS_ASSERT(NULL != pmdnameCol);
+       GPOS_ASSERT(InvalidOid != oidAttType);
+       GPOS_ASSERT(0 > attrnum);
+       GPOS_ASSERT(NULL != pdrgpdxlbucket);
+
+       CMDIdGPDB *pmdidAttType = New(pmp) CMDIdGPDB(oidAttType);
+       IMDType *pmdtype = Pmdtype(pmp, pmdidAttType);
+       GPOS_ASSERT(pmdtype->FFixedLength());
+
+       BOOL fColStatsMissing = true;
+       CDouble dNullFrequency(0.0);
+       CDouble dWidth(pmdtype->UlLength());
+       CDouble dDistinctRemain(0.0);
+       CDouble dFreqRemain(1.0);
+
+       switch(attrnum)
+       	{
+       		case GpSegmentIdAttributeNumber: // gp_segment_id
+       			{
+       				fColStatsMissing = false;
+       				dDistinctRemain = CDouble(gpdb::UlSegmentCountGP());
+       				break;
+       			}
+       		case TableOidAttributeNumber: // tableoid
+       			{
+       				fColStatsMissing = false;
+       				dDistinctRemain = CDouble(UlTableCount(oidRelation));
+       				break;
+       			}
+       		case SelfItemPointerAttributeNumber: // ctid
+       			{
+       				fColStatsMissing = false;
+       				dDistinctRemain = dRows;
+       				break;
+       			}
+       		default:
+       			break;
+       	}
+
+       // cleanup
+       pmdidAttType->Release();
+
+       return New(pmp) CDXLColStats
+                       (
+                       pmp,
+                       pmdidColStats,
+                       pmdnameCol,
+                       dWidth,
+                       dNullFrequency,
+                       dDistinctRemain,
+                       dFreqRemain,
+                       pdrgpdxlbucket,
+                       fColStatsMissing
+                       );
+}
+
+
+//---------------------------------------------------------------------------
+//     @function:
+//     CTranslatorRelcacheToDXL::UlTableCount
+//
+//  @doc:
+//      For non-leaf partition tables return the number of child partitions
+//      else return 1
+//
+//---------------------------------------------------------------------------
+ULONG
+CTranslatorRelcacheToDXL::UlTableCount
+       (
+       OID oidRelation
+       )
+{
+       GPOS_ASSERT(InvalidOid != oidRelation);
+
+       ULONG ulTableCount = ULONG_MAX;
+       if (gpdb::FRelPartIsNone(oidRelation))
+       {
+    	   // not a partitioned table
+            ulTableCount = 1;
+       }
+       else if (gpdb::FLeafPartition(oidRelation))
+       {
+           // leaf partition
+           ulTableCount = 1;
+       }
+       else
+       {
+           ulTableCount = gpdb::UlLeafPartitions(oidRelation);
+       }
+       GPOS_ASSERT(ULONG_MAX != ulTableCount);
+
+       return ulTableCount;
+}
+
 
 //---------------------------------------------------------------------------
 //	@function:

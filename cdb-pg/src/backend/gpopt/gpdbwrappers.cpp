@@ -91,6 +91,7 @@
 #define ALLOW_rel_partition_get_master
 #define ALLOW_BuildLogicalIndexInfo
 #define ALLOW_get_parts
+#define ALLOW_countLeafPartTables
 #define ALLOW_get_relation_keys
 #define ALLOW_get_typ_typrelid
 #define ALLOW_get_type_name
@@ -2921,5 +2922,19 @@ gpdb::OptTasksFaultInjector
 	return FaultInjectorTypeNotSpecified;
 }
 
+ULONG
+gpdb::UlLeafPartitions
+       (
+       Oid oidRelation
+       )
+{
+	GP_WRAP_START;
+	{
+		return countLeafPartTables(oidRelation);
+	}
+	GP_WRAP_END;
+
+	return 0;
+}
 
 // EOF
