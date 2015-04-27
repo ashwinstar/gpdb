@@ -757,5 +757,10 @@ explain SELECT  cc, sum(nn) over() FROM v1_mpp_20470;
 
 drop view v1_mpp_20470;
 drop table t_mpp_20470;
+
+create table tbl_25484(id int, num int) distributed by (id);
+insert into tbl_25484 values(1, 1), (2, 2), (3, 3);
+select id from tbl_25484 where 3 = (select 3 where 3 = (select num));
+drop table tbl_25484;
 reset optimizer_segments;
 reset optimizer_nestloop_factor;

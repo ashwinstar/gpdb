@@ -383,6 +383,7 @@ _equalSubPlan(SubPlan *a, SubPlan *b)
 	COMPARE_NODE_FIELD(setParam);
 	COMPARE_NODE_FIELD(parParam);
 	COMPARE_NODE_FIELD(args);
+	COMPARE_NODE_FIELD(extParam);
 
 	return true;
 }

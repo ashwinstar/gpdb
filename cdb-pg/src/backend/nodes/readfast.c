@@ -1396,6 +1396,7 @@ _readSubPlan(const char ** str)
 	READ_NODE_FIELD(setParam);
 	READ_NODE_FIELD(parParam);
 	READ_NODE_FIELD(args);
+	READ_NODE_FIELD(extParam);
 
 	READ_DONE();
 }

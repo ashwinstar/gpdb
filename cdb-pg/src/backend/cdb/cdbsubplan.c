@@ -29,6 +29,7 @@ typedef struct ParamWalkerContext
 
 static bool param_walker(Node *node, ParamWalkerContext * context);
 static Oid	findParamType(List *params, int paramid);
+static bool isParamExecutableNow(SubPlanState *spstate, ParamExecData *prmList);
 
 /*
  * Function preprocess_initplans() is called from ExecutorRun running a
@@ -67,7 +68,6 @@ preprocess_initplans(QueryDesc *queryDesc)
 	ParamListInfo originalPli,
 				augmentedPli;
 	int			i;
-//	Plan	   *plan = queryDesc->plantree;
 	EState	   *estate = queryDesc->estate;
 	int			originalRoot,
                 originalSlice,
@@ -110,7 +110,7 @@ preprocess_initplans(QueryDesc *queryDesc)
 													  originalPli,
 													  estate->es_param_exec_vals);
 
-		if (sps != NULL)
+		if (isParamExecutableNow(sps, estate->es_param_exec_vals))
 		{
             SubPlan    *subplan = (SubPlan *)sps->xprstate.expr;
 
@@ -295,6 +295,39 @@ addRemoteExecParamsToParamList(PlannedStmt *stmt, ParamListInfo extPrm, ParamExe
 	list_free(context.params);
 
 	return augPrm;
+}
+
+static bool
+isParamExecutableNow(SubPlanState *spstate, ParamExecData *prmList)
+{
+	Assert(prmList);
+	if (!spstate)
+		return false;
+
+	List *extParam = ((SubPlan *)spstate->xprstate.expr)->extParam;
+	if (extParam == NIL)
+		return true;
+
+	ListCell *lc = NULL;
+	ParamExecData *prmData = NULL;
+	int paramId = 0;
+
+	foreach(lc, extParam)
+	{
+		paramId = lfirst_int(lc);
+		prmData = &prmList[paramId];
+
+		/* preprocess_initplans assumes that the params in the es_param_exec_vals
+		 * are in order, so the not-evaluated depending params yet imply that they
+		 * cannot be preprocessed, neither do this current param. */
+		if (prmData->execPlan)
+			return false;
+		else if (prmData->value == 0 && !prmData->isnull)
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 /*

@@ -476,6 +476,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 	splan->setParam = NIL;
 	splan->parParam = NIL;
 	splan->args = NIL;
+	splan->extParam = NIL;
 
 	/*
 	 * Make parParam and args lists of param IDs and expressions that current
@@ -496,6 +497,8 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 			 */
 			splan->args = lappend(splan->args, copyObject(pitem->item));
 		}
+		else if (pitem->abslevel < root->query_level)
+			splan->extParam = lappend_int(splan->extParam, paramid);
 	}
 	bms_free(tmpset);
 

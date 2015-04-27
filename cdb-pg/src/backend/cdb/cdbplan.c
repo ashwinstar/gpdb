@@ -725,6 +725,7 @@ plan_tree_mutator(Node *node,
 				newnode->paramIds = (List *)copyObject(subplan->paramIds);
 				newnode->setParam = (List *)copyObject(subplan->setParam);
 				newnode->parParam = (List *)copyObject(subplan->parParam);
+				newnode->extParam = (List *)copyObject(subplan->extParam);
 				
 				if (newsubplan_plan != subplan_plan)
 					plan_tree_base_subplan_put_plan(context, newnode, newsubplan_plan);

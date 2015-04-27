@@ -1494,6 +1494,7 @@ _copySubPlan(SubPlan *from)
 	COPY_NODE_FIELD(setParam);
 	COPY_NODE_FIELD(parParam);
 	COPY_NODE_FIELD(args);
+	COPY_NODE_FIELD(extParam);
 
 	return newnode;
 }

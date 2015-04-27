@@ -674,6 +674,7 @@ typedef struct SubPlan
 								 * Params for parent plan */
 	List	   *parParam;		/* indices of input Params from parent plan */
 	List	   *args;			/* exprs to pass as parParam values */
+	List	   *extParam;		/* indices of input Params from ancestor plan */
 } SubPlan;
 
 /* ----------------

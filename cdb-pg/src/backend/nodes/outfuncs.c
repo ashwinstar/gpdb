@@ -1324,6 +1324,7 @@ _outSubPlan(StringInfo str, SubPlan *node)
 	WRITE_NODE_FIELD(setParam);
 	WRITE_NODE_FIELD(parParam);
 	WRITE_NODE_FIELD(args);
+	WRITE_NODE_FIELD(extParam);
 }
 
 static void
