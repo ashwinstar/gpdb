@@ -5958,6 +5958,11 @@ Feature: Validate command line arguments
         And verify that there is no table "schema_ao.ao_index_table" in "fullbkdb"
         And verify that there is a "ao" table "schema_ao.ao_part_table" in "fullbkdb" with data
 
+    Scenario: pg_dump correctly backup aggregate functions
+        Given the user runs "deletedb test_pg_dump; createdb test_pg_dump"
+        And the user runs "psql -f gppylib/test/behave/mgmt_utils/steps/data/pg_dump_function_test.sql test_pg_dump"
+        When the user runs "pg_dump -s -n public -f /tmp/public_pg_dump_ddl.dmp test_pg_dump"
+        Then verify that function is backedup correctly in "/tmp/public_pg_dump_ddl.dmp"
 
     # THIS SHOULD BE THE LAST TEST
     @backupfire

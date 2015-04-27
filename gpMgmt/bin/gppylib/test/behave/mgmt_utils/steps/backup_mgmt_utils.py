@@ -3,6 +3,7 @@
 import thread
 import os
 import socket
+import filecmp
 from gppylib.commands.base import Command, ExecutionError, REMOTE, WorkerPool, CommandResult
 from gppylib.db import dbconn
 from gppylib.test.behave_utils.utils import run_gpcommand, getRows, validate_parse_email_file
@@ -366,3 +367,8 @@ def impl(context):
            found = True
     if found is False:
         raise Exception("'Unable to send dump email notification' exception is not raised")
+
+@then('verify that function is backedup correctly in "{dumpfile}"')
+def impl(context, dumpfile):
+    if not filecmp.cmp(dumpfile, "gppylib/test/behave/mgmt_utils/steps/data/pg_dump_ddl.dmp") is True:
+        raise Exception("pg_dump did not backup aggregate functions correctly.") 
