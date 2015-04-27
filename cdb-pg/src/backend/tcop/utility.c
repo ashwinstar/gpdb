@@ -51,6 +51,7 @@
 #include "commands/vacuum.h"
 #include "commands/view.h"
 #include "miscadmin.h"
+#include "optimizer/planmain.h"
 #include "postmaster/checkpoint.h"
 #include "rewrite/rewriteDefine.h"
 #include "rewrite/rewriteRemove.h"
@@ -1253,6 +1254,8 @@ ProcessUtility(Node *parsetree,
 					PreventTransactionChain(stmt, "CREATE INDEX CONCURRENTLY");
 
 				CheckRelationOwnership(stmt->relation, true);
+
+				fix_opfuncids(stmt->whereClause);
 
 				DefineIndex(stmt->relation,		/* relation */
 							stmt->idxname,		/* index name */
