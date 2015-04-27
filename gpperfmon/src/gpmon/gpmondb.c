@@ -210,17 +210,22 @@ int gpdb_validate_gpperfmon(void)
 
 int gpdb_gpperfmon_db_exists(void)
 {
-	const char *connstr = "dbname='" GPMON_DB "' user='" GPMON_DBUSER
-	"' connect_timeout='30'";
-	PGconn *conn = NULL;
+	const char *connstr = "dbname='" GPMON_DB "' user='" GPMON_DBUSER "' connect_timeout='30'";
 	int db_exists = 0;
 
-	conn = PQconnectdb(connstr);
+	PGconn *conn = PQconnectdb(connstr);
 	if (PQstatus(conn) == CONNECTION_OK)
 	{
 		db_exists = 1;
-		PQfinish(conn);
 	}
+	else
+	{
+		char *errmsg = PQerrorMessage(conn);
+		fprintf(stderr, "Perfmonance Monitor - failed to connect to gpperfmon database: %s",
+						(errmsg == NULL ? "unknown reason" : errmsg));
+	}
+
+	PQfinish(conn);
 
 	return db_exists;
 }
