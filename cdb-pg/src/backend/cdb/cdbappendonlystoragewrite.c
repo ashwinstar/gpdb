@@ -250,7 +250,11 @@ void AppendOnlyStorageWrite_FinishSession(
 	if (storageWrite->compression_functions != NULL)
 	{
 		callCompressionDestructor(storageWrite->compression_functions[COMPRESSION_DESTRUCTOR], storageWrite->compressionState);
-		pfree(storageWrite->compressionState);
+		if (storageWrite->compressionState != NULL)
+		{
+			pfree(storageWrite->compressionState);
+		}
+
 		if (storageWrite->verifyWriteCompressionState != NULL)
 		{
 			callCompressionDestructor(storageWrite->compression_functions[COMPRESSION_DESTRUCTOR], storageWrite->verifyWriteCompressionState);

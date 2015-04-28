@@ -246,7 +246,7 @@ void
 FileRepResync_DecFsobjCount(void)
 {
 	Assert(fileRepResyncShmem->curFsobjCount > 0);
-	if (fileRepResyncShmem != NULL)
+	if (fileRepResyncShmem != NULL && (fileRepResyncShmem->curFsobjCount > 0))
 	{
 		--(fileRepResyncShmem->curFsobjCount);
 	}

@@ -38,6 +38,7 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "utils/faultinjector.h"
 
 /* names we expect to see in ENCODING clauses */
 char *storage_directive_names[] = {"compresstype", "compresslevel",
@@ -269,6 +270,13 @@ quicklz_decompressor(int level, const char *source, void *destination,
 Datum
 quicklz_constructor(PG_FUNCTION_ARGS)
 {
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(MallocFailure,
+					DDLNotSpecified,
+					"", // databaseName
+					""); // tableName
+#endif
+
 	TupleDesc td 			= PG_GETARG_POINTER(0);
 	StorageAttributes *sa	= PG_GETARG_POINTER(1);
 	CompressionState *cs 	= palloc0(sizeof(CompressionState));
@@ -319,12 +327,19 @@ Datum
 quicklz_destructor(PG_FUNCTION_ARGS)
 {
 	CompressionState *cs = PG_GETARG_POINTER(0);
-	quicklz_state *state = (quicklz_state *) cs->opaque;
 
-	Insist(PointerIsValid(cs->opaque));
-
-	pfree(state->scratch);
-	pfree(cs->opaque);
+	if (cs != NULL)
+	{
+		quicklz_state *state = (quicklz_state *) cs->opaque;
+		if (state != NULL)
+		{
+			if (state->scratch != NULL)
+			{
+				pfree(state->scratch);
+			}
+			pfree(cs->opaque);
+		}
+	}
 
 	PG_RETURN_VOID();
 }
@@ -424,11 +439,12 @@ zlib_destructor(PG_FUNCTION_ARGS)
 {
 	CompressionState *cs = PG_GETARG_POINTER(0);
 
-	Insist(PointerIsValid(cs->opaque));
-	pfree(cs->opaque);
+	if (cs != NULL && cs->opaque != NULL)
+ 	{
+		pfree(cs->opaque);
+	}
 
 	PG_RETURN_VOID();
-
 }
 
 Datum

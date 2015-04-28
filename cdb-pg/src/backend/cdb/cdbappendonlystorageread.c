@@ -204,7 +204,10 @@ void AppendOnlyStorageRead_FinishSession(
 	if (storageRead->compression_functions != NULL)
 	{
 		callCompressionDestructor(storageRead->compression_functions[COMPRESSION_DESTRUCTOR], storageRead->compressionState);
-		pfree(storageRead->compressionState);
+		if (storageRead->compressionState != NULL)
+		{
+			pfree(storageRead->compressionState);
+		}
 	}
 
 	/* Deallocation is done.	  Go back to caller memory-context. */

@@ -4972,7 +4972,13 @@ static void PersistentFileSysObj_ScanStateAction(
 				// UNDONE: Act on mirrorDataLossOccurred
 
 				WRITE_PERSISTENT_STATE_ORDERED_LOCK;
-				FileRepResync_DecFsobjCount();
+				/*
+				 * We calculate only RelationFile objects to create for resync.
+				 * As it seems unneccessary overhead to scan database/tablespace/etc..
+				 * Hence only decrement for RelationFile.
+				 */
+				if (fsObjType == PersistentFsObjType_RelationFile)
+					FileRepResync_DecFsobjCount();
 			}
 			else
 			{
@@ -5143,7 +5149,16 @@ static void PersistentFileSysObj_ScanStateAction(
 
 					// UNDONE: Act on mirrorDataLossOccurred
 					FileRepResync_ResetReMirrorAllowed();
-					FileRepResync_DecFsobjCount();
+
+					/*
+					 * We calculate only RelationFile objects to create for resync.
+					 * As it seems unneccessary overhead to scan database/tablespace/etc..
+					 * Hence only decrement for RelationFile.
+					 */
+					if (fsObjType == PersistentFsObjType_RelationFile)
+					{
+						FileRepResync_DecFsobjCount();
+					}
 				}
 				else
 				{
