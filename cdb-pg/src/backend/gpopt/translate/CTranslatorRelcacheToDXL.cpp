@@ -2282,12 +2282,18 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 	{
 		pdrgpdxlbucket->Release();
 		pmdidColStats->AddRef();
-		return CDXLColStats::PdxlcolstatsDummy
-								(
-								pmp,
-								pmdidColStats,
-								pmdnameCol
-								);
+
+		CDouble dWidth = CStatistics::DDefaultColumnWidth;
+
+		if (!pmdcol->FDropped())
+		{
+			CMDIdGPDB *pmdidAttType = New(pmp) CMDIdGPDB(oidAttType);
+			IMDType *pmdtype = Pmdtype(pmp, pmdidAttType);
+			dWidth = CStatisticsUtils::DDefaultColumnWidth(pmdtype);
+			pmdidAttType->Release();
+		}
+
+		return CDXLColStats::PdxlcolstatsDummy(pmp, pmdidColStats, pmdnameCol, dWidth);
 	}
 
 

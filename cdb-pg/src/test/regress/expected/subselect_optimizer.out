@@ -629,9 +629,9 @@ explain select * from mrs_t1 where x in (select x-95 from mrs_t1) or x < 5;
                                                    Sort Key: public.mrs_t1.ctid, public.mrs_t1.gp_segment_id
                                                    ->  Table Scan on mrs_t1  (cost=0.00..431.00 rows=10 width=20)
                                              ->  Result  (cost=0.00..431.00 rows=30 width=16)
-                                                   ->  Result  (cost=0.00..431.00 rows=30 width=8)
-                                                         ->  Materialize  (cost=0.00..431.00 rows=30 width=4)
-                                                               ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.00 rows=30 width=4)
+                                                   ->  Materialize  (cost=0.00..431.00 rows=30 width=4)
+                                                         ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.00 rows=30 width=4)
+                                                               ->  Result  (cost=0.00..431.00 rows=10 width=4)
                                                                      ->  Table Scan on mrs_t1  (cost=0.00..431.00 rows=10 width=4)
  Settings:  optimizer=on; optimizer_segments=3
 (23 rows)
@@ -1449,8 +1449,8 @@ HINT:  Consider including the 'DISTRIBUTED BY' clause to determine the distribut
 explain select * from t1 where a=1 and a=2 and a > (select t2.b from t2);
                    QUERY PLAN                   
 ------------------------------------------------
- Result  (cost=0.00..0.00 rows=0 width=8)
-   ->  Result  (cost=0.00..0.00 rows=0 width=8)
+ Result  (cost=0.00..0.00 rows=0 width=4)
+   ->  Result  (cost=0.00..0.00 rows=0 width=4)
          One-Time Filter: false
  Settings:  optimizer=on; optimizer_segments=3
 (4 rows)
@@ -1465,7 +1465,7 @@ union all
 select * from t1 where a=1 and a=2 and a > (select t2.b from t2);
                   QUERY PLAN                   
 -----------------------------------------------
- Result  (cost=0.00..0.00 rows=0 width=8)
+ Result  (cost=0.00..0.00 rows=0 width=4)
    One-Time Filter: false
  Settings:  optimizer=on; optimizer_segments=3
 (3 rows)
@@ -1482,8 +1482,8 @@ explain select * from t1,
 where t1.a = foo.a;
                    QUERY PLAN                    
 -------------------------------------------------
- Result  (cost=0.00..0.00 rows=0 width=16)
-   ->  Result  (cost=0.00..0.00 rows=0 width=16)
+ Result  (cost=0.00..0.00 rows=0 width=8)
+   ->  Result  (cost=0.00..0.00 rows=0 width=8)
          One-Time Filter: false
  Settings:  optimizer=on; optimizer_segments=3
 (4 rows)

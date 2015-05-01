@@ -5,7 +5,7 @@
 SELECT gp_opt_version();
                            gp_opt_version                            
 ---------------------------------------------------------------------
- GPOPT version: 1.575, GPOS version: 1.117, Xerces version: 3.1.1-p1
+ GPOPT version: 1.576, GPOS version: 1.117, Xerces version: 3.1.1-p1
 (1 row)
 
 set optimizer_enable_master_only_queries = on;
@@ -8670,10 +8670,10 @@ LEFT JOIN pg_tablespace sp ON cl.reltablespace = sp.oid, pg_class cl2
 LEFT JOIN pg_tablespace sp3 ON cl2.reltablespace = sp3.oid, pg_partition pp, pg_partition_rule pr1
 WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid
 AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid and cl.relname ='test_part';
-           partitionboundary           | schemaname | tablename 
----------------------------------------+------------+-----------
- START (1) EXCLUSIVE END (2) INCLUSIVE | orca       | test_part
- START (1) EXCLUSIVE END (2) INCLUSIVE | orca       | test_part
+ partitionboundary | schemaname | tablename 
+-------------------+------------+-----------
+                   | orca       | test_part
+                   | orca       | test_part
 (2 rows)
 
 -- Function pg_get_partition_rule_def(oid)
@@ -8683,10 +8683,10 @@ LEFT JOIN pg_tablespace sp ON cl.reltablespace = sp.oid, pg_class cl2
 LEFT JOIN pg_tablespace sp3 ON cl2.reltablespace = sp3.oid, pg_partition pp, pg_partition_rule pr1
 WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid
 AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid and cl.relname ='test_part';
-           partitionboundary           | schemaname | tablename 
----------------------------------------+------------+-----------
- START (1) EXCLUSIVE END (2) INCLUSIVE | orca       | test_part
- START (1) EXCLUSIVE END (2) INCLUSIVE | orca       | test_part
+ partitionboundary | schemaname | tablename 
+-------------------+------------+-----------
+                   | orca       | test_part
+                   | orca       | test_part
 (2 rows)
 
 -- MPP-22453: wrong result in indexscan when the indexqual compares different data types
