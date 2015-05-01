@@ -48,7 +48,7 @@ bin/gprebuildsystem     -  Deprecated in 3.4
 
 List of Management Scripts Written in Python (no libraries)
 -----------------------------------------------------------
-bin/gpdetective         -  Extracts useful information from a Greenplum Database
+bin/gpdetective         -  Removed in 4.3.5.1.
 bin/gpload.py           -  Loads data into a Greenplum Database
 bin/gpmigrator          -  Upgrades from previous versions
 bin/gpsys1              -  Print system information on a host  (???)
