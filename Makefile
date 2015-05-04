@@ -1122,6 +1122,7 @@ mkpgbench:
 	@cd $(BUILDDIR)/contrib/pgbench && $(MAKE) install
 
 mkpgbouncer: 
+	@if [ ! -f $(BUILDDIR)/contrib/pgbouncer-1.5.5 ]; then tar xzf $(BUILDDIR)/contrib/pgbouncer-1.5.5.tar.gz -C $(BUILDDIR)/contrib &&  (cd $(BUILDDIR)/contrib && patch -s -p0 < pgbouncer-1.5.5.diff) ;fi
 	@if [ ! -f $(BUILDDIR)/contrib/pgbouncer-1.5.5/config.mak ]; then cd $(BUILDDIR)/contrib/pgbouncer-1.5.5 && ./configure --with-libevent=$(BLD_TOP)/ext/$(BLD_ARCH) --prefix=$(INSTLOC) ; fi
 	@cd $(BUILDDIR)/contrib/pgbouncer-1.5.5 && make && make install
 

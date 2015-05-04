@@ -1,0 +1,47 @@
+diff -ruN pgbouncer-1.5.5/src/pktbuf.c pgbouncer-1.5.5_gp/src/pktbuf.c
+--- pgbouncer-1.5.5/src/pktbuf.c	2015-05-04 10:17:59.000000000 +0800
++++ pgbouncer-1.5.5_gp/src/pktbuf.c	2015-05-05 05:17:26.000000000 +0800
+@@ -114,7 +114,7 @@
+ 	amount = buf->write_pos - buf->send_pos;
+ 	res = safe_send(fd, buf->buf + buf->send_pos, amount, 0);
+ 	if (res < 0) {
+-		if (res == EAGAIN) {
++		if (errno == EAGAIN) {
+ 			res = 0;
+ 		} else {
+ 			log_error("pktbuf_send_func: %s", strerror(errno));
+diff -ruN pgbouncer-1.5.5/src/proto.c pgbouncer-1.5.5_gp/src/proto.c
+--- pgbouncer-1.5.5/src/proto.c	2015-05-04 10:17:59.000000000 +0800
++++ pgbouncer-1.5.5_gp/src/proto.c	2015-05-05 05:39:56.000000000 +0800
+@@ -383,13 +383,17 @@
+ 	va_start(ap, tupdesc);
+ 	for (i = 0; i < asked; i++) {
+ 		if (i < ncol) {
+-			if (!mbuf_get_uint32be(pkt, &len))
++			if (!mbuf_get_uint32be(pkt, &len)) {
++				va_end(ap);
+ 				return -1;
++			}
+ 			if ((int32_t)len < 0) {
+ 				val = NULL;
+ 			} else {
+-				if (!mbuf_get_chars(pkt, len, &val))
++				if (!mbuf_get_chars(pkt, len, &val)) {
++					va_end(ap);
+ 					return -1;
++				}
+ 			}
+ 
+ 			/* hack to zero-terminate the result */
+diff -ruN pgbouncer-1.5.5/src/takeover.c pgbouncer-1.5.5_gp/src/takeover.c
+--- pgbouncer-1.5.5/src/takeover.c	2015-05-04 10:17:59.000000000 +0800
++++ pgbouncer-1.5.5_gp/src/takeover.c	2015-05-05 05:21:16.000000000 +0800
+@@ -323,6 +323,8 @@
+ void takeover_init(void)
+ {
+ 	PgDatabase *db = find_database("pgbouncer");
++	if(!db)
++		fatal("no db?");
+ 	PgPool *pool = get_pool(db, db->forced_user);
+ 
+ 	if (!pool)

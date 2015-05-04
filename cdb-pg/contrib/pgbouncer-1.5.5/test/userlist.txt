@@ -1,3 +1,0 @@
-"marko" "kama"
-"postgres" "asdasd"
-"pgbouncer" "fake"
