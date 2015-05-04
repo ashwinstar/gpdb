@@ -9,3 +9,6 @@ optimizer_status.out
 regress.so
 regression.diffs
 regression.out
+config.ini
+pgbouncer.log
+pgbouncer.pid

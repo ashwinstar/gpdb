@@ -373,6 +373,7 @@ define BUILD_STEPS
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) mkpgbench INSTLOC=$(INSTLOC) BUILDDIR=$(BUILDDIR)
 	@$(MAKE) mkgpperfmon INSTLOC=$(INSTLOC) BUILDDIR=$(BUILDDIR)
+	@$(MAKE) mkpgbouncer INSTLOC=$(INSTLOC) BUILDDIR=$(BUILDDIR)
 	@$(MAKE) mkplatform INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
@@ -1120,6 +1121,10 @@ mkgpcc:
 mkpgbench:
 	@cd $(BUILDDIR)/contrib/pgbench && $(MAKE) install
 
+mkpgbouncer: 
+	@if [ ! -f $(BUILDDIR)/contrib/pgbouncer-1.5.5/config.mak ]; then cd $(BUILDDIR)/contrib/pgbouncer-1.5.5 && ./configure --with-libevent=$(BLD_TOP)/ext/$(BLD_ARCH) --prefix=$(INSTLOC) ; fi
+	@cd $(BUILDDIR)/contrib/pgbouncer-1.5.5 && make && make install
+
 mkgpperfmon:
 	@cd $(GPPERFMON) && $(MAKE) BUILDDIR=$(BUILDDIR)
 	cp -p gpperfmon/src/gpmon/gpmmon gpperfmon/src/gpmon/gpsmon $(INSTLOC)/bin
@@ -1419,9 +1424,13 @@ distprep : $(ISCONFIG)
 # Regression tests
 #---------------------------------------------------------------------
 
+bouncer:
+	@cd $(BUILDDIR)/src/test/regress && $(MAKE) testbouncer
+
 installcheck-good :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(BUILDDIR)/src/test/regress && $(MAKE) installcheck-good
+	@#cd $(BUILDDIR)/src/test/regress && $(MAKE) testbouncer
 
 installcheck-parallel :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi

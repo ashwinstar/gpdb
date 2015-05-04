@@ -170,6 +170,11 @@ installcheck-good-serial: all ./current_good_schedule-serial upg2-setup ugpart-s
 	PGUSER="gpadmin/kerberos-test" $(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./current_good_schedule-serial --srcdir=$(abs_srcdir) --host=`hostname`; \
 	fi
 
+testbouncer: all
+	bash -c "bouncer/setup.sh"
+	$(pg_regress_call)  --port=65432 --psqldir=$(PSQLDIR) --schedule=./minimal_schedule --srcdir=$(abs_srcdir) --host=`hostname`;
+	bash -c "bouncer/stop.sh"
+
 installcheck-bugbuster: all ./bugbuster/current_good_schedule
 	@echo "================================"
 	@echo "BugBuster starting ... " 
