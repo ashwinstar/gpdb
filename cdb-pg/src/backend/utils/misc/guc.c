@@ -746,6 +746,8 @@ bool		optimizer_enable_partition_selection;
 bool		optimizer_enable_outerjoin_rewrite;
 bool        optimizer_enable_space_pruning;
 bool        optimizer_prefer_multistage_agg;
+bool		optimizer_enable_multiple_distinct_aggs;
+bool		optimizer_prefer_expanded_distinct_aggs;
 bool		optimizer_direct_dispatch;
 bool		optimizer_enable_hashjoin_redistribute_broadcast_children;
 bool		optimizer_enable_broadcast_nestloop_outer_child;
@@ -4078,6 +4080,27 @@ static struct config_bool ConfigureNamesBool[] =
                 &optimizer_prefer_multistage_agg,
                 true, NULL, NULL
         },
+
+        {
+                {"optimizer_enable_multiple_distinct_aggs", PGC_USERSET, DEVELOPER_OPTIONS,
+                        gettext_noop("Enable plans with multiple distinct aggregates in the optimizer."),
+                        NULL,
+                        GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                },
+                &optimizer_enable_multiple_distinct_aggs,
+                false, NULL, NULL
+        },
+
+        {
+                {"optimizer_prefer_expanded_distinct_aggs", PGC_USERSET, DEVELOPER_OPTIONS,
+                        gettext_noop("Prefer plans that expand multiple distinct aggregates into join of single distinct aggregate in the optimizer."),
+                        NULL,
+                        GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+                },
+                &optimizer_prefer_expanded_distinct_aggs,
+                true, NULL, NULL
+        },
+
         {
                 {"optimizer_enable_hashjoin_redistribute_broadcast_children", PGC_USERSET, DEVELOPER_OPTIONS,
                         gettext_noop("Enable hash join plans with, Redistribute outer child and Broadcast inner child, in the optimizer."),

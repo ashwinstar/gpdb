@@ -66,6 +66,7 @@ using namespace gpmd;
 extern bool	optimizer_enable_ctas;
 extern bool optimizer_dml_triggers;
 extern bool optimizer_dml_constraints;
+extern bool optimizer_enable_multiple_distinct_aggs;
 
 // OIDs of variants of LEAD window function
 const OID rgOIDLead[] =
@@ -2014,10 +2015,9 @@ CTranslatorQueryToDXL::PdxlnSimpleGroupBy
 		}
 	}
 
-	// TODO: elhela - May 30, 2013; remove the following check when MDQAs are supported
-	if (1 < ulDQAs)
+	if (1 < ulDQAs && !optimizer_enable_multiple_distinct_aggs)
 	{
-		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Multiple Distinct Qualified Aggregates"));
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("Multiple Distinct Qualified Aggregates are disabled in the optimizer"));
 	}
 
 	// initialize the array of grouping columns

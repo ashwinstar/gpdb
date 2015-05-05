@@ -322,6 +322,13 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		&optimizer_enforce_subplans,
 		false,  // m_fNegate
 		GPOS_WSZ_LIT("Enforce correlated execution in the optimizer")
+		},
+
+		{
+		EopttracePreferExpandedMDQAs,
+		&optimizer_prefer_expanded_distinct_aggs,
+		false,  // m_fNegate
+		GPOS_WSZ_LIT("Prefer plans that expand multiple distinct aggregates into join of single distinct aggregate")
 		}
 };
 
