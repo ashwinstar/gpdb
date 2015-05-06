@@ -370,5 +370,10 @@ def impl(context):
 
 @then('verify that function is backedup correctly in "{dumpfile}"')
 def impl(context, dumpfile):
-    if not filecmp.cmp(dumpfile, "gppylib/test/behave/mgmt_utils/steps/data/pg_dump_ddl.dmp") is True:
-        raise Exception("pg_dump did not backup aggregate functions correctly.") 
+    buf = """CREATE ORDERED AGGREGATE agg_array(anyelement) (
+    SFUNC = array_append,
+    STYPE = anyarray,
+    INITCOND = '{}'
+);"""
+    if not buf in open(dumpfile).read():
+        raise Exception("pg_dump did not backup aggregate functions correctly.")
