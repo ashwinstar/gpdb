@@ -1124,6 +1124,9 @@ mkpgbench:
 mkpgbouncer: 
 	@if [ ! -f $(BUILDDIR)/contrib/pgbouncer-1.5.5 ]; then tar xzf $(BUILDDIR)/contrib/pgbouncer-1.5.5.tar.gz -C $(BUILDDIR)/contrib &&  (cd $(BUILDDIR)/contrib && patch -s -p0 < pgbouncer-1.5.5.diff) ;fi
 	@if [ ! -f $(BUILDDIR)/contrib/pgbouncer-1.5.5/config.mak ]; then cd $(BUILDDIR)/contrib/pgbouncer-1.5.5 && ./configure --with-libevent=$(BLD_TOP)/ext/$(BLD_ARCH) --prefix=$(INSTLOC) ; fi
+	@if [ `uname -s` = 'Darwin' ] ; then \
+	  cd $(BUILDDIR)/contrib/pgbouncer-1.5.5 && rm -f doc/install-sh && ln -s $(BUILDDIR)/contrib/pgbouncer-1.5.5/install-sh $(BUILDDIR)/contrib/pgbouncer-1.5.5/doc/install-sh; \
+	fi
 	@cd $(BUILDDIR)/contrib/pgbouncer-1.5.5 && make && make install
 
 mkgpperfmon:
