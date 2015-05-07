@@ -57,6 +57,7 @@ static hadoop_vers_to_connector_ver hdVer_to_connVer[] =
 	{"gphd-1.1", "gphd-1.1-gnet-1.1.0.0"},
 	{"gphd-1.2", "gphd-1.2-gnet-1.1.0.0"},
 	{"gphd-2.0", "gphd-2.0.2-gnet-1.2.0.0"},
+	{"gphd-3.0", "gphd-2.0.2-gnet-1.2.0.0"},
 	{"gpmr-1.0", "gpmr-1.0-gnet-1.0.0.1"},
 	{"gpmr-1.2", "gpmr-1.2-gnet-1.0.0.1"},
 	{"cdh3u2",   "cdh3u2-gnet-1.1.0.0"},
