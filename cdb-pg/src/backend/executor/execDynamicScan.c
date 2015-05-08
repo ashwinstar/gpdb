@@ -264,6 +264,11 @@ DynamicScan_InitExpressions(ScanState *scanState, DynamicPartitionIterator *iter
 	{
 		MemoryContextReset(iterator->partitionMemoryContext);
 
+		/* We just reset the memory context, set these dangling pointers to NULL so that we don't try to pfree them later */
+		scanState->ps.ps_ProjInfo = NULL;
+		scanState->ps.qual = NULL;
+		scanState->ps.targetlist = NULL;
+
 		/*
 		 * Switch to partition memory context to prevent memory leak for
 		 * per-partition data structures.
