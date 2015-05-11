@@ -158,8 +158,9 @@ opt_write_test:
 	   chmod -R a+w /opt/releng/apache-ant )
 
 sync_tools: opt_write_test /opt/releng/apache-ant
+	which java
 	@cd releng/make/dependencies; \
-	 (umask 002; /opt/releng/apache-ant/bin/ant -DBLD_ARCH=$(BLD_ARCH) resolve);
+	 (umask 002; ANT_OPTS="-Djavax.net.ssl.trustStore=$(BLD_TOP)/releng/make/dependencies/cacerts" /opt/releng/apache-ant/bin/ant -DBLD_ARCH=$(BLD_ARCH) resolve);
 	@echo "Resolve finished";
 
 clean_tools: opt_write_test
