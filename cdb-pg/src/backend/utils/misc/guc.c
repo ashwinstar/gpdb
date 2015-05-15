@@ -626,7 +626,8 @@ int gp_cancel_query_delay_time;
 
 /* partitioning GUC */
 bool gp_partitioning_dynamic_selection_log;
-
+int gp_max_partition_level;
+ 
 /* Upgrade & maintenance GUCs */
 bool gp_upgrade_mode;
 bool gp_maintenance_mode;
@@ -4752,6 +4753,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&gp_max_plan_size,
 		0, 0, MAX_KILOBYTES, NULL, NULL
+	},
+
+	{
+		{"gp_max_partition_level", PGC_SUSET, PRESET_OPTIONS,
+		 	gettext_noop("Sets the maximum number of levels allowed when creating a partitioned table."),
+		 	gettext_noop("Use 0 for no limit."),
+		 	GUC_GPDB_ADDOPT | GUC_SUPERUSER_ONLY | GUC_NOT_IN_SAMPLE
+		},
+		&gp_max_partition_level,
+		0, 0, INT_MAX, NULL, NULL
 	},
 
 	{

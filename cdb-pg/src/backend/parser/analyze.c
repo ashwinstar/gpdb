@@ -8033,6 +8033,13 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	partDepth = pBy->partDepth;
 	partDepth++;					/* increment depth for subpartition */
 
+	if (0 < gp_max_partition_level && partDepth > gp_max_partition_level)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("Exceeded the maximum allowed level of partitioning of %d", gp_max_partition_level)));
+	}
+
 	snprintf(depthstr, sizeof(depthstr), "%d", partDepth);
 
 	if (pBy->partDepth != 0)
