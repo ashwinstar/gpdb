@@ -7,6 +7,7 @@ import os
 import sys
 import signal
 import shutil
+import socket
 
 # import GPDB modules
 try:
@@ -18,7 +19,7 @@ try:
     from gppylib.db import catalog
     from gppylib.userinput import *
     from gppylib.gp_dbid import GpDbidFile
-    from gppylib.operations.initstandby import update_pg_hba_conf_on_segments
+    from gppylib.operations.initstandby import cleanup_pg_hba_backup_on_segment, update_pg_hba_conf_on_segments, restore_pg_hba_on_segment
     from gppylib.operations.package import SyncPackages
     from gppylib.operations.filespace import PG_SYSTEM_FILESPACE, GP_TRANSACTION_FILES_FILESPACE, GP_TEMPORARY_FILES_FILESPACE, GetFilespaceEntries, GetFilespaceEntriesDict, MoveFilespaceError
 except ImportError, e:
@@ -30,9 +31,10 @@ EXECNAME = os.path.split(__file__)[-1]
 # initstandby state constants for rollback
 INIT_STANDBY_STATE_NOT_STARTED=0
 INIT_STANDBY_STATE_UPDATE_CATALOG=1
-INIT_STANDBY_STATE_COPY_FILES=2
-INIT_STANDBY_STATE_UPDATE_GPDBID=3
-INIT_STANDBY_STATE_DONE=4
+INIT_STANDBY_STATE_UPDATE_PG_HBA=2
+INIT_STANDBY_STATE_COPY_FILES=3
+INIT_STANDBY_STATE_UPDATE_GPDBID=4
+INIT_STANDBY_STATE_STARTING_STANDBY=5
 
 g_init_standby_state=INIT_STANDBY_STATE_NOT_STARTED
 
@@ -300,20 +302,7 @@ def delete_standby(options):
                                       GP_TEMPORARY_FILES_FILESPACE)
     remove_standby_from_flat_file(flat_file_location, GP_TEMPORARY_FILES_FILESPACE, array.standbyMaster)
 
-    # check if standby master is running
-    try:
-        standby_pid = gp.getPostmasterPID(array.standbyMaster.getSegmentHostName(),
-                                          array.standbyMaster.getSegmentDataDirectory())
-        if standby_pid > 0:
-            # stop it
-            logger.info('Stopping standby master on %s' %
-                        array.standbyMaster.getSegmentHostName())
-            gp.SegmentStop.remote('stop standby',
-                                  array.standbyMaster.getSegmentHostName(),
-                                  array.standbyMaster.getSegmentDataDirectory())
-    except Exception, ex:
-        logger.error('Failed to stop postmaster process on standby master.')
-        raise GpInitStandbyException(ex)
+    stop_standby(array)
  
     # delete directory
     remove_standby_filespace_dirs(array)
@@ -440,24 +429,31 @@ def create_standby(options):
         signal.signal(signal.SIGINT,signal.SIG_IGN)
 
         # update the catalog if needed
-        update_pg_hba_conf(options, array)
-        update_pg_hba_conf_on_segments(array, options.standby_host)
         array = add_standby_to_catalog(options,
                                        standby_filespace_map)
-            
+
+        logger.info('Updating pg_hba.conf file...')
+        update_pg_hba_conf(options, array)
+        logger.debug('Updating pg_hba.conf file on segments...')
+        update_pg_hba_conf_on_segments(array, options.standby_host)
+        logger.info('pg_hba.conf files updated successfully.')
+
         copy_master_filespaces_to_standby(options, array,
                                           master_filespace_map,
                                           standby_filespace_map)
         update_postgresql_conf(options, array)
         update_gpdbid_file(options, array)
+
+        logger.info('Updating filespace flat files...')
         update_flat_file(array, standby_filespace_map, GP_TRANSACTION_FILES_FILESPACE)
         update_flat_file(array, standby_filespace_map, GP_TEMPORARY_FILES_FILESPACE)
-        cleanup_pg_hba_conf_backup(array)
+        logger.info('Filespace flat file updated successfully.')
 
         try:
             dburl = getDbUrlForInitStandby()
             array = gparray.GpArray.initFromCatalog(dburl, utility=True)
             standby = array.standbyMaster
+            g_init_standby_state = INIT_STANDBY_STATE_STARTING_STANDBY
             gp.start_standbymaster(standby.hostname,
                                    standby.datadir,
                                    standby.port,
@@ -466,30 +462,83 @@ def create_standby(options):
         except Exception, ex:
             raise('failed to start standby')
 
-        # Reenable Ctrl-C
-        signal.signal(signal.SIGINT,signal.default_int_handler)
     except Exception, ex:
         # Something went wrong.  Based on the current state, we can rollback
         # the operation.
-        logger.info('Trying to rollback changes that have been made...')
-        if g_init_standby_state == INIT_STANDBY_STATE_NOT_STARTED:
-            # nothing to rollback
-            pass
-        elif g_init_standby_state == INIT_STANDBY_STATE_UPDATE_CATALOG:
+        logger.error('Failed to create standby')
+        if g_init_standby_state != INIT_STANDBY_STATE_NOT_STARTED:
+            logger.warn('Trying to rollback changes that have been made...')
+
+        if g_init_standby_state == INIT_STANDBY_STATE_UPDATE_CATALOG:
+
+            logger.info('Rolling back catalog change...')
             undo_catalog_update(options, array)
-        elif g_init_standby_state == INIT_STANDBY_STATE_COPY_FILES or \
-             g_init_standby_state == INIT_STANDBY_STATE_UPDATE_GPDBID:
+
+        elif g_init_standby_state == INIT_STANDBY_STATE_UPDATE_PG_HBA:
+
+            logger.info('Rolling back catalog change...')
+            undo_catalog_update(options, array)
+
+            logger.info('Restoring pg_hba.conf file...')
+            # undo pg_hba.conf change on segment first
+            restore_pg_hba_on_segment(array)
+            # undo pg_hba.conf on master lastly
             undo_update_pg_hba_conf(array)
+
+        elif (g_init_standby_state == INIT_STANDBY_STATE_COPY_FILES or
+            g_init_standby_state == INIT_STANDBY_STATE_UPDATE_GPDBID):
+
+            logger.info('Rolling back catalog change...')
             undo_catalog_update(options, array)
-            undo_file_copy(options, array)
+
+            logger.info('Restoring pg_hba.conf file...')
+            restore_pg_hba_on_segment(array)
+            undo_update_pg_hba_conf(array)
+
+            collect_standby_filespace_dir(array)
+
+        elif g_init_standby_state == INIT_STANDBY_STATE_STARTING_STANDBY:
+
+            # make a clean stop on standby, don't even wait for standby postmaster dies
+            stop_standby(array)
+
+            logger.info('Rolling back catalog change...')
+            undo_catalog_update(options, array)
+
+            logger.info('Restoring pg_hba.conf file...')
+            restore_pg_hba_on_segment(array)
+            undo_update_pg_hba_conf(array)
+
+            collect_standby_filespace_dir(array)
+
         raise GpInitStandbyException(ex)
+
+    finally:
+        if (g_init_standby_state == INIT_STANDBY_STATE_UPDATE_PG_HBA or
+            g_init_standby_state == INIT_STANDBY_STATE_COPY_FILES or
+            g_init_standby_state == INIT_STANDBY_STATE_UPDATE_GPDBID or
+            g_init_standby_state == INIT_STANDBY_STATE_STARTING_STANDBY):
+
+            logger.info('Cleaning up pg_hba.conf backup files...')
+            # should cleanup on segments first
+            cleanup_pg_hba_backup_on_segment(array)
+            cleanup_pg_hba_conf_backup(array)
+            logger.info('Backup files of pg_hba.conf cleaned up successfully.')
+
+        # Reenable Ctrl-C
+        signal.signal(signal.SIGINT,signal.default_int_handler)
             
 #-------------------------------------------------------------------------
 def update_pg_hba_conf(options, array):
     """Updates the pg_hba.conf file to include the ip addresses of the
     standby master."""
     
-    logger.info('Updating pg_hba.conf file...')
+    global g_init_standby_state
+
+    logger.debug('Updating pg_hba.conf file on master...')
+
+    g_init_standby_state=INIT_STANDBY_STATE_UPDATE_PG_HBA
+
     try:
         master_data_dir = array.master.getSegmentDataDirectory()
         pg_hba_path = os.path.join(master_data_dir, 'pg_hba.conf')
@@ -553,7 +602,7 @@ def update_pg_hba_conf(options, array):
 def cleanup_pg_hba_conf_backup(array):
     """Removes the pg_hba.conf backup."""
     
-    logger.info('Removing pg_hba.conf backup...')
+    logger.debug('Cleaning up pg_hba.conf backup on master and standby')
     master_data_dir = array.master.getSegmentDataDirectory()
     standby_data_dir = array.standbyMaster.getSegmentDataDirectory()
     
@@ -921,7 +970,7 @@ def update_flat_file(array, standby_filespace_map, flat_file):
         copy_master_filespaces method.
     """
 
-    logger.info('Updating filespace flat files')    
+    logger.debug('Updating filespace flat files %s' % flat_file)
 
     standby_filespace_dict = {}
     for i in standby_filespace_map:
@@ -948,6 +997,66 @@ def update_flat_file(array, standby_filespace_map, flat_file):
         shutil.move(temp_flat_file, flat_file_location)
     
 #-------------------------------------------------------------------------
+
+def stop_standby(array):
+    #stop standby master if it is running
+    try:
+        standby_pid = gp.getPostmasterPID(array.standbyMaster.getSegmentHostName(),
+                                          array.standbyMaster.getSegmentDataDirectory())
+        if standby_pid > 0:
+            # stop it
+            logger.info('Stopping standby master on %s' %
+                        array.standbyMaster.getSegmentHostName())
+            gp.SegmentStop.remote('stop standby',
+                                  array.standbyMaster.getSegmentHostName(),
+                                  array.standbyMaster.getSegmentDataDirectory())
+    except Exception, ex:
+        raise Exception('Failed to stop postmaster process on standby master, %s' % ex)
+
+#-------------------------------------------------------------------------
+def collect_standby_filespace_dir(array):
+    """
+    Save all filespace directory of standby into a file and send to standby
+    for further investigation and manual cleanup"""
+
+    dirty_paths = list()
+    fs_dirs = array.standbyMaster.getSegmentFilespaces().values()
+    for fs_dir in fs_dirs:
+        if unix.FileDirExists.remote(name='check if dirty path left over',
+                                remote_host=array.standbyMaster.getSegmentHostName(),
+                                directory=fs_dir):
+            dirty_paths.append(fs_dir)
+
+    if len(dirty_paths) == 0:
+        return
+
+    save_dir = '/tmp'
+    fs_file = os.path.join(save_dir, 'standby_filespaces_only.txt')
+
+    logger.info('Saving standby filespace locations')
+
+    with open(fs_file, 'w') as fw:
+        for dirty_path in dirty_paths:
+                fw.write(dirty_path+'\n')
+
+    cpCmd = unix.Scp('scp file to standby host',
+                     fs_file,
+                     fs_file,
+                     dstHost=array.standbyMaster.getSegmentHostName())
+    cpCmd.run(validateAfter=True)
+
+    if (array.standbyMaster.getSegmentHostName() not in
+       [array.master.getSegmentHostName(), 'localhost', socket.gethostname()]):
+        try:
+            os.remove(fs_file)
+        except:
+            pass
+
+    logger.info('List of standby filespace directories saved to %s on standby host' %
+                fs_file)
+    logger.warn('Please make cleanup for standby host only!')
+
+#-------------------------------------------------------------------------
 # Rollback functions
 #-------------------------------------------------------------------------
 
@@ -961,24 +1070,11 @@ def undo_catalog_update(options, array):
         # ignore this exception and continue
         pass
         
-
-#-------------------------------------------------------------------------
-def undo_file_copy(options, array):
-    """Undoes the filespace copy."""
-    
-    try:
-        remove_standby_filespace_dirs(array)
-    except Exception, ex:
-        # Just log a warning here.
-        logger.warn('There was an error trying to cleanup the filespace')
-        logger.warn('directories on the standby host %s' % options.standby_host)
-
-
 #-------------------------------------------------------------------------
 def undo_update_pg_hba_conf(array):
     """Undoes the pg_hba.conf update."""
     
-    logger.info('Backing up pg_hba.conf file...')
+    logger.debug('Restoring pg_hba.conf file on master...')
     master_data_dir = array.master.getSegmentDataDirectory()
     os.system('mv %s/%s %s/pg_hba.conf' % (master_data_dir, PG_HBA_BACKUP, master_data_dir))
     # make it effective
