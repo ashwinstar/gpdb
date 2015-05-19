@@ -629,9 +629,12 @@ except OSError, ex:
                 
                 
 class DirectoryIsEmpty(Command):
-    def __init(self,name,directory,ctxt=LOCAL,remoteHost=None):
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory
-        cmdStr="""python -c "import os; for root, dirs, files in os.walk('%s'); print (len(dirs) != 0 or len(files) != 0) """ % self.directory
+        cmdStr="""python -c "import os;
+for root, dirs, files in os.walk('%s'):
+    print (len(dirs) != 0 or len(files) != 0)
+" """ % self.directory
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
