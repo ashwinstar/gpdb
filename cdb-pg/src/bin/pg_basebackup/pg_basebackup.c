@@ -1632,7 +1632,7 @@ main(int argc, char **argv)
 		{"status-interval", required_argument, NULL, 's'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"progress", no_argument, NULL, 'P'},
-		{"exclude", required_argument, 'E'},
+		{"exclude", required_argument, NULL, 'E'},
 		{NULL, 0, NULL, 0}
 	};
 	int			c;
