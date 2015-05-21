@@ -2290,6 +2290,7 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 			CMDIdGPDB *pmdidAttType = New(pmp) CMDIdGPDB(oidAttType);
 			IMDType *pmdtype = Pmdtype(pmp, pmdidAttType);
 			dWidth = CStatisticsUtils::DDefaultColumnWidth(pmdtype);
+			pmdtype->Release();
 			pmdidAttType->Release();
 		}
 
@@ -2480,31 +2481,37 @@ CTranslatorRelcacheToDXL::PdxlcolstatsSystemColumn
        CDouble dNullFrequency(0.0);
        CDouble dWidth(pmdtype->UlLength());
        CDouble dDistinctRemain(0.0);
-       CDouble dFreqRemain(1.0);
+       CDouble dFreqRemain(0.0);
 
-       switch(attrnum)
-       	{
-       		case GpSegmentIdAttributeNumber: // gp_segment_id
-       			{
-       				fColStatsMissing = false;
-       				dDistinctRemain = CDouble(gpdb::UlSegmentCountGP());
-       				break;
-       			}
-       		case TableOidAttributeNumber: // tableoid
-       			{
-       				fColStatsMissing = false;
-       				dDistinctRemain = CDouble(UlTableCount(oidRelation));
-       				break;
-       			}
-       		case SelfItemPointerAttributeNumber: // ctid
-       			{
-       				fColStatsMissing = false;
-       				dDistinctRemain = dRows;
-       				break;
-       			}
-       		default:
-       			break;
-       	}
+       if (CStatistics::DMinRows <= dRows)
+	   {
+		   switch(attrnum)
+			{
+				case GpSegmentIdAttributeNumber: // gp_segment_id
+					{
+						fColStatsMissing = false;
+						dFreqRemain = CDouble(1.0);
+						dDistinctRemain = CDouble(gpdb::UlSegmentCountGP());
+						break;
+					}
+				case TableOidAttributeNumber: // tableoid
+					{
+						fColStatsMissing = false;
+						dFreqRemain = CDouble(1.0);
+						dDistinctRemain = CDouble(UlTableCount(oidRelation));
+						break;
+					}
+				case SelfItemPointerAttributeNumber: // ctid
+					{
+						fColStatsMissing = false;
+						dFreqRemain = CDouble(1.0);
+						dDistinctRemain = dRows;
+						break;
+					}
+				default:
+					break;
+			}
+        }
 
        // cleanup
        pmdidAttType->Release();
