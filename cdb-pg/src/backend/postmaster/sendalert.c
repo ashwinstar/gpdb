@@ -600,6 +600,18 @@ send_alert_via_email(const GpErrorData *errorData,
 	else
 		snprintf(smtp_url, sizeof(smtp_url), "smtp://localhost");
 
+	/* Need a modifiable copy of To list */
+	rawstring = pstrdup(gp_email_to);
+
+	/* Parse string into list of identifiers */
+	if (!SplitMailString(rawstring, ';', &elemlist))
+	{
+		/* syntax error in list */
+		ereport(LOG,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid list syntax for \"gp_email_to\"")));
+	}
+
 	/*
 	 * Ok, let's initialize libcurl.
 	 */
@@ -622,18 +634,6 @@ send_alert_via_email(const GpErrorData *errorData,
 			 * If that ever gets fixed in libcurl, we should build a single
 			 * list of recipients here and only send the mail once.
 			 */
-
-			/* Need a modifiable copy of To list */
-			rawstring = pstrdup(gp_email_to);
-
-			/* Parse string into list of identifiers */
-			if (!SplitMailString(rawstring, ';', &elemlist))
-			{
-				/* syntax error in list */
-				ereport(LOG,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						  errmsg("invalid list syntax for \"gp_email_to\"")));
-			}
 			num_recipients = 0;
 			num_sent_successfully = 0;
 			foreach(l, elemlist)

@@ -174,17 +174,17 @@ DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) $(DEBUG_CFLAGS_OPT) $(TRACE_G
 DEFPORT=5432
 win32_CONFIGFLAGS=--with-gssapi
 rhel4_x86_64_CONFIGFLAGS=--with-gssapi
-rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email --enable-snmp --enable-ddboost --with-gssapi --enable-netbackup
-rhel5_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enable-ddboost --with-gssapi --enable-netbackup
-rhel6_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enable-ddboost --with-gssapi --enable-netbackup
-sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
-sol_x86_64_CONFIGFLAGS=--enable-email
-suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
-suse11_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
-linux_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
-osx104_x86_CONFIGFLAGS=--enable-email
-osx105_x86_CONFIGFLAGS=--enable-email --enable-snmp	
-osx106_x86_CONFIGFLAGS=--enable-email --enable-snmp
+rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-snmp --enable-ddboost --with-gssapi --enable-netbackup
+rhel5_x86_64_CONFIGFLAGS=--enable-snmp --enable-connectemc --enable-ddboost --with-gssapi --enable-netbackup
+rhel6_x86_64_CONFIGFLAGS=--enable-snmp --enable-connectemc --enable-ddboost --with-gssapi --enable-netbackup
+sol10_x86_64_CONFIGFLAGS=--enable-snmp
+sol_x86_64_CONFIGFLAGS=
+suse10_x86_64_CONFIGFLAGS=--enable-snmp --enable-ddboost
+suse11_x86_64_CONFIGFLAGS=--enable-snmp --enable-ddboost
+linux_x86_64_CONFIGFLAGS=--enable-snmp
+osx104_x86_CONFIGFLAGS=
+osx105_x86_CONFIGFLAGS=--enable-snmp	
+osx106_x86_CONFIGFLAGS=--enable-snmp
 
 BLD_CONFIGFLAGS=$($(BLD_ARCH)_CONFIGFLAGS)
 
