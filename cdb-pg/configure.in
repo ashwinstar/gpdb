@@ -520,15 +520,6 @@ AC_MSG_RESULT([checking whether to build with gphdfs...$enable_gphdfs])
 AC_SUBST(enable_gphdfs)
 
 #
-# --enable-email enables email alerts
-#
-PGAC_ARG_BOOL(enable, email, no,  [  --enable-email        enable email alerts],
-              [AC_DEFINE([USE_EMAIL], 1,
-                         [Define to 1 to build with email alert capabilities. (--enable-email)])])
-AC_MSG_RESULT([checking whether to build with email...$enable_email])
-AC_SUBST(enable_email)
-
-#
 # --enable-connectemc enables connect emc support
 #
 PGAC_ARG_BOOL(enable, connectemc, no,  [  --enable-connectemc     enable connect emc support],
@@ -1004,14 +995,6 @@ if test "$enable_snmp" = yes ; then
 	AC_CHECK_LIB(netsnmp,  netsnmp_ds_set_string,  [], [AC_MSG_ERROR([library 'netsnmp' is required for snmp support])])
 fi 
 
-# Check for libesmtp
-if test "$enable_email" = yes ; then
-	if test "$with_openssl" != yes ; then
-		AC_MSG_ERROR([--enable-email requires --with-openssl])
-	fi
-	AC_CHECK_LIB(esmtp,  smtp_start_session,  [], [AC_MSG_ERROR([library 'libesmtp' is required for email alert support])])
-fi
-
 # RSA BSAFE crypto-C ME library. We don't want this added to $LIBS.
 pgac_save_LIBS="$LIBS"
 AC_CHECK_LIB(ccme_core, R_LIB_CTX_new)
@@ -1151,14 +1134,6 @@ if test "$enable_snmp" = yes; then
 					[AC_MSG_ERROR([header file <<net-snmp/net-snmp-config.h> is required for snmp support])])
 fi
 
-
-# email
-if test "$enable_email" = yes; then
-	AC_CHECK_HEADERS(libesmtp.h, [],
-					[AC_MSG_ERROR([header file <libesnmp.h> is required for email alert support])])
-	AC_CHECK_HEADERS(auth-client.h, [],
-					[AC_MSG_ERROR([header file <auth-client.h> is required for email alert support])])
-fi
 
 # realtime library header
 if test "$with_rt" = yes; then

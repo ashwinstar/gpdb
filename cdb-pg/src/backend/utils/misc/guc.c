@@ -496,7 +496,6 @@ int 		defunct_int = 0;
 bool 		defunct_bool = 0;
 double 		defunct_double = 0;
 
-#if USE_EMAIL
 char	   *gp_email_smtp_server;
 char	   *gp_email_smtp_userid;
 char	   *gp_email_smtp_password;
@@ -505,7 +504,6 @@ char	   *gp_email_to;
 int        gp_email_connect_timeout;
 int        gp_email_connect_failures;
 int        gp_email_connect_avoid_duration;
-#endif
 
 #if USE_SNMP
 char	   *gp_snmp_community;
@@ -6250,7 +6248,6 @@ static struct config_int ConfigureNamesInt[] =
             20, 1, 200, NULL, NULL
         },
 
-#if USE_EMAIL
 	{
 		{"gp_email_connect_timeout", PGC_SUSET, LOGGING,
 			gettext_noop("Sets the amount of time (in secs) after which SMTP sockets would timeout"),
@@ -6278,7 +6275,6 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_email_connect_avoid_duration,
 		7200, 300, 86400, NULL, NULL
 	},
-#endif
 
 	{
 		{"optimizer_plan_id", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -7583,8 +7579,6 @@ static struct config_string ConfigureNamesString[] =
 		"MEDIUM", gpvars_assign_gp_resqueue_priority_default_value, NULL
 	},
 
-
-#if USE_EMAIL
 	{
 		{"gp_email_smtp_server", PGC_SUSET, LOGGING,
 			gettext_noop("Sets the SMTP server and port used to send e-mail alerts."),
@@ -7630,7 +7624,6 @@ static struct config_string ConfigureNamesString[] =
 		&gp_email_to,
 		"", NULL, NULL
 	},
-#endif
 
 #if USE_SNMP
 	{

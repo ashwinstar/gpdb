@@ -1363,7 +1363,6 @@ syslogger_write_errordata(PipeProtoHeader *chunkHeader, GpErrorData *errorData, 
 	/* EOL */
 	write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
 	
-#if USE_EMAIL
 	/*
 	 * Send alerts when needed. The alerts are sent only by the master.
 	 * If the alert is failed for whatever reason, log a message and continue.
@@ -1381,7 +1380,6 @@ syslogger_write_errordata(PipeProtoHeader *chunkHeader, GpErrorData *errorData, 
 		}
 		PG_END_TRY();
 	}
-#endif	
 }
 
 static void set_write_to_alert_log(const char *severity)
@@ -1548,11 +1546,9 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
 
         unset_write_to_alert_log();
 
-#if USE_EMAIL
         if (pfixed->send_alert == 't')
         	if (Gp_entry_postmaster && Gp_role == GP_ROLE_DISPATCH) /* Only the master sends alerts */
         		send_alert_from_chunks(chunk, &saved_chunks[0]);
-#endif
     }
 
     /* Free the chunks */

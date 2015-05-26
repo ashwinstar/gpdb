@@ -19,7 +19,7 @@
 #define _POSIX_C_SOURCE 200112L
 #endif
 #include "postgres.h"
-#include "pg_config.h"  /* Adding this helps eclipse see that USE_EMAIL and USE_SNMP are set */
+#include "pg_config.h"  /* Adding this helps eclipse see that USE_SNMP is set */
 
 #include <fcntl.h>
 #include <signal.h>
@@ -46,18 +46,12 @@
 #include "utils/guc.h"
 #include "utils/elog.h"
 #include "utils/builtins.h"
+#include "utils/memutils.h"
 #include "sendalert_common.h"
 
 extern int	PostPortNumber;
 
-#if USE_EMAIL
-#if USE_SSL
-#include <openssl/ssl.h>
-#endif
-/* SASL (RFC 2222) client library API */
-#include <auth-client.h>
-#include <libesmtp.h>
-#endif
+#include <curl/curl.h>
 
 #if USE_SNMP
 #include <net-snmp/net-snmp-config.h>
@@ -88,28 +82,27 @@ oid				objid_gpdbAlertSqlStmt[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 5 };
 oid				objid_gpdbAlertSystemName[] = { 1, 3, 6, 1, 4, 1, 31327, 1, 6 };
 #endif
 
-#if USE_EMAIL
+/* state information for messagebody_cb function */
+typedef struct
+{
+	StringInfoData body;
+	size_t consumed;
+} upload_ctx;
 
-static const char * messagebody_cb(void **buf, int *len, void *arg);
-static void print_recipient_status(smtp_recipient_t recipient,
-		const char *mailbox, void *arg  __attribute__((unused)));
-static int authinteract(auth_client_request_t request, char **result,
-		int fields, void *arg);
-static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)), void *arg  __attribute__((unused)));
-static int handle_invalid_peer_certificate(long vfy_result);
-static void event_cb(smtp_session_t session, int event_no, void *arg, ...);
-static bool SplitMailString(char *rawstring, char delimiter, List **namelist);
-static void monitor_cb (const char *buf, int buflen, int writing, void *arg);
+static size_t messagebody_cb(void *ptr, size_t size, size_t nmemb, void *userp);
+static void build_messagebody(StringInfo buf, const GpErrorData *errorData,
+				  const char *subject, const char *email_priority);
 
-static int send_alert_via_email(const GpErrorData * errorData, const char * subject, const char * email_priority);
-#endif
+static void send_alert_via_email(const GpErrorData * errorData,
+					 const char * subject, const char * email_priority);
 
 #if USE_SNMP
 static int send_snmp_inform_or_trap();
 extern pg_time_t	MyStartTime;
 #endif
 
-
+static char *extract_email_addr(char *str);
+static bool SplitMailString(char *rawstring, char delimiter, List **namelist);
 
 int send_alert_from_chunks(const PipeProtoChunk *chunk,
 		const PipeProtoChunk * saved_chunks_in)
@@ -534,34 +527,35 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData, const char * 
 }
 #endif
 
-#if USE_EMAIL
-static int send_alert_via_email(const GpErrorData * errorData,
-		const char * subject, const char * email_priority)
+static void
+send_alert_via_email(const GpErrorData *errorData,
+					 const char *subject, const char *email_priority)
 {
-	smtp_session_t session;
-	smtp_message_t message;
-	smtp_recipient_t recipient = NULL;
-	auth_context_t authctx;
-	const smtp_status_t *status;
+	CURL	   *curl;
+	upload_ctx	upload_ctx;
+	char	   *rawstring;
+	List	   *elemlist = NIL;
+	ListCell   *l;
+	static int	num_connect_failures = 0;
+	static time_t last_connect_failure_ts = 0;
+	char		smtp_url[200];
+	int			num_recipients;
+	int			num_sent_successfully;
+	char	   *from = NULL;
 
-	enum notify_flags notify = Notify_FAILURE | Notify_DELAY;
-	char *rawstring = NULL;
-	List *elemlist = NIL;
-	ListCell *l = NULL;
-	int success = 0;
-        static int num_connect_failures = 0;
-        static time_t last_connect_failure_ts = 0;
-
-
-        if (gp_email_connect_failures && num_connect_failures >= gp_email_connect_failures) {
-            if (time(0) - last_connect_failure_ts > gp_email_connect_avoid_duration) {
-                num_connect_failures = 0;
-                elog(LOG, "Retrying emails now...");
-            } else {
-                elog(LOG, "Not attempting emails as of now");
-                return -1;
-            }
-        }
+	if (gp_email_connect_failures && num_connect_failures >= gp_email_connect_failures)
+	{
+		if (time(0) - last_connect_failure_ts > gp_email_connect_avoid_duration)
+		{
+			num_connect_failures = 0;
+			elog(LOG, "Retrying emails now...");
+		}
+		else
+		{
+			elog(LOG, "Not attempting emails as of now");
+			return;
+		}
+	}
 
 	if (gp_email_to == NULL || strlen(gp_email_to) == 0)
 	{
@@ -569,13 +563,22 @@ static int send_alert_via_email(const GpErrorData * errorData,
 
 		ereport(firsttime ? LOG : DEBUG1,(errmsg("e-mail alerts are disabled"),errOmitLocation(true)));
 		firsttime = false;
-		return -1;
+		return;
 	}
 
+    /*
+     * Per curl docs/example:
+	 *
+     * Note that this option isn't strictly required, omitting it will result
+     * in libcurl sending the MAIL FROM command with empty sender data. All
+     * autoresponses should have an empty reverse-path, and should be directed
+     * to the address in the reverse-path which triggered them. Otherwise, they
+     * could cause an endless loop. See RFC 5321 Section 4.5.5 for more details.
+     */
 	if (strlen(gp_email_from) == 0)
 	{
-		elog(LOG,"e-mail alerts are not properly configured:  No 'from:' address configured");
-		return -1;
+		elog(LOG, "e-mail alerts are not properly configured:  No 'from:' address configured");
+		return;
 	}
 
 	if (strchr(gp_email_to, ';') == NULL && strchr(gp_email_to, ',') != NULL)
@@ -583,290 +586,192 @@ static int send_alert_via_email(const GpErrorData * errorData,
 		// email addrs should be separated by ';', but because we used to require ',',
 		// let's accept that if it looks OK.
 		while (strchr(gp_email_to,',') != NULL)
-		*strchr(gp_email_to,',') = ';';
+			*strchr(gp_email_to,',') = ';';
 	}
 
-	// Ok, send the alert here.
+	from = extract_email_addr(gp_email_from);
 
-	static bool auth_client_init_called = false;
-	if (!auth_client_init_called)
-	{
-		auth_client_init(); // Call this only once!
-		auth_client_init_called = true;
-	}
-	session = smtp_create_session();
-	if (session == NULL)
-	{
-		elog(LOG,"Unable to send e-mail: smtp_create_session() failed %d",smtp_errno());
-		return -1;
-	}
+	/* Build the message headers + body */
+	initStringInfo(&upload_ctx.body);
+	build_messagebody(&upload_ctx.body, errorData, subject, email_priority);
 
-	if (log_min_messages <= DEBUG1)
-	smtp_set_monitorcb (session, monitor_cb, NULL, 1);
-
-	message = smtp_add_message(session);
-	if (message == NULL)
-	elog(LOG,"smtp_add_message() failed");
-
-	//smtp_message_reset_status(message);
-
-#if USE_SSL
-	if (!smtp_starttls_enable(session, Starttls_ENABLED))
-		elog(LOG,"smtp_starttls_enable() failed");
-#endif
-
-	/*
-	 * Set the host running the SMTP server.  LibESMTP has a default port
-	 * number of 587, however this is not widely deployed so the port
-	 * is specified as 25 along with the default MTA host.
-	 */
-	if (!smtp_set_server(session,
-					gp_email_smtp_server != NULL && strlen(gp_email_smtp_server) > 0 ? gp_email_smtp_server : "localhost:25"))
-	{
-		elog(LOG,"Unable to send e-mail: smtp_set_server failed %d",smtp_errno());
-		smtp_destroy_session(session);
-		return -1;
-	}
-
-	smtp_set_eventcb(session, event_cb, NULL);
-
-	/*
-	 * Do what's needed at application level to use authentication.
-	 */
-	authctx = auth_create_context();
-	if (authctx == NULL)
-	elog(LOG,"auth_create_context() failed %d",smtp_errno());
-
-	if (!auth_set_mechanism_flags(authctx, AUTH_PLUGIN_PLAIN | AUTH_PLUGIN_ANONYMOUS, 0))
-	{
-		elog(LOG,"Can't auth_set_mechanism_flags");
-	}
-
-	auth_set_interact_cb(authctx, authinteract, NULL);
-
-	/*
-	 * From what I can tell, we aren't supposed to call auth_set_external_id() directly.
-	 * Instead, it gets called automatically based on the information in the client certificate,
-	 * which is usually the e-mail address.
-	 * Perhaps this might be needed for special circumstances?
-	 */
-	//if (gp_email_smtp_userid != NULL && gp_email_smtp_userid[0] != '\0')
-	//	auth_set_external_id(authctx, gp_email_smtp_userid);
-
-	if (!smtp_auth_set_context(session, authctx))
-	{
-		elog(LOG,"Can't smtp_auth_set_context");
-	}
-
-	/*
-	 * Use our callback for X.509 certificate passwords.  If STARTTLS is
-	 * not in use or disabled in configure, the following is harmless.
-	 */
-	smtp_starttls_set_password_cb(tlsinteract, NULL);
-
-	/*
-	 * Set the reverse path for the mail envelope.  (NULL is ok)
-	 */
-	if (strchr(gp_email_from,'<') != NULL)
-	{
-		/*
-		 * Pull out just the e-mail address
-		 */
-		char * from = pstrdup(strchr(gp_email_from,'<')+1);
-		if (strchr(from,'>') != NULL)
-		*strchr(from,'>') = '\0';
-		if (!smtp_set_reverse_path(message, from))
-		elog(LOG,"smtp_set_reverse_path failed %d",smtp_errno());
-	}
+	if (gp_email_smtp_server != NULL && strlen(gp_email_smtp_server) > 0)
+		snprintf(smtp_url, sizeof(smtp_url), "smtp://%s", gp_email_smtp_server);
 	else
-	if (!smtp_set_reverse_path(message, gp_email_from))
-	elog(LOG,"smtp_set_reverse_path failed %d",smtp_errno());
+		snprintf(smtp_url, sizeof(smtp_url), "smtp://localhost");
 
-	smtp_set_header(message, "Subject", subject);
-	smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1);
-	smtp_set_header(message, "Message-Id", NULL);
-
-	if (email_priority[0] != '\0' && email_priority[0] != '3') // priority not the default?
-	smtp_set_header(message, "X-Priority", email_priority); // set a priority.  1 == highest priority, 5 lowest
-
-
-	smtp_set_messagecb(message, messagebody_cb, (void *) errorData);
-
-	/* Need a modifiable copy of To list */
-	rawstring = pstrdup(gp_email_to);
-
-	/* Parse string into list of identifiers */
-	if (!SplitMailString(rawstring, ';', &elemlist))
-	{
-		/* syntax error in list */
-		ereport(LOG,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("invalid list syntax for \"gp_email_to\"")));
-	}
-
-#if 0
 	/*
-	 * We want to set a "To:" header.
-	 *
-	 * Some versions of libesmtp have a bug that only allows this to work for a single
-	 * e-mail recipient.  Because of that, I've changed the code to set the "To:" header
-	 * in the message body callback, but I'm not sure that is as good as doing this, since I
-	 * might not have it formatted the best way.
-	 *
+	 * Ok, let's initialize libcurl.
 	 */
-	foreach(l, elemlist)
+	curl = curl_easy_init();
+	if (curl)
 	{
-		char *cur_gp_email_addr = (char *) lfirst(l);
-
-		char *free_form_text = NULL;
-		char *email_addr = cur_gp_email_addr;
-
-		/*
-		 * RFC 2822 doesn't require recipient headers but a To: header would
-		 * be nice to have if not present.
-		 *
-		 * First string is free-form text which is the real name of the person (not really used)
-		 * The second string is the e-mail address.
-		 */
-		if (strchr(cur_gp_email_addr,'<') != NULL)
+		PG_TRY();
 		{
-			free_form_text = pstrdup(cur_gp_email_addr);
-			*strchr(free_form_text,'<') = '\0';
-			email_addr = pstrdup(strchr(cur_gp_email_addr,'<')+1);
-			if (strchr(email_addr,'>') != NULL)
-			*strchr(email_addr,'>') = '\0';
-		}
+			/*
+			 * Loop around the list of recipients, and send the same message
+			 * to each one. We send all the messages using the same
+			 * easy-handle; that allows curl to reuse the same connection for
+			 * each sent message.
+			 *
+			 * XXX: libcurl supports sending to a list of recipients, but if
+			 * the delivery to any one of them fails, it bails out without
+			 * sending to any of the recipients. See curl known bug #70,
+			 * http://curl.haxx.se/bug/view.cgi?id=1116
+			 *
+			 * If that ever gets fixed in libcurl, we should build a single
+			 * list of recipients here and only send the mail once.
+			 */
 
-		if (!smtp_set_header(message, "To", free_form_text, email_addr));
-		{
-			char buf[128];
+			/* Need a modifiable copy of To list */
+			rawstring = pstrdup(gp_email_to);
 
-			elog(LOG, "smtp_set_header failed:  %d  %s  for e-mail %s", smtp_errno(), smtp_strerror(smtp_errno(),
-							buf, sizeof buf), cur_gp_email_addr);
-		}
-	}
-#endif
+			/* Parse string into list of identifiers */
+			if (!SplitMailString(rawstring, ';', &elemlist))
+			{
+				/* syntax error in list */
+				ereport(LOG,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						  errmsg("invalid list syntax for \"gp_email_to\"")));
+			}
+			num_recipients = 0;
+			num_sent_successfully = 0;
+			foreach(l, elemlist)
+			{
+				char	   *cur_gp_email_addr = (char *) lfirst(l);
+				char	   *to;
+				struct curl_slist *recipient;
+				bool		connect_failure = false;
+				CURLcode	res;
+				char		curlerror[CURL_ERROR_SIZE];
 
-	foreach(l, elemlist)
-	{
-		char *cur_gp_email_addr = (char *) lfirst(l);
+				if (cur_gp_email_addr == NULL || *cur_gp_email_addr == '\0')
+					continue;
+				num_recipients++;
 
-		if (cur_gp_email_addr != NULL && strlen(cur_gp_email_addr) > 0)
-		{
-			char * to = cur_gp_email_addr;
+				/* Recipient must be in RFC2821 format */
+				to = extract_email_addr(cur_gp_email_addr);
 
-			/* Recipient must be in RFC2821 format */
+				recipient = curl_slist_append(NULL, to);
 
-			if (strchr(cur_gp_email_addr,'<') != NULL)
+				if (recipient == NULL)
+				{
+					elog(LOG, "could not append recipient %s", to);
+					pfree(to);
+					continue;
+				}
+
+				curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curlerror);
+				curl_easy_setopt(curl, CURLOPT_URL, smtp_url);
+				curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT,
+								 (long) gp_email_connect_timeout);
+				if (gp_email_smtp_userid && *gp_email_smtp_userid)
+					curl_easy_setopt(curl, CURLOPT_USERNAME,
+									 gp_email_smtp_userid);
+				if (gp_email_smtp_password && *gp_email_smtp_password)
+					curl_easy_setopt(curl, CURLOPT_PASSWORD,
+									 gp_email_smtp_password);
+				if (from && *from)
+					curl_easy_setopt(curl, CURLOPT_MAIL_FROM, from);
+				curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipient);
+
+				/*
+				 * Use a callback function to pass the payload (headers and
+				 * the message body) to libcurl.
+				 */
+				upload_ctx.consumed = 0;
+				curl_easy_setopt(curl, CURLOPT_READFUNCTION, messagebody_cb);
+				curl_easy_setopt(curl, CURLOPT_READDATA, &upload_ctx);
+				curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+
+				/* Ok, all set. Send the message */
+				res = curl_easy_perform(curl);
+
+				curl_slist_free_all(recipient);
+
+				/* Did it succeed? */
+				switch(res)
+				{
+					case CURLE_OK:
+						num_connect_failures = 0;
+						num_sent_successfully++;
+						break;
+
+						/*
+						 * If we get any of these errors, something went wrong
+						 * with connecting to the server. Treat it as a
+						 * connection failure, and bail out immediately
+						 * without trying the rest of the recipients.
+						 */
+					case CURLE_OPERATION_TIMEDOUT:
+					case CURLE_UNSUPPORTED_PROTOCOL:
+					case CURLE_URL_MALFORMAT:
+					case CURLE_COULDNT_RESOLVE_PROXY:
+					case CURLE_COULDNT_RESOLVE_HOST:
+					case CURLE_COULDNT_CONNECT:
+						ereport(LOG,
+								(errmsg("could not connect to SMTP server"),
+								 errdetail("%s", curlerror)));
+						connect_failure = true;
+						break;
+
+						/*
+						 * Any other error might be because of an invalid
+						 * recipient, for example, and we might still succeed
+						 * in sending to the other recipients. Continue.
+						 */
+					default:
+						ereport(LOG,
+								(errmsg("could not send alert email to \"%s\"", to),
+								 errdetail("%s", curlerror)));
+						break;
+				}
+
+				pfree(to);
+
+				if (connect_failure)
+					break;
+			}
+			if (num_recipients == 0 && list_length(elemlist) > 0)
+				ereport(LOG,
+						(errmsg("Could not understand e-mail To: list")));
+			else if (num_sent_successfully == 0)
 			{
 				/*
-				 * Pull out just the e-mail address
+				 * If we couldn't deliver the mail to any recipients, treat it
+				 * as a connection failure.
 				 */
-				to = pstrdup(strchr(cur_gp_email_addr,'<')+1);
-				if (strchr(to,'>') != NULL)
-				*strchr(to,'>') = '\0';
+				num_connect_failures++;
+				last_connect_failure_ts = time(NULL);
 			}
-
-			recipient = smtp_add_recipient(message, to);
-
-			if (recipient == NULL)
-			elog(LOG, "stmp_add_recipient failed for e-mail:  %s", cur_gp_email_addr);
-
-			smtp_dsn_set_notify(recipient, notify);
-
-			success = true;
 		}
+		PG_CATCH();
+		{
+			/*
+			 * Close the handle. This closes the connection to the SMTP
+			 * server.
+			 */
+			curl_easy_cleanup(curl);
 
-	}
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
 
-	if (!success && list_length(elemlist))
-	ereport(LOG,
-			(errmsg("Could not understand e-mail To: list")));
-
-	list_free(elemlist);
-	pfree(rawstring);
-
-	/*
-	 * Many e-mail transfer agents don't accept the 8BITMIME extension.  We'd
-	 * Like to use it if available, but I don't know how to do that yet.
-	 * For now, just don't set it.  The MTA will decide if it is 8BIT based on
-	 * the MIME header.
-	 */
-	/* smtp_8bitmime_set_body(message, E8bitmime_8BITMIME); */
-
-	/* Initiate a connection to the SMTP server and transfer the message. */
-        int num_smtp_failures = 0;
-        int smtp_ret = smtp_start_session_with_timeout(session, gp_email_connect_timeout, &num_smtp_failures, NULL, 0); 
-	if (smtp_ret <= 0)
-	{
-                 if (num_smtp_failures > 0) { /* SMTP server issue */
-                     num_connect_failures++;
-                     last_connect_failure_ts = time(0);  
-                 }
-		/*
-		 * If we get here, we can't talk to the SMTP server at all
-		 */
-		int smtperr = smtp_errno();
-		char buf[128];
-		memset(buf, 0, sizeof(buf)); /* in case smtp_strerror fails */
-		smtp_strerror(smtperr, buf, sizeof buf);
-
-		elog(LOG, "SMTP server problem %d  %s", smtperr, buf);
+		/* Close the handle. This closes the connection to the SMTP server. */
+		curl_easy_cleanup(curl);
 	}
 	else
-	{
-                
-		/* I would expect this to be always zero here, but just in case it's not */
-		if (smtp_errno() != 0)
-		{
-			int smtperr = smtp_errno();
-			char buf[128];
-			memset(buf, 0, sizeof(buf)); /* in case smtp_strerror fails */
-			smtp_strerror(smtperr, buf, sizeof buf);
+		elog(LOG, "Unable to send e-mail: curl_easy_init failed");
 
-			elog(LOG, "SMTP server problem %d  %s", smtperr, buf);
-		}
-                num_connect_failures = 0;
-		/*
-		 * Report on the success or otherwise of the mail transfer.
-		 * This really only tells the "overall" status, so if an individual e-mail fails,
-		 * we won't see it here (even if every one of them fails!).
-		 */
-
-		/*
-		 * SMTP protocol status codes (see RFCs on SMTP)
-		 * status 250 == ok
-		 * 200 to 299 are warning or information.
-		 * >= 300 are errors
-		 */
-		status = smtp_message_transfer_status(message);
-		elog(status->code == 250 ? DEBUG1 : LOG, "overall transfer status: %d %s", status->code,
-				(status->text != NULL) ? status->text : "");
-
-		/*
-		 * This should tell us how each e-mail recipient fared.
-		 */
-		if (!smtp_enumerate_recipients(message, print_recipient_status, NULL))
-		{
-			elog(LOG,"smtp_enumerate_recipients failed %d",smtp_errno());
-		}
-	}
-
-	/* Free resources consumed by the program.
+	/*
+	 * Free other stuff we allocated. We run in a long-lived memory context
+	 * so we have to be careful to not leak.
 	 */
-	if (session != NULL)
-	smtp_destroy_session(session);
-	if (authctx != NULL)
-	auth_destroy_context(authctx);
-
-	/* To save on overhead, don't call this more than necessary */
-	/* auth_client_exit(); */
-
-	return 0;
-
+	pfree(rawstring);
+	list_free(elemlist);
+	pfree(from);
+	pfree(upload_ctx.body.data);
 }
-
-#endif
 
 
 int send_alert(const GpErrorData * errorData)
@@ -978,15 +883,10 @@ int send_alert(const GpErrorData * errorData)
 		elog(DEBUG4,"Not sending via SNMP");
 #endif
 
-#if USE_EMAIL
 	if (send_via_email)
-	{
 		send_alert_via_email(errorData, subject, email_priority);
-	}
 	else
 		elog(DEBUG4,"Not sending via e-mail");
-
-#endif
 
 	return 0;
 }
@@ -1115,8 +1015,6 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
 	return out;
 }
 
-#if USE_EMAIL
-
 /*
  *  The message is read a line at a time and the newlines converted
  *  to \r\n.  Unfortunately, RFC 822 states that bare \n and \r are
@@ -1126,7 +1024,8 @@ get_str_from_chunk(CSVChunkStr *chunkstr, const PipeProtoChunk *saved_chunks)
  *  slightly by prohibiting lone \r and \n in messages.
  *
  */
-static void add_to_message(char * message, const char * newstr_in)
+static void
+add_to_message(StringInfo buf, const char *newstr_in)
 {
 	const char * newstr = newstr_in;
 	char * p;
@@ -1143,532 +1042,196 @@ static void add_to_message(char * message, const char * newstr_in)
 		/* Don't exceed 900 chars added to this line, so total line < 1000 */
 		if (p - newstr >= 900)
 		{
-			strncat(message, newstr, 898);
-			strcat(message, "\r\n\t");
+			appendBinaryStringInfo(buf, newstr, 898);
+			appendStringInfoString(buf, "\r\n\t");
 			newstr += 898;
 		}
 		else if (p - newstr >=2 && *(p-1) != '\r')
 		{
-			strncat(message, newstr, p - newstr);
-			strcat(message, "\r\n\t");
+			appendBinaryStringInfo(buf, newstr, p - newstr);
+			appendStringInfoString(buf, "\r\n\t");
 			newstr = p+1;
 		}
 		else
 		{
-			strncat(message, newstr, p - newstr + 1);
+			appendBinaryStringInfo(buf, newstr, p - newstr + 1);
 			newstr = p+1;
 		}
 	}
-	strcat(message, newstr);
-
+	appendStringInfoString(buf, newstr);
 }
 
-static const char *
-messagebody_cb(void **buf, int *len, void *arg)
+static size_t
+messagebody_cb(void *ptr, size_t size, size_t nmemb, void *userp)
 {
-#define MAX_MESSAGE_BODY 8192
-	const GpErrorData *errorData = (GpErrorData *) arg;
-	char * message = NULL;
-	static int alreadyreturned = 0;
+	upload_ctx *ctx = (upload_ctx *) userp;
+	size_t len;
 
-	if (*buf == NULL)
-	{
-		alreadyreturned = 0;
-		if (len == NULL)
-			return NULL;
+	len = size * nmemb;
+	if ((size == 0) || (nmemb == 0) || (len < 1))
+		return 0;
 
-		*buf = malloc(MAX_MESSAGE_BODY);
-		message = ((char *)(*buf));
-		message[0] = '\0';
-	}
+	if (len > ctx->body.len - ctx->consumed)
+		len = ctx->body.len - ctx->consumed;
 
-	if (len == NULL)
-	{
-		alreadyreturned = 0;
-		message = ((char *)(*buf));
-		message[0] = '\0';
-	    return NULL;
-	}
+	memcpy(ptr, ctx->body.data + ctx->consumed, len);
+	ctx->consumed += len;
 
-	message = ((char *)(*buf));
+    return len;
+}
 
-	if (alreadyreturned == 0)
-	{
-		char  lineno[16]; 
+static void
+build_messagebody(StringInfo buf, const GpErrorData *errorData, const char *subject,
+		const char *email_priority)
+{
+	/* Perhaps better to use text/html ? */
 
-		pg_ltoa(errorData->fix_fields.error_fileline,lineno);
+	appendStringInfo(buf, "From: %s\r\n", gp_email_from);
+	appendStringInfo(buf, "To: %s\r\n", gp_email_to);
+	appendStringInfo(buf, "Subject: %s\r\n", subject);
+	if (email_priority[0] != '\0' && email_priority[0] != '3') // priority not the default?
+		appendStringInfo(buf, "X-Priority: %s", email_priority); // set a priority.  1 == highest priority, 5 lowest
 
-		/* Perhaps better to use text/html ? */
-
-		strcpy(message, "From: ");
-		strcat(message, gp_email_from);
-		strcat(message,"\r\n");
-		strcat(message, "To: ");
-		strcat(message,gp_email_to);
-		strcat(message,"\r\n");
-
-		strcat(message,
-			//"Return-Path: <cmcdevitt@greenplum.com>\r\n"
-			//"Subject: LibESMTP test mail\r\n"
-			"MIME-Version: 1.0\r\n"
+	appendStringInfoString(buf,	"MIME-Version: 1.0\r\n"
 			"Content-Type: text/plain;\r\n"
 			"  charset=utf-8\r\n"
 			"Content-Transfer-Encoding: 8bit\r\n\r\n");
 
-		/* Lines must be < 1000 bytes long for 7bit or 8bit transfer-encoding */
-		/* Perhaps use base64 encoding instead?  Or just wrap them? */
+	/* Lines must be < 1000 bytes long for 7bit or 8bit transfer-encoding */
+	/* Perhaps use base64 encoding instead?  Or just wrap them? */
 
-		/* How to identify which system is sending the alert?  Perhaps our hostname and port is good enough? */
-		strcat(message,"Alert from GPDB system ");
-		{
-			char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
-			char portnum[16];
-			myhostname[0] = '\0';
-
-
-			if (gethostname(myhostname, sizeof(myhostname)) == 0)
-			{
-				strcat(message,myhostname);
-				strcat(message," on port ");
-				pg_ltoa(PostPortNumber,portnum);
-				strcat(message,portnum);
-			}
-		}
-		strcat(message,":\r\n\r\n");
-		if (errorData->username != NULL &&  errorData->databasename != NULL &&
-				strlen(errorData->username)>0 && strlen(errorData->databasename)>0)
-		{
-			strcat(message, errorData->username);
-			if (errorData->remote_host != NULL && strlen(errorData->remote_host) > 0)
-			{
-				if (strcmp(errorData->remote_host,"[local]")==0)
-					strcat(message, " logged on locally from master node");
-				else
-				{
-					strcat(message," logged on from host ");
-					strcat(message,errorData->remote_host);
-				}
-			}
-			strcat(message, " connected to database ");
-			strcat(message, errorData->databasename);
-			strcat(message, "\r\n");
-
-		}
-		if (errorData->fix_fields.omit_location != 't')
-		{
-			if (errorData->fix_fields.gp_segment_id != -1)
-			{
-				char segid[16];
-				pg_ltoa(errorData->fix_fields.gp_segment_id,segid);
-				strcat(message,"Error occurred on segment ");
-				strcat(message,segid);
-			}
-			else
-				strcat(message,"Error occurred on master segment");
-			strcat(message, "\r\n");
-		}
-		strcat(message, "\r\n");
-
-		strcat(message, errorData->error_severity);
-		strcat(message, ": ");
-		if (errorData->sql_state != NULL && pg_strnlen(errorData->sql_state,5)>4 &&
-				strncmp(errorData->sql_state,"XX100",5)!=0 &&
-				strncmp(errorData->sql_state,"00000",5)!=0)
-		{
-			strcat(message, "(");
-			strncat(message, errorData->sql_state, 5);
-			strcat(message, ") ");
-		}
-		add_to_message(message, errorData->error_message);
-		strcat(message, "\r\n");
-		strcat(message, "\r\n");
-
-		if (errorData->error_detail != NULL &&strlen(errorData->error_detail) > 0)
-		{
-			strcat(message, _("DETAIL:  "));
-			add_to_message(message, errorData->error_detail);
-			strcat(message, "\r\n");
-		}
-		if (errorData->error_hint != NULL &&strlen(errorData->error_hint) > 0)
-		{
-			strcat(message, _("HINT:  "));
-			add_to_message(message, errorData->error_hint);
-			strcat(message, "\r\n");
-		}
-		if (errorData->internal_query != NULL &&strlen(errorData->internal_query) > 0)
-		{
-			strcat(message, _("QUERY:  "));
-			add_to_message(message, errorData->internal_query);
-			strcat(message, "\r\n");
-		}
-		if (errorData->error_context != NULL && strlen(errorData->error_context) > 0)
-		{
-			strcat(message, _("CONTEXT:  "));
-			add_to_message(message, errorData->error_context);
-			strcat(message, "\r\n");
-		}
-		if (errorData->fix_fields.omit_location != 't')
-		{
-			if (errorData->error_filename != NULL && strlen(errorData->error_filename) > 0)
-			{
-				strcat(message,  _("LOCATION:  "));
-
-				if (errorData->error_func_name && strlen(errorData->error_func_name) > 0)
-				{
-					strcat(message, errorData->error_func_name);
-					strcat(message, ", ");
-				}
-
-				strcat(message, errorData->error_filename);
-				strcat(message, ":");
-				strcat(message, lineno);
-				strcat(message, "\r\n");
-			}
-			if (errorData->stacktrace != NULL && strlen(errorData->stacktrace) > 0)
-			{
-				strcat(message, "STACK TRACE:\r\n\t");
-				add_to_message(message, errorData->stacktrace);
-				strcat(message, "\r\n");
-			}
-		}
-		if (errorData->debug_query_string != NULL &&strlen(errorData->debug_query_string) > 0)
-		{
-			strcat(message, _("STATEMENT:  "));
-			add_to_message(message, errorData->debug_query_string);
-			strcat(message, "\r\n");
-		}
-
-	}
-
-	if (alreadyreturned < strlen(message))
+	/*
+	 * How to identify which system is sending the alert?  Perhaps our
+	 * hostname and port is good enough?
+	 */
+	appendStringInfoString(buf, "Alert from GPDB system");
 	{
-		char * p;
-		message += alreadyreturned;
-		if ((p = strchr(message,'\n')) != NULL)
+		char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
+		myhostname[0] = '\0';
+
+		if (gethostname(myhostname, sizeof(myhostname)) == 0)
+			appendStringInfo(buf, " %s on port %d", myhostname, PostPortNumber);
+	}
+	appendStringInfoString(buf,":\r\n\r\n");
+	if (errorData->username != NULL &&  errorData->databasename != NULL &&
+		strlen(errorData->username)>0 && strlen(errorData->databasename)>0)
+	{
+		appendStringInfoString(buf, errorData->username);
+		if (errorData->remote_host != NULL && strlen(errorData->remote_host) > 0)
 		{
-			*len = p - message + 1;
-			alreadyreturned += *len;
+			if (strcmp(errorData->remote_host,"[local]")==0)
+				appendStringInfoString(buf, " logged on locally from master node");
+			else
+				appendStringInfo(buf, " logged on from host %s", errorData->remote_host);
 		}
-		else if (strlen(message)>0)
+		appendStringInfo(buf, " connected to database %s\r\n",
+					errorData->databasename);
+	}
+	if (errorData->fix_fields.omit_location != 't')
+	{
+		if (errorData->fix_fields.gp_segment_id != -1)
 		{
-			*len = strlen(message);
-			alreadyreturned += *len;
+			appendStringInfo(buf,"Error occurred on segment %d\r\n",
+							 errorData->fix_fields.gp_segment_id);
 		}
 		else
-		{
-			*len = 0;
-			message = NULL;
-		}
+			appendStringInfoString(buf, "Error occurred on master segment\r\n");
 	}
-	else
+	appendStringInfoString(buf, "\r\n");
+
+	appendStringInfo(buf, "%s: ", errorData->error_severity);
+	if (errorData->sql_state != NULL && pg_strnlen(errorData->sql_state,5)>4 &&
+		strncmp(errorData->sql_state,"XX100",5)!=0 &&
+		strncmp(errorData->sql_state,"00000",5)!=0)
 	{
-		*len = 0;
-		return NULL;
+		appendStringInfo(buf, "(%s) ", errorData->sql_state);
 	}
+	appendStringInfoString(buf, errorData->error_message);
+	appendStringInfoString(buf, "\r\n");
+	appendStringInfoString(buf, "\r\n");
 
-	return message;
-}
-
-/* Callback to print the recipient status */
-static void print_recipient_status(smtp_recipient_t recipient,
-		const char *mailbox, void *arg  __attribute__((unused)))
-{
-	const smtp_status_t *status;
-
-	status = smtp_recipient_status(recipient);
-	/*
-	 * SMTP protocol status codes (see RFCs on SMTP)
-	 * status 250 == ok
-	 * 200 to 299 are warning or information.
-	 * >= 300 are errors
-	 */
-	if (status->code != 0 && status->code != 250)
+	if (errorData->error_detail != NULL &&strlen(errorData->error_detail) > 0)
 	{
-		elog(LOG, "recipient status: %s: %d %s", mailbox, status->code, status->text);
+		appendStringInfoString(buf, _("DETAIL:  "));
+		add_to_message(buf, errorData->error_detail);
+		appendStringInfoString(buf, "\r\n");
 	}
-}
-
-static int authinteract(auth_client_request_t request, char **result,
-		int fields, void *arg)
-{
-	int i;
-	
-	elog(DEBUG2, "authinteract called");
-
-	/* SASL auth requests */
-	for (i = 0; i < fields; i++)
+	if (errorData->error_hint != NULL &&strlen(errorData->error_hint) > 0)
 	{
-		if (request[i].flags & AUTH_PASS)
-		{
-			elog(DEBUG1, "authinteract asking for password: %s  %s%s",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
-					: "");
-			result[i] = gp_email_smtp_password;
-		}
-		else if (request[i].flags & AUTH_USER)
-		{
-			elog(DEBUG1, "authinteract asking for username: %s  %s%s",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
-					: "");
-			result[i] = gp_email_smtp_userid;
-
-		}
-		else if (request[i].flags & AUTH_REALM)
-		{
-			elog(LOG, "authinteract asking for realm: %s  %s%s",request[i].name, request[i].prompt,(request[i].flags & AUTH_CLEARTEXT) ? " (not encrypted)"
-					: "");
-			result[i] = "greenplum.com";
-
-		}
-		else if (result[i] == NULL)
-		{
-			return 0;
-		}
+		appendStringInfoString(buf, _("HINT:  "));
+		add_to_message(buf, errorData->error_hint);
+		appendStringInfoString(buf, "\r\n");
 	}
-
-	return 1;
-}
-
-static int tlsinteract(char *buf, int buflen, int rwflag  __attribute__((unused)), void *arg  __attribute__((unused)))
-{
-
-	elog(DEBUG1, "tlsinteract asking for tls password");
-
-	strcpy(buf, gp_email_smtp_password);  // This isn't right... We need the X.509 certificate's password, I think
-	return strlen(buf);
-}
-
-static int handle_invalid_peer_certificate(long vfy_result)
-{
-	const char *k = "rare error";
-	switch (vfy_result)
+	if (errorData->internal_query != NULL &&strlen(errorData->internal_query) > 0)
 	{
-	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
-		k = "X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT";
-		break;
-	case X509_V_ERR_UNABLE_TO_GET_CRL:
-		k = "X509_V_ERR_UNABLE_TO_GET_CRL";
-		break;
-	case X509_V_ERR_UNABLE_TO_DECRYPT_CERT_SIGNATURE:
-		k = "X509_V_ERR_UNABLE_TO_DECRYPT_CERT_SIGNATURE";
-		break;
-	case X509_V_ERR_UNABLE_TO_DECRYPT_CRL_SIGNATURE:
-		k = "X509_V_ERR_UNABLE_TO_DECRYPT_CRL_SIGNATURE";
-		break;
-	case X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY:
-		k = "X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY";
-		break;
-	case X509_V_ERR_CERT_SIGNATURE_FAILURE:
-		k = "X509_V_ERR_CERT_SIGNATURE_FAILURE";
-		break;
-	case X509_V_ERR_CRL_SIGNATURE_FAILURE:
-		k = "X509_V_ERR_CRL_SIGNATURE_FAILURE";
-		break;
-	case X509_V_ERR_CERT_NOT_YET_VALID:
-		k = "X509_V_ERR_CERT_NOT_YET_VALID";
-		break;
-	case X509_V_ERR_CERT_HAS_EXPIRED:
-		k = "X509_V_ERR_CERT_HAS_EXPIRED";
-		break;
-	case X509_V_ERR_CRL_NOT_YET_VALID:
-		k = "X509_V_ERR_CRL_NOT_YET_VALID";
-		break;
-	case X509_V_ERR_CRL_HAS_EXPIRED:
-		k = "X509_V_ERR_CRL_HAS_EXPIRED";
-		break;
-	case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
-		k = "X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD";
-		break;
-	case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
-		k = "X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD";
-		break;
-	case X509_V_ERR_ERROR_IN_CRL_LAST_UPDATE_FIELD:
-		k = "X509_V_ERR_ERROR_IN_CRL_LAST_UPDATE_FIELD";
-		break;
-	case X509_V_ERR_ERROR_IN_CRL_NEXT_UPDATE_FIELD:
-		k = "X509_V_ERR_ERROR_IN_CRL_NEXT_UPDATE_FIELD";
-		break;
-	case X509_V_ERR_OUT_OF_MEM:
-		k = "X509_V_ERR_OUT_OF_MEM";
-		break;
-	case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
-		k = "X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT";
-		break;
-	case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
-		k = "X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN";
-		break;
-	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
-		k = "X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY";
-		break;
-	case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
-		k = "X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE";
-		break;
-	case X509_V_ERR_CERT_CHAIN_TOO_LONG:
-		k = "X509_V_ERR_CERT_CHAIN_TOO_LONG";
-		break;
-	case X509_V_ERR_CERT_REVOKED:
-		k = "X509_V_ERR_CERT_REVOKED";
-		break;
-	case X509_V_ERR_INVALID_CA:
-		k = "X509_V_ERR_INVALID_CA";
-		break;
-	case X509_V_ERR_PATH_LENGTH_EXCEEDED:
-		k = "X509_V_ERR_PATH_LENGTH_EXCEEDED";
-		break;
-	case X509_V_ERR_INVALID_PURPOSE:
-		k = "X509_V_ERR_INVALID_PURPOSE";
-		break;
-	case X509_V_ERR_CERT_UNTRUSTED:
-		k = "X509_V_ERR_CERT_UNTRUSTED";
-		break;
-	case X509_V_ERR_CERT_REJECTED:
-		k = "X509_V_ERR_CERT_REJECTED";
-		break;
+		appendStringInfoString(buf, _("QUERY:  "));
+		add_to_message(buf, errorData->internal_query);
+		appendStringInfoString(buf, "\r\n");
 	}
+	if (errorData->error_context != NULL && strlen(errorData->error_context) > 0)
+	{
+		appendStringInfoString(buf, _("CONTEXT:  "));
+		add_to_message(buf, errorData->error_context);
+		appendStringInfoString(buf, "\r\n");
+	}
+	if (errorData->fix_fields.omit_location != 't')
+	{
+		if (errorData->error_filename != NULL && strlen(errorData->error_filename) > 0)
+		{
+			appendStringInfoString(buf, _("LOCATION:  "));
 
-	/*
-	 * These two errors come fgpdb-2010-02-18_184837.csvrom using self-signed certificates.  We don't care about that.
-	 */
-	if (vfy_result != X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY &&
-		vfy_result != X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN)
-		elog(DEBUG1, "SMTP_EV_INVALID_PEER_CERTIFICATE: %ld: %s", vfy_result, k);
+			if (errorData->error_func_name && strlen(errorData->error_func_name) > 0)
+				appendStringInfo(buf, "%s, ", errorData->error_func_name);
 
-	return 1; /* Accept the problem and try to continue  */
+			appendStringInfo(buf, "%s:%d\r\n",
+							 errorData->error_filename,
+							 errorData->fix_fields.error_fileline);
+		}
+		if (errorData->stacktrace != NULL && strlen(errorData->stacktrace) > 0)
+		{
+			appendStringInfoString(buf, "STACK TRACE:\r\n\t");
+			add_to_message(buf, errorData->stacktrace);
+			appendStringInfoString(buf, "\r\n");
+		}
+	}
+	if (errorData->debug_query_string != NULL &&strlen(errorData->debug_query_string) > 0)
+	{
+		appendStringInfoString(buf, _("STATEMENT:  "));
+		add_to_message(buf, errorData->debug_query_string);
+		appendStringInfoString(buf, "\r\n");
+	}
 }
 
 /*
- * We currently just return 1 to keep libesmtp happy
- * Will turn this into a proper event handler some day
+ * Pull out just the e-mail address from a possibly human-readable string
+ * like:
+ *
+ * Full Name <email@example.com>
  */
-static void event_cb(smtp_session_t session, int event_no, void *arg, ...)
+static char *
+extract_email_addr(char *str)
 {
-	va_list alist;
-	int *ok;
+	char	   *begin;
+	char	   *end;
 
-	va_start(alist, arg);
-
-	switch (event_no)
+	begin = strchr(str, '<');
+	if (begin != NULL)
 	{
-
-	case SMTP_EV_WEAK_CIPHER:
+		begin++;
+		end = strchr(begin, '>');
+		if (end != NULL)
 		{
-			long bits;
+			int			len = end - begin;
+			char	   *email;
 
-			bits = va_arg(alist, long);
-			ok = va_arg(alist, int*);
-			elog(DEBUG3,"WEAK_CIPHER bits=%ld",bits);
-			*ok = 1;
+			email = palloc(len + 1);
+			memcpy(email, begin, len);
+			email[len] = '\0';
+
+			return email;
 		}
-		break;
-
-	case SMTP_EV_INVALID_PEER_CERTIFICATE:
-		{
-			long vfy_result;
-			vfy_result = va_arg(alist, long);
-			ok = va_arg(alist, int*);
-			*ok = handle_invalid_peer_certificate(vfy_result);
-		}
-		break;
-
-	case SMTP_EV_NO_PEER_CERTIFICATE:
-		{
-			ok = va_arg(alist, int*);
-			elog(DEBUG3,"NO PEER CERT");
-			*ok = 1;
-		}
-		break;
-	case SMTP_EV_WRONG_PEER_CERTIFICATE:
-		{
-			ok = va_arg(alist, int*);
-			elog(DEBUG2,"SMTP_EV_WRONG_PEER_CERTIFICATE");
-			*ok = 1;
-		}
-		break;
-	case SMTP_EV_NO_CLIENT_CERTIFICATE:
-		{
-			ok = va_arg(alist, int*);
-			elog(DEBUG2,"NO CLIENT CERT");
-			*ok = 1;
-		}
-		break;
-
-	case SMTP_EV_STARTTLS_OK:
-		elog(DEBUG2,"SMTP_EV_STARTTLS_OK");
-		break;
-	case SMTP_EV_CONNECT:
-		elog(DEBUG1,"SMTP_EV_CONNECT");
-		break;
-	case SMTP_EV_MAILSTATUS:
-	{
-		const smtp_status_t *status = NULL;
-
-		smtp_message_t msg;
-		const char * rev_path;
-		rev_path = va_arg(alist, const char*);
-		msg = va_arg(alist, smtp_message_t);
-
-		if (msg != NULL)
-		status = smtp_reverse_path_status (msg);
-
-		if (status && status->code != 0 && status->code != 250 && status->text != NULL)
-			elog(LOG,"EV_MAILSTATUS: SMTP server reports a problem %d:  %s:  %s", status->code, rev_path,  status->text);
 	}
-	break;
-	case SMTP_EV_RCPTSTATUS:
-#if 0
-	{
-
-		/*
-		 * Debugging code... Don't need this in production use, but useful during development.
-		 */
-		const smtp_status_t *status = NULL;
-
-		smtp_mailbox_t mbox;
-		mbox = va_arg(alist, smtp_mailbox_t);
-		smtp_recipient_t rcpt;
-		rcpt = va_arg(alist, smtp_recipient_t);
-		if (rcpt != NULL)
-			status = smtp_recipient_status (rcpt);
-
-		if (status && status->code != 0 && status->code != 250 && status->text != NULL)
-			elog(LOG,"SMTP server reports a  problem %d: %s", status->code, status->text);
-	}
-#endif
-		break;
-	case SMTP_EV_MESSAGEDATA:
-		break;
-	case SMTP_EV_MESSAGESENT:
-	{
-		const smtp_status_t *status = NULL;
-
-		smtp_message_t msg;
-		msg = va_arg(alist, smtp_message_t);
-		if (msg != NULL)
-			status = smtp_message_transfer_status (msg);
-
-		if (status && status->code != 0 && status->code != 250 && status->text != NULL)
-			elog(LOG,"SMTP server reports a messagesent problem %d: %s", status->code, status->text);
-		else
-			elog(DEBUG2,"EV_MESSAGESENT");
-	}
-	break;
-	case SMTP_EV_DISCONNECT:
-		elog(DEBUG2, "EV_DISCONNECT");
-		break;
-
-	case SMTP_EV_EXTNA_8BITMIME:
-		elog(DEBUG1, "SMTP_EV_EXTNA_8BITMIME");
-		break;
-
-	case SMTP_EV_EXTNA_DSN:
-		elog(DEBUG1, "SMTP_EV_EXTNA_DSN");
-		break;
-
-	default:
-		elog(LOG, "SMTP_EV_%d",event_no);
-		break;
-
-	}
-
-	va_end(alist);
+	return pstrdup(str);
 }
 
 static bool
@@ -1729,16 +1292,3 @@ SplitMailString(char *rawstring, char delimiter,
 
 	return true;
 }
-
-/*
- * This routine is strictly for debugging... It dumps out our interaction with the SMTP server.
- */
-static void
-monitor_cb (const char *buf, int buflen, int writing, void *arg)
-{
-  elog(DEBUG1, "SMTP %s: %.*s",(writing == SMTP_CB_HEADERS) ? "H" : writing ? "C" : "S", buflen, buf);
-}
-
-
-#endif
-

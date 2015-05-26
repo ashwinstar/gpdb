@@ -452,7 +452,6 @@ extern bool	optimizer_partition_selection_log;
  */
 extern bool gp_parquet_insert_sort;
 
-#if USE_EMAIL
 extern char  *gp_email_smtp_server;
 extern char  *gp_email_smtp_userid;
 extern char  *gp_email_smtp_password;
@@ -461,7 +460,6 @@ extern char  *gp_email_to;
 extern int   gp_email_connect_timeout;
 extern int   gp_email_connect_failures;
 extern int   gp_email_connect_avoid_duration; 
-#endif
 
 #if USE_SNMP
 extern char   *gp_snmp_community;

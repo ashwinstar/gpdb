@@ -704,7 +704,6 @@ INCLUDES
 enable_ddboost
 enable_netbackup
 enable_connectemc
-enable_email
 enable_gphdfs
 enable_snmp
 autodepend
@@ -811,7 +810,6 @@ enable_debugntuplestore
 enable_testutils
 enable_snmp
 enable_gphdfs
-enable_email
 enable_connectemc
 enable_ddboost
 enable_netbackup
@@ -1483,7 +1481,6 @@ build with coverage testing instrumentation
   --enable-testutils        enable testing utilities
   --enable-snmp        enable snmp for MIB and alerts via TRAP/INFORM
   --enable-gphdfs        enables GPHDFS support
-  --enable-email        enable email alerts
   --enable-connectemc     enable connect emc support
   --enable-ddboost     enable connect emc support
   --enable-netbackup     enable NetBackup support
@@ -4938,39 +4935,6 @@ fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: checking whether to build with gphdfs...$enable_gphdfs" >&5
 $as_echo "checking whether to build with gphdfs...$enable_gphdfs" >&6; }
-
-
-#
-# --enable-email enables email alerts
-#
-
-pgac_args="$pgac_args enable_email"
-
-# Check whether --enable-email was given.
-if test "${enable_email+set}" = set; then :
-  enableval=$enable_email;
-  case $enableval in
-    yes)
-
-$as_echo "#define USE_EMAIL 1" >>confdefs.h
-
-      ;;
-    no)
-      :
-      ;;
-    *)
-      as_fn_error $? "no argument expected for --enable-email option" "$LINENO" 5
-      ;;
-  esac
-
-else
-  enable_email=no
-
-fi
-
-
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: checking whether to build with email...$enable_email" >&5
-$as_echo "checking whether to build with email...$enable_email" >&6; }
 
 
 #
@@ -9071,60 +9035,6 @@ fi
 
 fi
 
-# Check for libesmtp
-if test "$enable_email" = yes ; then
-	if test "$with_openssl" != yes ; then
-		as_fn_error $? "--enable-email requires --with-openssl" "$LINENO" 5
-	fi
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for smtp_start_session in -lesmtp" >&5
-$as_echo_n "checking for smtp_start_session in -lesmtp... " >&6; }
-if ${ac_cv_lib_esmtp_smtp_start_session+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lesmtp  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-/* Override any GCC internal prototype to avoid an error.
-   Use char because int might match the return type of a GCC
-   builtin and then its argument prototype would still apply.  */
-#ifdef __cplusplus
-extern "C"
-#endif
-char smtp_start_session ();
-int
-main ()
-{
-return smtp_start_session ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_esmtp_smtp_start_session=yes
-else
-  ac_cv_lib_esmtp_smtp_start_session=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_esmtp_smtp_start_session" >&5
-$as_echo "$ac_cv_lib_esmtp_smtp_start_session" >&6; }
-if test "x$ac_cv_lib_esmtp_smtp_start_session" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBESMTP 1
-_ACEOF
-
-  LIBS="-lesmtp $LIBS"
-
-else
-  as_fn_error $? "library 'libesmtp' is required for email alert support" "$LINENO" 5
-fi
-
-fi
-
 # RSA BSAFE crypto-C ME library. We don't want this added to $LIBS.
 pgac_save_LIBS="$LIBS"
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for R_LIB_CTX_new in -lccme_core" >&5
@@ -9831,38 +9741,6 @@ done
 
 fi
 
-
-# email
-if test "$enable_email" = yes; then
-	for ac_header in libesmtp.h
-do :
-  ac_fn_c_check_header_mongrel "$LINENO" "libesmtp.h" "ac_cv_header_libesmtp_h" "$ac_includes_default"
-if test "x$ac_cv_header_libesmtp_h" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBESMTP_H 1
-_ACEOF
-
-else
-  as_fn_error $? "header file <libesnmp.h> is required for email alert support" "$LINENO" 5
-fi
-
-done
-
-	for ac_header in auth-client.h
-do :
-  ac_fn_c_check_header_mongrel "$LINENO" "auth-client.h" "ac_cv_header_auth_client_h" "$ac_includes_default"
-if test "x$ac_cv_header_auth_client_h" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_AUTH_CLIENT_H 1
-_ACEOF
-
-else
-  as_fn_error $? "header file <auth-client.h> is required for email alert support" "$LINENO" 5
-fi
-
-done
-
-fi
 
 # realtime library header
 if test "$with_rt" = yes; then

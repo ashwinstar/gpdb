@@ -25,7 +25,7 @@ SO_MINOR_VERSION=0
 # We need to filter out everything we don't want linked in right now so that we
 # can extract the location of our libraries 
 
-LIBS := $(filter-out -lesmtp -lnetsnmp -lpgport -lz -lcurl -lbz2 -lpam -lssl -lcrypto -lkrb5 -lcom_err -lz -ledit -lm -pthread -pthreads  , $(LIBS))
+LIBS := $(filter-out -lnetsnmp -lpgport -lz -lcurl -lbz2 -lpam -lssl -lcrypto -lkrb5 -lcom_err -lz -ledit -lm -pthread -pthreads  , $(LIBS))
 
 OBJS = gpla.o
 SHLIB_LINK += $(LAPACK_BLAS_LIBS)

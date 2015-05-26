@@ -283,12 +283,6 @@
 /* Define to 1 if you have the `eay32' library (-leay32). */
 #undef HAVE_LIBEAY32
 
-/* Define to 1 if you have the `esmtp' library (-lesmtp). */
-#undef HAVE_LIBESMTP
-
-/* Define to 1 if you have the <libesmtp.h> header file. */
-#undef HAVE_LIBESMTP_H
-
 /* Define to 1 if you have the `ldap' library (-lldap). */
 #undef HAVE_LIBLDAP
 
@@ -761,9 +755,6 @@
 
 /* Define to 1 to build with debug_ntuplestore. (--enable-ntuplestore) */
 #undef USE_DEBUG_NTUPLESTORE
-
-/* Define to 1 to build with email alert capabilities. (--enable-email) */
-#undef USE_EMAIL
 
 /* Define to 1 to build with plan forcing capabilities. (--enable-forceplan)
    */

@@ -19,7 +19,7 @@
 #define _POSIX_C_SOURCE 200112L
 #endif
 #include "postgres.h"
-#include "pg_config.h"  /* Adding this helps eclipse see that USE_EMAIL and USE_SNMP are set */
+#include "pg_config.h"  /* Adding this helps eclipse see that USE_SNMP is set */
 
 #include <fcntl.h>
 #include <signal.h>
@@ -78,11 +78,7 @@ int set_alert_severity(const GpErrorData * errorData,
 	// abnormal database system shutdown
 	*/
 
-#if USE_EMAIL
 	*send_via_email = true;
-#else
-	*send_via_email = false;
-#endif
 
 #if USE_SNMP
 	*send_via_snmp = true;
