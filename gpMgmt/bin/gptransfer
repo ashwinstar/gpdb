@@ -2417,6 +2417,7 @@ class GpTransfer(object):
             for p in self._table_transfer_set:
                 if p.dest.database not in needed_schemas:
                     needed_schemas[p.dest.database] = list()
+                if p.dest.schema not in needed_schemas[p.dest.database]:
                     needed_schemas[p.dest.database].append(p.dest.schema)
 
             for (database, schemas) in needed_schemas.iteritems():
