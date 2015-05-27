@@ -84,8 +84,11 @@ public class HDFSWriter
 		 * Using a fake context is ok because only the confg portion
 		 * is used.
 		 */
-	    Configuration.addDefaultResource("hdfs-site.xml");
+	    //Configuration.addDefaultResource("hdfs-site.xml");//items in hdfs-site.xml
+		//will be overlapped by the same named item in hdfs-default.xml
 	    conf        = new Configuration();
+		conf.addResource("hdfs-site.xml");//this line is not needed now, but for line 87, 
+		//it may related with some unknow old hadoop version, so I add it here
 	    fakeTaskCtx = new TaskAttemptContext(conf, new TaskAttemptID());
 	    isCompressed = FileOutputFormat.getCompressOutput(fakeTaskCtx);
 	    compressType = conf.get("mapred.output.compression.type",

@@ -69,11 +69,14 @@ public class HDFSReader
 			throw new IllegalArgumentException("Illegal input uri: "+args[4]);
 		}
 
-	    // Create a conf, set the HDFS URI and the input path
-	    Configuration.addDefaultResource("hdfs-site.xml");
-	    conf = new Configuration();
-	    ConnectorUtil.setHadoopFSURI(conf, inputURI, connVer);
-	    inputpath = inputURI.getPath();
+		// Create a conf, set the HDFS URI and the input path
+		//	Configuration.addDefaultResource("hdfs-site.xml");//hdfs-site.xml
+		//	here will be overlapped by hdfs-default.xml
+		conf = new Configuration();
+		conf.addResource("hdfs-site.xml");//this line is not needed now, but line 73 
+		//	may related with some unknow old hadoop version, so I changed it here
+		ConnectorUtil.setHadoopFSURI(conf, inputURI, connVer);
+		inputpath = inputURI.getPath();
 	}
 		
 	/** 

@@ -69,8 +69,12 @@ public class HDFSReader
 		}
 
 	    // Create a conf, set the HDFS URI and the input path
-	    Configuration.addDefaultResource("hdfs-site.xml");
+	    //Configuration.addDefaultResource("hdfs-site.xml"); //this line will
+		//load hdfs-site.xml before hdfs-default.xml, thus, the configs both in
+		//these two files will use its default value
 	    conf = new Configuration();
+		conf.addResource("hdfs-site.xml");//this line is not needed now, but for line 72, 
+		//it may related with some unknow old hadoop version, so I changed it here
 	    ConnectorUtil.setHadoopFSURI(conf, inputURI, connVer);
 	    inputpath = inputURI.getPath();
 	}
