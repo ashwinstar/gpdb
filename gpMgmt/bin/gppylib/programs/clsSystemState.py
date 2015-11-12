@@ -77,15 +77,6 @@ VALUE__MIRROR_SEGMENT_STATUS = FieldDefinition("Segment status", "segment_status
 VALUE__NONMIRROR_DATABASE_STATUS = FieldDefinition("Database status", "database_status", "text")
 VALUE__ACTIVE_PID = FieldDefinition("PID", "active_pid", "text") # int would be better, but we print error messages here sometimes
 
-CATEGORY__VERIFICATION = "Verification Info"
-VALUE__VERIFICATION_STATUS = FieldDefinition("Verification status", "verification_status", "text")
-VALUE__VERIFICATION_MODE = FieldDefinition("Verification mode", "verification_mode", "text")
-VALUE__VERIFICATION_START_TIME = FieldDefinition("Start time", "start_time", "text")
-VALUE__VERIFICATION_VERIFIED = FieldDefinition("Data verified", "data_verified", "text")
-VALUE__VERIFICATION_EST_TOTAL = FieldDefinition("Estimated total data to verify", "est_total_data", "text")
-VALUE__VERIFICATION_EST_PROGRESS = FieldDefinition("Estimated verification progress", "est_progress", "text")
-VALUE__VERIFICATION_EST_END_TIME = FieldDefinition("Estimated verification end time", "est_end_time", "timestamp")
-
 # these are not in a category, used for other logging
 VALUE__SEGMENT_STATUS = FieldDefinition("Instance status", "instance_status", "text", "Status")
 VALUE__DBID = FieldDefinition("dbid", "dbid", "int")
@@ -964,49 +955,6 @@ class GpSystemStateProgram:
                 # MPP-14054
                 pass
 
-            elif mirrorData["verificationStatus"] == "Running" or mirrorData["verificationStatus"] == "Suspended" or mirrorData["verificationStatus"] == "Pending":                   
-                data.addValue(VALUE__VERIFICATION_STATUS, mirrorData["verificationStatus"])
-                data.addValue(VALUE__VERIFICATION_MODE, mirrorData["verificationMode"])
-                verifyStartTimeStr = None
-                verifyStartTime = datetime.datetime.fromtimestamp(float(mirrorData["verificationStartTimeSecondsSinceEpoch"]))
-                verifyStartTimeStr = str (verifyStartTime)
-                verifyStartTimeTimestamp = verifyStartTime.isoformat()
-                #data.addValue(VALUE__VERIFICATION_START_TIME, mirrorData["verificationStartTimeSecondsSinceEpoch"])
-                estCompletePercent = '0.00%'
-                verifyTotalCount = mirrorData["verificationTotalCount"]
-                verifyCompletedCount = mirrorData["verificationCompletedCount"]
-                if float(mirrorData["verificationTotalCount"]) != 0.0:
-                    estCompletePercent = '%.2f%%' % ((float(mirrorData["verificationCompletedCount"])/float(mirrorData["verificationTotalCount"]))*100.0)
-                    verifyEndTime = datetime.datetime.fromtimestamp(float(mirrorData["estimatedCompletionVerificationTimeSecondsSinceEpoch"]))
-                    estimatedVerifyEndTimeStr = str (verifyEndTime)
-                    estimatedVerifyEndTimeTimestamp = verifyEndTime.isoformat()
-                    #verifyCompletedCount = '%.2f' % (verifyCompletedCount)
-                    #verifyCompletedCountStr = str (verifyCompletedCount)
-                    verifyCompletedCountStr = verifyCompletedCount
-                    verifyCompletedCountStr += " GB" 
-                    #verifyTotalCount = '%.2f' % (verifyTotalCount)
-                    #verifyTotalCountStr = str(verifyTotalCount)
-                    verifyTotalCountStr = verifyTotalCount
-                    verifyTotalCountStr += " GB"
-                    data.addValue(VALUE__VERIFICATION_START_TIME, verifyStartTimeTimestamp)
-                    data.addValue(VALUE__VERIFICATION_VERIFIED, verifyCompletedCountStr)
-                    data.addValue(VALUE__VERIFICATION_EST_TOTAL, verifyTotalCountStr)
-                    data.addValue(VALUE__VERIFICATION_EST_PROGRESS, estCompletePercent)
-                    if (float(mirrorData["verificationCompletedCount"])) == 0.00:
-                        data.addValue(VALUE__VERIFICATION_EST_END_TIME, "Not Available")
-                    elif (float(mirrorData["verificationTotalCount"]) - float(mirrorData["verificationCompletedCount"])) == 0.0 :
-                        data.addValue(VALUE__VERIFICATION_EST_END_TIME, "Not Available")
-                    elif (float(mirrorData["estimatedCompletionVerificationTimeSecondsSinceEpoch"]) == 0.0):
-                        data.addValue(VALUE__VERIFICATION_EST_END_TIME, "Not Available")
-                    else:  
-                        data.addValue(VALUE__VERIFICATION_EST_END_TIME, estimatedVerifyEndTimeTimestamp)
-                else:
-                    data.addValue(VALUE__VERIFICATION_START_TIME, "Not Available")
-                    data.addValue(VALUE__VERIFICATION_EST_PROGRESS, "Not Available")
-                    data.addValue(VALUE__VERIFICATION_EST_END_TIME, "Not Available")
-                    data.addValue(VALUE__VERIFICATION_VERIFIED, "Not Available")
-                    data.addValue(VALUE__VERIFICATION_EST_TOTAL, mirrorData["Not Available"])
-		
         #
         # populate resync modes on primary and mirror
         #

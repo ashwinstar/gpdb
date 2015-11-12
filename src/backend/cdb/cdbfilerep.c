@@ -2883,7 +2883,6 @@ FileRep_IsOperationSynchronous(FileRepOperation_e fileRepOperation)
 		case FileRepOperationHeartBeat:
 		case FileRepOperationCreateAndOpen:
 		case FileRepOperationValidation:
-		case FileRepOperationVerify:
 			return TRUE;
 
 		case FileRepOperationOpen:
@@ -3365,7 +3364,6 @@ void FileRep_Main(void)
     COMPILE_ASSERT(ARRAY_SIZE(FileRepAckStateToString) == FileRepAckState__EnumerationCount);
     COMPILE_ASSERT(ARRAY_SIZE(FileRepConsumerProcIndexToString) == FileRepMessageType__EnumerationCount);
 	COMPILE_ASSERT(ARRAY_SIZE(FileRepStatusToString) == FileRepStatus__EnumerationCount);
-	COMPILE_ASSERT(ARRAY_SIZE(FileRepOperationVerificationTypeToString) == 	FileRepOpVerifyType__EnumerationCount);
 	Insist(IsUnderPostmaster == TRUE);
 
 	fileRepProcessType = FileRepProcessTypeMain;
@@ -3524,11 +3522,6 @@ void FileRep_Main(void)
 				break;
 			}
 
-			if (FileRep_StartChildProcess(FileRepProcessTypePrimaryVerification) < 0) {
-				status = STATUS_ERROR;
-				break;
-			}
-
 			if (dataState == DataStateInResync)
 			{
 				if (FileRep_StartChildProcess(FileRepProcessTypeResyncManager) < 0) {
@@ -3586,11 +3579,6 @@ void FileRep_Main(void)
 			}
 
 			if (FileRep_StartChildProcess(FileRepProcessTypeMirrorSenderAck) < 0) {
-				status = STATUS_ERROR;
-				break;
-			}
-
-			if (FileRep_StartChildProcess(FileRepProcessTypeMirrorVerification) < 0) {
 				status = STATUS_ERROR;
 				break;
 			}
