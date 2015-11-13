@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * xlog.c
- *		PostgreSQL transaction log manager
+ *		PostgreSQL transaction log manager.
  *
  *
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
