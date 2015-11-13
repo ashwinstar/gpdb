@@ -125,8 +125,7 @@ class GpStateData:
                     CATEGORY__ERROR_GETTING_SEGMENT_STATUS,
                     CATEGORY__CHANGE_TRACKING_INFO,
                     CATEGORY__RESYNCHRONIZATION_INFO,
-                    CATEGORY__STATUS,
-                    CATEGORY__VERIFICATION]
+                    CATEGORY__STATUS]
         self.__entriesByCategory = {}
 
         self.__entriesByCategory[CATEGORY__SEGMENT_INFO] = \
@@ -161,16 +160,6 @@ class GpStateData:
                 VALUE__MIRROR_SEGMENT_STATUS,
                 VALUE__NONMIRROR_DATABASE_STATUS]
                 
-        self.__entriesByCategory[CATEGORY__VERIFICATION] = \
-                [VALUE__VERIFICATION_STATUS,
-                 VALUE__VERIFICATION_MODE,
-                 VALUE__VERIFICATION_START_TIME,
-                 VALUE__VERIFICATION_VERIFIED,
-                 VALUE__VERIFICATION_EST_TOTAL,
-                 VALUE__VERIFICATION_EST_PROGRESS,
-                 VALUE__VERIFICATION_EST_END_TIME
-                 ]
-
         self.__allValues = {}
         for k in [VALUE__SEGMENT_STATUS, VALUE__DBID, VALUE__CONTENTID,
                     VALUE__RESYNC_DATA_SYNCHRONIZED_BYTES, VALUE__RESYNC_EST_TOTAL_DATA_BYTES,
@@ -179,11 +168,7 @@ class GpStateData:
                     VALUE__VERSION_STRING, VALUE__POSTMASTER_PID_FILE_EXISTS, VALUE__LOCK_FILES_EXIST,
                     VALUE__ACTIVE_PID_INT, VALUE__POSTMASTER_PID_VALUE_INT,
                     VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES,
-					VALUE__POSTMASTER_PID_FILE, VALUE__POSTMASTER_PID_VALUE, VALUE__LOCK_FILES,
-                    VALUE__VERIFICATION_STATUS,
-                    VALUE__VERIFICATION_MODE, VALUE__VERIFICATION_START_TIME,
-                    VALUE__VERIFICATION_VERIFIED, VALUE__VERIFICATION_EST_TOTAL,
-                    VALUE__VERIFICATION_EST_PROGRESS, VALUE__VERIFICATION_EST_END_TIME
+                    VALUE__POSTMASTER_PID_FILE, VALUE__POSTMASTER_PID_VALUE, VALUE__LOCK_FILES
                     ]:
             self.__allValues[k] = True
 
@@ -762,15 +747,7 @@ class GpSystemStateProgram:
                 VALUE__ACTIVE_PID_INT,
 
                 VALUE__RESYNC_EST_TOTAL_DATA,
-                VALUE__VERSION_STRING,
-                
-                VALUE__VERIFICATION_STATUS,
-                VALUE__VERIFICATION_MODE,
-                VALUE__VERIFICATION_START_TIME,
-                VALUE__VERIFICATION_VERIFIED,
-                VALUE__VERIFICATION_EST_TOTAL,
-                VALUE__VERIFICATION_EST_PROGRESS,
-                VALUE__VERIFICATION_EST_END_TIME
+                VALUE__VERSION_STRING
                 ]
 
     def __segmentStatusPipeSeparatedForTableUse(self, gpEnv, gpArray):

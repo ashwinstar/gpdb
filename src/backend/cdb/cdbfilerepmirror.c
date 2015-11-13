@@ -558,9 +558,6 @@ FileRepMirror_StartConsumer(void)
 		case FileRepProcessTypeMirrorConsumerAppendOnly1:
 			fileRepProcIndex = FileRepMessageTypeAO01;
 			break;
-		case FileRepProcessTypeMirrorVerification:
-		    fileRepProcIndex = FileRepMessageTypeVerify;
-			break;
 		default:
 			Assert(0);
 			status = STATUS_ERROR;
