@@ -25,6 +25,9 @@
 #define MASTER_CONTENT_ID (-1)
 #define InvalidDbid 0
 
+#define IS_NOT_MASTER (GpIdentity.segindex != MASTER_CONTENT_ID)
+
+
 /* TIDYCAT_BEGINDEF
 
    CREATE TABLE gp_segment_configuration
