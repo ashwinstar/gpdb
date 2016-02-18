@@ -1054,7 +1054,7 @@ get_filespaces_to_send(basebackup_options *opt)
 
 	/* There is no pg_filespace_entry table on the segment, so we need to send
 	 * the entire data directory for segments. */
-	
+
 	if (IS_NOT_MASTER)
 	{
 		filespaceinfo *fi = palloc0(sizeof(filespaceinfo));
@@ -1063,12 +1063,12 @@ get_filespaces_to_send(basebackup_options *opt)
 		fi->standby_path = NULL;
 		fi->size = -1;
 		fi->xlogdir = true;
-		
+
 		filespaces = lappend(filespaces, fi);
 
 		return filespaces;
 	}
-	
+
 	txnFilespaceOID = primaryMirrorGetTxnFilespaceOID();
 	/*
 	 * Scan the filespace entries for this db.
