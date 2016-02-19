@@ -3,6 +3,8 @@
 #
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
+# Adapted from gpinitstandby.  Diff with gpinitstandby to see the changes. ??
+#
 import os
 import sys
 import signal
@@ -497,12 +499,26 @@ def create_standby(options):
             segs = array.getSegDbList()
             seg = segs[0]
             mirror_data_dir = '/Users/slari/gpdb-data/m1/gpseg0'
+            mirror_port = 41000
+
+            gp.start_standbymaster(options.standby_host,
+                                   mirror_data_dir,
+                                   mirror_port,
+                                   seg.getSegmentDbId(),
+                                   array.getNumSegmentContents())
+
+
+            """
 
             start_standby_mirror('slarimac',
                                  mirror_data_dir,
-                                 41000,
+                                 mirror_port,
                                  seg,
                                  array.getNumSegmentContents())
+
+            """
+
+
         except Exception, ex:
             raise('failed to start standby')
 
@@ -563,11 +579,17 @@ def create_standby(options):
             g_init_standby_state == INIT_STANDBY_STATE_UPDATE_GPDBID or
             g_init_standby_state == INIT_STANDBY_STATE_STARTING_STANDBY):
 
+
+            """
+
             logger.info('Cleaning up pg_hba.conf backup files...')
             # should cleanup on segments first
             cleanup_pg_hba_backup_on_segment(array)
             cleanup_pg_hba_conf_backup(array)
             logger.info('Backup files of pg_hba.conf cleaned up successfully.')
+
+            """
+
 
         # Reenable Ctrl-C
         signal.signal(signal.SIGINT,signal.default_int_handler)
@@ -750,7 +772,7 @@ def parse_filespaces(filespace_defs):
 
 #-------------------------------------------------------------------------
 def get_filespace_mappings(master_filespace_map, options, array):
-    """Asks user for the mapping from master filespaces -> standby master.  
+    """Asks user for the mapping from master filespaces -> standby master.
     master_filespace_map should be a 2d array of:
     [ ['master_fs1name', 'master_fs1path'],
     ['master_fs2name', 'master_fs2path'],
@@ -888,9 +910,10 @@ def copy_master_filespaces_to_standby(options, array, master_filespace_map, stan
 
     segs = array.getSegDbList()
     seg = segs[0]
+    mirror_data_dir = '/Users/slari/gpdb-data/m1/gpseg0'
 
     mirror_fs_dict = {}
-    mirror_fs_dict['pg_system'] = '/Users/slari/gpdb-data/m1/gpseg0'
+    mirror_fs_dict['pg_system'] = mirror_data_dir
 
     cmd_str = ' '.join(['pg_basebackup',
                         '-x', '-R',
@@ -931,13 +954,15 @@ def update_postgresql_conf(options, array):
 
     segs = array.getSegDbList()
     seg = segs[0]
+    mirror_data_dir = '/Users/slari/gpdb-data/m1/gpseg0'
+    mirror_port = 41000
 
     cmd = gp.GpAddConfigScript('update config',
-                               '/Users/slari/gpdb-data/m1/gpseg0',
+                               mirror_data_dir,
                                'port',
-                               value=str(41000),
+                               value=str(mirror_port),
                                ctxt=gp.REMOTE,
-                               remoteHost='slarimac')
+                               remoteHost=options.standby_host)
 
     cmd.run(validateAfter=True)
 
@@ -950,9 +975,10 @@ def update_gpdbid_file(options, array):
 
     segs = array.getSegDbList()
     seg = segs[0]
+    mirror_data_dir = '/Users/slari/gpdb-data/m1/gpseg0'
 
     standby_dbid = seg.getSegmentDbId()
-    standby_datadir = os.path.normpath('/Users/slari/gpdb-data/m1/gpseg0')
+    standby_datadir = os.path.normpath(mirror_data_dir)
     try:
         # MPP-13245, use single mechanism to manage gp_dbid file instead of ad-hoc replace
         cmd = gp.GpCreateDBIdFile('update gp_dbid file',
