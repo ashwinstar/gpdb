@@ -90,6 +90,10 @@ class GpInitStandbyException(Exception):
     pass
 
 
+class GpInitMirrorsException(Exception):
+    pass
+
+
 #-------------------------------------------------------------------------
 def parseargs():
     """parses and validates command line args."""
@@ -122,12 +126,27 @@ def parseargs():
 
     # Standby initialization options section
     optgrp = OptionGroup(parser, 'Standby initialization options')
+    optgrp.add_option('-m', '--mirror-host', type='string', dest='mirror_host',
+                      help='hostname of system to create mirror segment on')
+    optgrp.add_option('-p', '--mirror-port-offset', type='int', dest='mirror_port_offset',
+                      help='offset of mirror port from the primary')
+    optgrp.add_option('-d', '--mirror-data-directory', type='string', dest='mirror_data_dir',
+                      help='mirror data directory')
+
+
+    """
+
+    # currently not used
     optgrp.add_option('-s', '--standby-host', type='string', dest='standby_host',
                       help='hostname of system to create standby master on')
     optgrp.add_option('-P', '--standby-port', type='int', dest='standby_port',
                       help='port of system to create standby master on')
     optgrp.add_option('-F', '--standby-filespaces', type='string', dest='standby_filespaces',
                       help='filespace mapping of standby master')
+
+    """
+
+
     optgrp.add_option('-n', '--no-update', action='store_true', dest='no_update',
                       help='do not update system catalog tables')
     optgrp.add_option('-r', '--remove', action='store_true',
@@ -158,6 +177,9 @@ def parseargs():
         logger.error('Log directory %s does not exist.' % options.logfile)
         parser.exit(2, None)
 
+
+    """
+
     # -s and -n are exclusive
     if options.standby_host and options.no_update:
         logger.error('Options -s and -n cannot be specified together.')
@@ -187,7 +209,74 @@ def parseargs():
             logger.error('Unable to ping new standby host %s' % options.standby_host)
             parser.exit(2, None)
 
+     """
+
+
+    # check that the mirror host is up
+    if options.mirror_host:
+        try:
+            gp.Ping.local('check new standby up', options.mirror_host)
+        except:
+            logger.error('Unable to ping mirror host %s' % options.mirror_host)
+            parser.exit(2, None)
+
     return options, args
+
+
+
+#-------------------------------------------------------------------------
+def get_primary_segment_info():
+    """Get information about the first primary segment."""
+
+    try:
+        dburl = getDbUrlForInitStandby()
+        array = gparray.GpArray.initFromCatalog(dburl, utility=True)
+        primaries = array.getSegDbList()
+        primary = primaries[0]
+
+        return primary
+
+    except Exception, ex:
+        logger.error('Failed to get primary segment info.')
+        raise GpInitMirrorsException(ex)
+
+
+
+#-------------------------------------------------------------------------
+def process_options(options):
+    """Process the options.
+
+       Provide default values for unspecified options. """
+
+
+    try:
+        primary = get_primary_segment_info()
+        options.primary = primary
+
+        if options.mirror_port_offset:
+            options.mirror_port = (primary.getSegmentPort() +
+                                   option.mirror_port_offset)
+        else:
+            options.mirror_port =  primary.getSegmentPort() + 1000
+
+        if not options.mirror_host:
+            options.mirror_host = primary.getSegmentHostName()
+
+        if not options.mirror_data_dir:
+            dir_string = primary.getSegmentDataDirectory()
+            dir_list = dir_string.split('/')
+            numeric_dir = dir_list[-2]
+            match = re.search('\d+', numeric_dir)
+            new_numeric_dir = 'm' + match.group()
+            dir_list[-2] = new_numeric_dir
+            options.mirror_data_dir = '/'.join(dir_list)
+
+
+    except Exception, ex:
+        logger.error('Failed to process options.')
+        raise GpInitMirrorsException(ex)
+
+
 
 
 #-------------------------------------------------------------------------
@@ -456,13 +545,11 @@ def create_standby(options):
 
         """
 
-
         logger.debug('Updating pg_hba.conf file on segments...')
         update_pg_hba_conf_on_segments(array, options.standby_host)
         logger.info('pg_hba.conf files updated successfully.')
 
         """
-
 
 
         copy_master_filespaces_to_standby(options, array,
@@ -496,29 +583,11 @@ def create_standby(options):
 
             g_init_standby_state = INIT_STANDBY_STATE_STARTING_STANDBY
 
-            segs = array.getSegDbList()
-            seg = segs[0]
-            mirror_data_dir = '/Users/slari/gpdb-data/m1/gpseg0'
-            mirror_port = 41000
-
-            gp.start_standbymaster(options.standby_host,
-                                   mirror_data_dir,
-                                   mirror_port,
-                                   seg.getSegmentDbId(),
+            gp.start_standbymaster(options.mirror_host,
+                                   options.mirror_data_dir,
+                                   options.mirror_port,
+                                   options.primary.getSegmentDbId(),
                                    array.getNumSegmentContents())
-
-
-            """
-
-            start_standby_mirror('slarimac',
-                                 mirror_data_dir,
-                                 mirror_port,
-                                 seg,
-                                 array.getNumSegmentContents())
-
-            """
-
-
         except Exception, ex:
             raise('failed to start standby')
 
@@ -606,21 +675,20 @@ def update_pg_hba_conf(options, array):
     g_init_standby_state=INIT_STANDBY_STATE_UPDATE_PG_HBA
 
     try:
-        segs = array.getSegDbList()
-        seg = segs[0]
-        seg_data_dir = seg.getSegmentDataDirectory()
-
-        pg_hba_path = os.path.join(seg_data_dir, 'pg_hba.conf')
-        standby_ips = unix.InterfaceAddrs.remote('get standby ips', options.standby_host)
+        master_data_dir = array.master.getSegmentDataDirectory()
+        primary = options.primary
+        primary_data_dir = primary.getSegmentDataDirectory()
+        pg_hba_path = os.path.join(primary_data_dir, 'pg_hba.conf')
+        standby_ips = unix.InterfaceAddrs.remote('get standby ips', options.mirror_host)
         # InterfaceAddrs doesn't return local address, but if standby
         # will be on the same host, we should add it too.
-        if seg.getSegmentHostName() == options.standby_host:
+        if primary.getSegmentHostName() == options.mirror_host:
             standby_ips.append('127.0.0.1')
         current_user = unix.UserId.local('get userid')
 
         # back it up
         os.system('cp %s/pg_hba.conf %s/%s' \
-                  % (seg_data_dir, seg_data_dir, PG_HBA_BACKUP))
+                  % (primary_data_dir, primary_data_dir, PG_HBA_BACKUP))
 
         # read in current pg_hba.conf file
         fp = open(pg_hba_path, 'r')
@@ -660,7 +728,7 @@ def update_pg_hba_conf(options, array):
         fp.close()
 
         # make it effective
-        pg.ReloadDbConf.local('pg_ctl reload', seg)
+        pg.ReloadDbConf.local('pg_ctl reload', primary)
 
     except Exception, ex:
         logger.error('Failed to update pg_hba.conf file on master.')
@@ -908,12 +976,11 @@ def copy_master_filespaces_to_standby(options, array, master_filespace_map, stan
     """
 
 
-    segs = array.getSegDbList()
-    seg = segs[0]
-    mirror_data_dir = '/Users/slari/gpdb-data/m1/gpseg0'
+    primary = options.primary
+    mirror_data_dir = options.mirror_data_dir
 
     mirror_fs_dict = {}
-    mirror_fs_dict['pg_system'] = mirror_data_dir
+    mirror_fs_dict['pg_system'] = options.mirror_data_dir
 
     cmd_str = ' '.join(['pg_basebackup',
                         '-x', '-R',
@@ -921,12 +988,12 @@ def copy_master_filespaces_to_standby(options, array, master_filespace_map, stan
                         '-E', './gp_dumps',
                         '-E', './gpperfmon/data',
                         '-D', mirror_fs_dict['pg_system'],
-                        '-h', seg.getSegmentHostName(),
-                        '-p', str(seg.getSegmentPort())])
+                        '-h', primary.getSegmentHostName(),
+                        '-p', str(primary.getSegmentPort())])
     cmd = base.Command('pg_basebackup',
                        cmd_str,
                        ctxt=base.REMOTE,
-                       remoteHost=options.standby_host)
+                       remoteHost=options.mirror_host)
     try:
         cmd.run(validateAfter=True)
     except Exception, ex:
@@ -952,17 +1019,12 @@ def update_postgresql_conf(options, array):
     """
 
 
-    segs = array.getSegDbList()
-    seg = segs[0]
-    mirror_data_dir = '/Users/slari/gpdb-data/m1/gpseg0'
-    mirror_port = 41000
-
     cmd = gp.GpAddConfigScript('update config',
-                               mirror_data_dir,
+                               options.mirror_data_dir,
                                'port',
-                               value=str(mirror_port),
+                               value=str(options.mirror_port),
                                ctxt=gp.REMOTE,
-                               remoteHost=options.standby_host)
+                               remoteHost=options.mirror_host)
 
     cmd.run(validateAfter=True)
 
@@ -973,20 +1035,16 @@ def update_gpdbid_file(options, array):
 
     g_init_standby_state = INIT_STANDBY_STATE_UPDATE_GPDBID
 
-    segs = array.getSegDbList()
-    seg = segs[0]
-    mirror_data_dir = '/Users/slari/gpdb-data/m1/gpseg0'
-
-    standby_dbid = seg.getSegmentDbId()
-    standby_datadir = os.path.normpath(mirror_data_dir)
+    mirror_dbid = options.primary.getSegmentDbId()
+    mirror_datadir = os.path.normpath(options.mirror_data_dir)
     try:
         # MPP-13245, use single mechanism to manage gp_dbid file instead of ad-hoc replace
         cmd = gp.GpCreateDBIdFile('update gp_dbid file',
-                                  standby_datadir,
-                                  standby_dbid,
+                                  mirror_datadir,
+                                  mirror_dbid,
                                   verbose=logging_is_verbose(),
                                   ctxt=base.REMOTE,
-                                  remoteHost=options.standby_host)
+                                  remoteHost=options.mirror_host)
 
         cmd.run(validateAfter=True)
     except Exception, ex:
@@ -1270,6 +1328,8 @@ try:
 
     (options, args) = parseargs()
 
+    process_options(options)
+
     # Turn on debug logging if needed
     if options.debug:
         enable_verbose_logging()
@@ -1284,7 +1344,7 @@ try:
         check_and_start_standby()
     else:
         create_standby(options)
-        logger.info('Successfully created standby master on %s' % options.standby_host)
+        logger.info('Successfully created standby mirror on %s' % options.mirror_host)
 
 except KeyboardInterrupt:
     logger.error('User canceled')
