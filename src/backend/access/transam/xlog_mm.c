@@ -364,7 +364,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 
 		XLogDropRelation(rnode);
 
-		if (GpIdentity.segindex == MASTER_CONTENT_ID && !IsStandbyMode())
+		if (!IsStandbyMode())
 		{
 			PersistentTablespaceGetFilespaces tablespaceGetFilespaces;
 
@@ -539,102 +539,93 @@ emit_mmxlog_fs_record(mm_fs_obj_type type, Oid filespace,
 		/* no business here */
 		return false;
 
-	/* only interesting on the master */
-	if (GpIdentity.segindex == MASTER_CONTENT_ID)
+	XLogRecData rdata;
+	xl_mm_fs_obj xlrec;
+	char *master_path;
+	char *mirror_path;
+	int16 master_dbid = GpIdentity.dbid;
+	int16 mirror_dbid = GetStandbyDbid();
+
+	master_path = NULL;
+	mirror_path = NULL;
+
+	if (type == MM_OBJ_FILESPACE)
 	{
-		XLogRecData rdata;
-		xl_mm_fs_obj xlrec;
-		char *master_path;
-		char *mirror_path;
-		int16 master_dbid = GpIdentity.dbid;
-		int16 mirror_dbid = GetStandbyDbid();
-
-		Insist(Gp_role == GP_ROLE_DISPATCH ||
-			   Gp_role == GP_ROLE_UTILITY);
-
-		master_path = NULL;
-		mirror_path = NULL;
-
-		if (type == MM_OBJ_FILESPACE)
-		{
-			Insist(OidIsValid(filespace));
-			get_filespace_paths(filespace, &master_path, &mirror_path);
-		}
-		else
-		{
-			Insist(OidIsValid(tablespace));
-
-			tblspc_get_filespace_paths(tablespace, master_dbid, mirror_dbid,
-									   &master_path, &mirror_path);
-
-			filespace = PersistentTablespace_GetFileSpaceOid(tablespace);
-		}
-
-		/*
-		 * Make a non-transactional XLOG entry showing the file creation. It's
-		 * non-transactional because we should replay it whether the transaction
-		 * commits or not; if not, the file will be dropped at abort time.
-		 */
-		xlrec.objtype = type;
-		xlrec.filespace = filespace;
-		xlrec.tablespace = tablespace;
-		xlrec.database = database;
-		xlrec.relfilenode = relfilenode;
-		xlrec.segnum = segnum;
-
-		xlrec.u.dbid.master = master_dbid;
-		xlrec.u.dbid.mirror = mirror_dbid;
-
-		Insist(!master_path ||
-			   strlen(master_path) <= MAXPGPATH);
-
-		xlrec.master_path[0] = '\0';
-		if (master_path)
-			strncpy(xlrec.master_path, master_path,
-					sizeof(xlrec.master_path));
-		else
-		{
-			/*
-			 * Allow relative paths if we didn't get anything when we looked up
-			 * the filespace. We must allow this for the default filespace.
-			 */
-			xlrec.master_path[0] = '.';
-			xlrec.master_path[1] = '\0';
-		}
-
-		append_file_parts(type, xlrec.master_path, tablespace, database,
-						  relfilenode, segnum);
-
-		xlrec.mirror_path[0] = '\0';
-		if (mirror_path)
-			strncpy(xlrec.mirror_path, mirror_path,
-					sizeof(xlrec.mirror_path));
-		else
-		{
-			xlrec.mirror_path[0] = '.';
-			xlrec.mirror_path[1] = '\0';
-		}
-
-		append_file_parts(type, xlrec.mirror_path, tablespace, database,
-						  relfilenode, segnum);
-
-		if (Debug_print_qd_mirroring)
-			elog(DEBUG1, "XLOG: type = %i, flags = %i, dbid = (%u, %u), path = (%s, %s)",
-				 type, flags, xlrec.u.dbid.master, xlrec.u.dbid.mirror,
-				 xlrec.master_path, xlrec.mirror_path);
-
-		rdata.data = (char *) &xlrec;
-		rdata.len = sizeof(xlrec);
-		rdata.buffer = InvalidBuffer;
-		rdata.next = NULL;
-
-		XLogInsert(RM_MMXLOG_ID, flags | XLOG_NO_TRAN, &rdata);
-		*beginLoc = XLogLastInsertBeginLoc();
-
-		return true;
+		Insist(OidIsValid(filespace));
+		get_filespace_paths(filespace, &master_path, &mirror_path);
 	}
 	else
-		return false;
+	{
+		Insist(OidIsValid(tablespace));
+
+		tblspc_get_filespace_paths(tablespace, master_dbid, mirror_dbid,
+				&master_path, &mirror_path);
+
+		filespace = PersistentTablespace_GetFileSpaceOid(tablespace);
+	}
+
+	/*
+	 * Make a non-transactional XLOG entry showing the file creation. It's
+	 * non-transactional because we should replay it whether the transaction
+	 * commits or not; if not, the file will be dropped at abort time.
+	 */
+	xlrec.objtype = type;
+	xlrec.filespace = filespace;
+	xlrec.tablespace = tablespace;
+	xlrec.database = database;
+	xlrec.relfilenode = relfilenode;
+	xlrec.segnum = segnum;
+
+	xlrec.u.dbid.master = master_dbid;
+	xlrec.u.dbid.mirror = mirror_dbid;
+
+	Insist(!master_path ||
+			strlen(master_path) <= MAXPGPATH);
+
+	xlrec.master_path[0] = '\0';
+	if (master_path)
+		strncpy(xlrec.master_path, master_path,
+				sizeof(xlrec.master_path));
+	else
+	{
+		/*
+		 * Allow relative paths if we didn't get anything when we looked up
+		 * the filespace. We must allow this for the default filespace.
+		 */
+		xlrec.master_path[0] = '.';
+		xlrec.master_path[1] = '\0';
+	}
+
+	append_file_parts(type, xlrec.master_path, tablespace, database,
+			relfilenode, segnum);
+
+	xlrec.mirror_path[0] = '\0';
+	if (mirror_path)
+		strncpy(xlrec.mirror_path, mirror_path,
+				sizeof(xlrec.mirror_path));
+	else
+	{
+		xlrec.mirror_path[0] = '.';
+		xlrec.mirror_path[1] = '\0';
+	}
+
+	append_file_parts(type, xlrec.mirror_path, tablespace, database,
+			relfilenode, segnum);
+
+	if (Debug_print_qd_mirroring)
+		elog(DEBUG1, "XLOG: type = %i, flags = %i, dbid = (%u, %u), path = (%s, %s)",
+				type, flags, xlrec.u.dbid.master, xlrec.u.dbid.mirror,
+				xlrec.master_path, xlrec.mirror_path);
+
+	rdata.data = (char *) &xlrec;
+	rdata.len = sizeof(xlrec);
+	rdata.buffer = InvalidBuffer;
+	rdata.next = NULL;
+
+	XLogInsert(RM_MMXLOG_ID, flags | XLOG_NO_TRAN, &rdata);
+	*beginLoc = XLogLastInsertBeginLoc();
+
+	return true;
 }
 
 /* External interface to filespace removal logging */

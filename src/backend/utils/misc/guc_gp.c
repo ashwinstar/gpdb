@@ -1861,7 +1861,7 @@ struct config_bool ConfigureNamesBool_gp[] =
 			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_bulk_load_bypass_wal,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 
 	{
