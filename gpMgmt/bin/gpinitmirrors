@@ -584,11 +584,25 @@ def create_standby(options):
 
             g_init_standby_state = INIT_STANDBY_STATE_STARTING_STANDBY
 
+
+            """
+
             gp.start_standbymaster(options.mirror_host,
                                    options.mirror_data_dir,
                                    options.mirror_port,
                                    options.primary.getSegmentDbId(),
                                    array.getNumSegmentContents())
+
+            """
+
+
+            start_standby_mirror(options.mirror_host,
+                                 options.mirror_data_dir,
+                                 options.mirror_port,
+                                 options.primary.getSegmentDbId(),
+                                 options.primary.getSegmentContentId(),
+                                 array.getNumSegmentContents())
+
         except Exception, ex:
             raise('failed to start standby')
 
@@ -1157,8 +1171,6 @@ def update_flat_file(array, standby_filespace_map, flat_file):
 
 
 
-
-
 #-----------------------------------------------
 class MirrorSegmentStart(Command):
     """
@@ -1167,51 +1179,129 @@ class MirrorSegmentStart(Command):
     Note: Modified after gp.SegmentStart()
     """
 
-    def __init__(self, name, gpdb, datadir, port,
+    def __init__(self, name, datadir, port, dbid, contentId,
                  numContentsInCluster, era, mirrormode,
                  utilityMode=False, ctxt=LOCAL, remoteHost=None,
                  noWait=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
                  specialMode=None, wrapper=None, wrapper_args=None):
 
-
+        """
         # This is referenced from calling code
         self.segment = gpdb
 
         # Interesting data from our input segment
         dbid    = gpdb.getSegmentDbId()
         content = gpdb.getSegmentContentId()
+        port    = gpdb.getSegmentPort()
+        datadir = gpdb.getSegmentDataDirectory()
+        """
 
         # build backend options
         b = PgCtlBackendOptions(port, dbid, numContentsInCluster)
-        b.set_segment(mirrormode, content)
+        b.set_segment(mirrormode, contentId)
         b.set_utility(utilityMode)
         b.set_special(specialMode)
 
         # build pg_ctl command
-        c = PgCtlStartArgs(datadir, b, era, wrapper, wrapper_args, not noWait, timeout)
+        c = PgCtlStartArgs(datadir, b, era, wrapper, wrapper_args, noWait, timeout)
         self.cmdStr = str(c) + ' 2>&1'
 
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
-        # the above did not work ??
-
     @staticmethod
-    def local(name, gpdb, datadir, port, numContentsInCluster, era, mirrormode, utilityMode=False):
-        cmd=MirrorSegmentStart(name, gpdb, datadir, port, numContentsInCluster, era, mirrormode, utilityMode)
+    def local(name, datadir, port, dbid, contentId,
+              numContentsInCluster, era, mirrormode=MIRROR_MODE_MIRRORLESS,
+              utilityMode=False):
+        cmd=MirrorSegmentStart(name, datadir, port, dbid, contentId,
+                               numContentsInCluster, era, mirrormode,
+                               utilityMode)
         cmd.run(validateAfter=True)
 
     @staticmethod
-    def remote(name, remoteHost, gpdb, datadir, port, numContentsInCluster, era, mirrormode, utilityMode=False):
-        cmd=MirrorSegmentStart(name, gpdb, datadir, port, numContentsInCluster, era, mirrormode, utilityMode, ctxt=REMOTE, remoteHost=remoteHost)
+    def remote(name, remoteHost, datadir, port, dbid, contentId,
+               numContentsInCluster, era, mirrormode=MIRROR_MODE_MIRRORLESS,
+               utilityMode=False):
+        cmd=MirrorSegmentStart(name, datadir, port, dbid, contentId,
+                               numContentsInCluster, era, mirrormode,
+                               utilityMode, ctxt=REMOTE, remoteHost=remoteHost)
         cmd.run(validateAfter=True)
-
-
 
 
 #-------------------------------------------------------------------------
 
-def start_standby_mirror(host, datadir, port, seg, ncontents, era=None,
+def start_standby_mirror(host, datadir, port, dbid, contentId, ncontents, era=None,
                         wrapper=None, wrapper_args=None):
+    """
+    start_standby_mirror is used to start a single mirror segment.
+
+    Note: Modified after start_standbymaster()
+    """
+
+    logger.info("Starting standby master")
+
+    logger.info("Checking if standby master is running on host: %s  in directory: %s" % (host,datadir))
+    cmd = Command("recovery_startup",
+                  ("python -c "
+                   "'from gppylib.commands.gp import recovery_startup; "
+                   """recovery_startup("{0}", "{1}")'""").format(
+                       datadir, port),
+                  ctxt=REMOTE, remoteHost=host)
+    cmd.run()
+    res = cmd.get_results().stderr
+
+    if res:
+        logger.warning("Unable to cleanup previously started standby: '%s'" % res)
+
+    #create a pg_log directory if necessary
+    CreateDirIfNecessary.remote('create standby logdir if needed', host, datadir + "/pg_log")
+
+
+    """
+
+    cmd = gp.GpStandbyStart.remote('start standby master',
+                                host, datadir, port, ncontents, dbid, era=era,
+                                wrapper=wrapper, wrapper_args=wrapper_args)
+
+    """
+
+
+    cmd = MirrorSegmentStart.remote('start standby master',
+                                    host, datadir, port, dbid, contentId, ncontents, era=era)
+
+
+    # Wait for the standby to start recovery.  Ideally this means the
+    # standby connection is recoginized by the primary, but locally this
+    # function it is better to work with only standby.  If recovery has
+    # started, this means now postmaster is responsive to signals, which
+    # allows shutdown etc.  If we exit earlier, there is a big chance
+    # a shutdown message from other process is missed.
+    for i in xrange(60):
+        # Fetch it every time, as postmaster might not have been up yet for
+        # the first few cycles, which we have seen when trying wrapper
+        # shell script.
+        pid = gp.getPostmasterPID(host, datadir)
+        cmd = Command("get pids",
+                      ("python -c "
+                       "'from gppylib.commands import unix; "
+                       "print unix.getDescendentProcesses({0})'".format(pid)),
+                      ctxt=REMOTE, remoteHost=host)
+        cmd.run()
+        logger.debug(str(cmd))
+        result = cmd.get_results()
+        logger.debug(result)
+        # We want more than postmaster and logger processes.
+        if result.rc == 0 and len(result.stdout.split(',')) > 2:
+            return True
+        time.sleep(1)
+
+    logger.warning("Could not start standby master")
+    return False
+
+
+    """
+
+    #previous implementation
+
     logger.info("Starting standby mirror")
 
 
@@ -1231,6 +1321,9 @@ def start_standby_mirror(host, datadir, port, seg, ncontents, era=None,
         return False
 
     return True
+
+    """
+
 
 
 

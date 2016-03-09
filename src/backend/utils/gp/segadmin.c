@@ -299,9 +299,10 @@ mirroring_sanity_check(int flags, const char *func)
 	{
 		if (GpIdentity.dbid == UNINITIALIZED_GP_IDENTITY_VALUE)
 			elog(ERROR, "%s requires valid GpIdentity dbid", func);
-
+/*
 		if (!dbid_is_master_standby(GpIdentity.dbid))
 			elog(ERROR, "%s can only be run on the standby master", func);
+*/
 	}
 }
 
@@ -1234,7 +1235,9 @@ filespace_entry_activate_standby(int standbydbid, int newdbid)
 static void
 catalog_activate_standby(int16 standbydbid, int16 olddbid)
 {
+/*
 	segment_config_activate_standby(standbydbid, olddbid);
+*/
 	filespace_entry_activate_standby(standbydbid, olddbid);
 }
 

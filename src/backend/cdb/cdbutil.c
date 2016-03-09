@@ -1185,9 +1185,14 @@ contentid_get_dbid(int16 contentid, char role, bool getPreferredRoleNotCurrentRo
 	 * Can only run on a master node, this restriction is due to the reliance
 	 * on the gp_segment_configuration table.  This may be able to be relaxed
 	 * by switching to a different method of checking.
+	 *
+	 * Comments above need to change ??
 	 */
 	if (GpIdentity.segindex != MASTER_CONTENT_ID)
-		elog(ERROR, "contentid_get_dbid() executed on execution segment");
+	{
+		return GpIdentity.dbid;
+	}
+
 
 	/* XXX XXX: CHECK THIS  XXX jic 2011/12/09 */
 	if (getPreferredRoleNotCurrentRole)

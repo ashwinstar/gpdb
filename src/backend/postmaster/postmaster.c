@@ -2388,7 +2388,7 @@ ServerLoop(void)
 			checkPgDir2("pg_clog");
 			checkPgDir2("pg_multixact/members");
 			checkPgDir2("pg_multixact/offsets");
-			checkPgDir2("pg_xlog/archive_status");	
+			/* checkPgDir2("pg_xlog/archive_status");	*/
 		}
 
 #ifdef USE_TEST_UTILS
