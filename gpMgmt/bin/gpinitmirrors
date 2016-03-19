@@ -29,6 +29,10 @@ try:
     from gppylib.commands.base import *
     from gppylib.commands.unix import *
     from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT, PgCtlBackendOptions, PgCtlStartArgs
+    from gppylib.system.environment import GpMasterEnvironment
+    from gppylib.system import configurationInterface, configurationImplGpdb
+
+
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you '
              'have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -601,7 +605,7 @@ def create_standby(options):
                                  options.mirror_port,
                                  options.primary.getSegmentDbId(),
                                  options.primary.getSegmentContentId(),
-                                 array.getNumSegmentContents())
+                                 array)
 
         except Exception, ex:
             raise('failed to start standby')
@@ -1229,7 +1233,7 @@ class MirrorSegmentStart(Command):
 
 #-------------------------------------------------------------------------
 
-def start_standby_mirror(host, datadir, port, dbid, contentId, ncontents, era=None,
+def start_standby_mirror(host, datadir, port, dbid, contentId, array, era=None,
                         wrapper=None, wrapper_args=None):
     """
     start_standby_mirror is used to start a single mirror segment.
@@ -1266,8 +1270,19 @@ def start_standby_mirror(host, datadir, port, dbid, contentId, ncontents, era=No
 
 
     cmd = MirrorSegmentStart.remote('start standby master',
-                                    host, datadir, port, dbid, contentId, ncontents, era=era)
+                                    host, datadir, port, dbid,
+                                    contentId,
+                                    array.getNumSegmentContents(),
+                                    era=era)
 
+    configurationInterface.registerConfigurationProvider(
+                           configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
+
+    gpEnv = GpMasterEnvironment(None, False)
+    configurationInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort())
+
+    configurationInterface.getConfigurationProvider().updateSystemConfigAddOneMirror(
+        host, datadir, port, dbid, contentId, array)
 
     # Wait for the standby to start recovery.  Ideally this means the
     # standby connection is recoginized by the primary, but locally this

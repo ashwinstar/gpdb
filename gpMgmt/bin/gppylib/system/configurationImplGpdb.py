@@ -15,6 +15,7 @@ from gppylib.system.configurationInterface import *
 from gppylib.system.ComputeCatalogUpdate import ComputeCatalogUpdate
 from gppylib.gparray import GpArray, GpDB, InvalidSegmentConfiguration
 from gppylib import gparray
+from gppylib.gparray import ROLE_MIRROR, MODE_SYNCHRONIZED, STATUS_UP, FAULT_STRATEGY_FILE_REPLICATION
 from gppylib.db import dbconn
 from gppylib.commands.gp import get_local_db_mode
 
@@ -445,3 +446,56 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         if val is None:
             return "null"
         return "'" + val.replace("'","''").replace('\\','\\\\') + "'"
+
+
+
+    def updateSystemConfigAddOneMirror(self, host, datadir, port,
+                                       dbid, contentId, array):
+
+
+        """
+        Add a mirror segment specified in our goal configuration but
+        which is missing from the current gp_segment_configuration table
+        and record our action in gp_configuration_history.
+        """
+
+        mirror = GpDB(content = contentId,
+                      preferred_role = ROLE_MIRROR,
+                      dbid = -1,
+                      role = ROLE_MIRROR,
+                      mode = MODE_SYNCHRONIZED,
+                      status = STATUS_UP,
+                      hostname = host,
+                      address = host,
+                      port = port,
+                      datadir = datadir,
+                      replicationPort = port + 1000)
+
+        programName = os.path.split(sys.argv[0])[-1]
+        textForConfigTable = "%s: adding mirror" % programName
+
+        try:
+            conn = dbconn.connect(self.__masterDbUrl,
+                                  utility = True,
+                                  allowSystemTableMods='dml')
+            dbconn.execSQL(conn, "BEGIN")
+
+            mirrorDbId = self.__callSegmentAddMirror(conn, array, mirror)
+            mirror.setSegmentDbId(mirrorDbId)
+            #self.__updateSegmentModeStatus(conn, mirror)
+            self.__insertConfigHistory(conn, mirrorDbId,
+                                       "%s: inserted mirror segment configuration"
+                                       % textForConfigTable)
+            array.setFaultStrategy(FAULT_STRATEGY_FILE_REPLICATION)
+            self.__updateSystemConfigFaultStrategy(conn, array)
+            array.setStrategyAsLoadedFromDb( [array.getFaultStrategy()])
+
+            dbconn.execSQL(conn, "COMMIT")
+
+        except Exception, ex:
+            logger.error('Failed in updateSystemConfigAddOneMirror.')
+            raise ex
+
+        finally:
+            if conn:
+                conn.close()

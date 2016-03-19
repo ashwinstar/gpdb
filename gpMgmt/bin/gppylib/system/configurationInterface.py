@@ -61,6 +61,23 @@ class GpConfigurationProvider :
         """
         pass
 
+
+    def updateSystemConfigAddOneMirror(self, host, datadir, port, dbid, contentId, array):
+
+
+        """
+
+        systemConfiguration, textForConfigTable, dbIdToForceMirrorRemoveAdd, useUtilityMode ) :
+
+        Update the configuration for the given segments in the underlying configuration store
+            to match the current values
+
+        Also resets any dirty bits on saved/updated objects
+
+        """
+
+        pass
+
 """
 Management of registered configuration provider.  Right now it
    is a singleton, so initializeDatabase calls _could_ mess up
