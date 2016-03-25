@@ -479,9 +479,6 @@ modeUpdate(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMs
 	Assert(seg_addr != NULL);
 	Assert(peer_addr != NULL);
 	Assert(seg_pm_port > 0);
-	Assert(seg_rep_port > 0);
-	Assert(peer_pm_port > 0);
-	Assert(peer_rep_port > 0);
 
 	switch (logMsgToSend)
 	{
@@ -505,7 +502,11 @@ modeUpdate(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMs
 		runInBg = ' ';
 	}
 
-	/* issue the command to change modes */
+	if ((seg_rep_port > 0) && (peer_pm_port > 0) && (peer_rep_port >0))
+	{
+		/* we are using filerep
+		 * issue the command to change modes */
+
 	(void) snprintf
 		(
 		cmd, sizeof(cmd),
@@ -523,6 +524,11 @@ modeUpdate(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMs
 		runInBg
 		)
 		;
+	}
+	else
+	{
+		snprintf(cmd, sizeof(cmd), "PGPORT=26432 MASTER_DATA_DIRECTORY=/Users/slari/gitdev/gpdb/gpAux/gpdemo/datadirs/m1/demoDataDir0 gpactivatemirrors -a");
+	}
 
 	Assert(strlen(cmd) < sizeof(cmd) - 1);
 
