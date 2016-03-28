@@ -28,6 +28,7 @@
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentrecovery.h"
+#include "cdb/cdbappendonlyam.h"
 
 static void MirroredAppendOnly_SetUpMirrorAccess(
 	RelFileNode					*relFileNode,
@@ -2214,7 +2215,27 @@ void MirroredAppendOnly_Append(
 	if (StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode) &&
 		!open->copyToMirror)
 	{
-		errno = 0;	
+		/*
+		 * Seems great place to perform xlogging
+		 */
+		xl_ao_insert xlaohdr;
+		xlaohdr.hdr.node = open->relFileNode;
+		xlaohdr.hdr.segment_filenum = open->segmentFileNum;
+
+		XLogRecData rdata[2];
+		rdata[0].data = (char*) &xlaohdr;
+		rdata[0].len = SizeOfAOInsert;
+		rdata[0].buffer = InvalidBuffer;
+		rdata[0].next = &(rdata[1]);
+
+		rdata[1].data = (char*) buffer;
+		rdata[1].len = bufferLen;
+		rdata[1].buffer = InvalidBuffer;
+		rdata[1].next = NULL;
+
+		XLogInsert(RM_APPEND_ONLY_ID, XLOG_APPENDONLY_INSERT, &rdata);
+
+		errno = 0;
 
 		if ((int) FileWrite(open->primaryFile, buffer, bufferLen) != bufferLen)
 		{

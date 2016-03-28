@@ -23,6 +23,7 @@
 #include "commands/sequence.h"
 #include "commands/tablespace.h"
 #include "storage/smgr.h"
+#include "cdb/cdbappendonlyam.h"
 
 
 const RmgrData RmgrTable[RM_MAX_ID + 1] = {
@@ -44,5 +45,6 @@ const RmgrData RmgrTable[RM_MAX_ID + 1] = {
 	{"Sequence", seq_redo, seq_desc, NULL, NULL, NULL},
 	{"Bitmap", bitmap_redo, bitmap_desc, bitmap_xlog_startup, bitmap_xlog_cleanup, bitmap_safe_restartpoint},
 	{"DistributedLog", DistributedLog_redo, DistributedLog_desc, NULL, NULL, NULL},
-	{"Master Mirror Log Records", mmxlog_redo, mmxlog_desc, NULL, NULL, NULL}
+	{"Master Mirror Log Records", mmxlog_redo, mmxlog_desc, NULL, NULL, NULL},
+	{"Appendonly Table Log Records", appendonly_redo, appendonly_desc, NULL, NULL, NULL}
 };

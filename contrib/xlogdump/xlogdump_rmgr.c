@@ -1386,3 +1386,10 @@ print_rmgr_seq(XLogRecPtr cur, XLogRecord *record, uint8 info)
 	print_rmgr_record(cur, record, "seq");
 }
 
+void
+print_rmgr_ao(XLogRecPtr cur, XLogRecord *record, uint8 info)
+{
+	/* FIXME: need to be implemented. */
+	print_rmgr_record(cur, record, "appendonly");
+}
+

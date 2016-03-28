@@ -28,3 +28,16 @@ int32 AppendOnlyStorage_GetUsableBlockSize(int32 configBlockSize)
 	
 	return result;
 }
+
+void
+appendonly_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
+{
+	uint8       info = record->xl_info & ~XLR_INFO_MASK;
+	/* TODO add logic here to replay AO xlog records */
+}
+
+void
+appendonly_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
+{
+	/* TODO add logic here to describe AO xlog records */
+}
