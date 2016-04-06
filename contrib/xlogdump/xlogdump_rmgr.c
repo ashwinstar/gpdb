@@ -18,6 +18,7 @@
 #include "access/xact.h"
 #include "catalog/pg_control.h"
 #include "commands/dbcommands.h"
+#include "cdb/cdbappendonlyam.h"
 
 #if PG_VERSION_NUM >=90000
 #include "utils/relmapper.h"
@@ -52,8 +53,13 @@ const char * const RM_names[RM_MAX_ID+1] = {
 	"Gist",						/* 14 */
 	"Sequence",					/* 15 */
 #if PG_VERSION_NUM >=90200
-	"SPGist"					/* 16 */
+	"SPGist",					/* 16 */
+#else
+	"Reserved 16",
 #endif
+	"DistributedLog",
+	"MasterMirrorLog",
+	"Appendonly"
 };
 
 /* copy from utils/timestamp.h */
@@ -1390,6 +1396,24 @@ void
 print_rmgr_ao(XLogRecPtr cur, XLogRecord *record, uint8 info)
 {
 	/* FIXME: need to be implemented. */
-	print_rmgr_record(cur, record, "appendonly");
+	char spaceName[NAMEDATALEN];
+	char dbName[NAMEDATALEN];
+	char relName[NAMEDATALEN];
+	char buf[1024];
+
+	xl_ao_insert xlrec;
+
+	memcpy(&xlrec, XLogRecGetData(record), sizeof(xlrec));
+
+	getSpaceName(xlrec.hdr.node.spcNode, spaceName, sizeof(spaceName));
+	getDbName(xlrec.hdr.node.dbNode, dbName, sizeof(dbName));
+	getRelName(xlrec.hdr.node.relNode, relName, sizeof(relName));
+
+	snprintf(buf, sizeof(buf), "insert: s/d/r:%s/%s/%s segfile/off:%u/%u",
+			spaceName, dbName, relName,
+			xlrec.hdr.segment_filenum,
+			xlrec.hdr.offset);
+	print_rmgr_record(cur, record, buf);
 }
+
 

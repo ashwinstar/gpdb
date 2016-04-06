@@ -376,9 +376,10 @@ typedef struct xl_ao_header
 {
 		RelFileNode node;
 		uint segment_filenum;
+		uint64	offset;
 } xl_ao_header;
 
-#define SizeOfAOInsert (offsetof(xl_ao_header,segment_filenum) + sizeof(uint))
+#define SizeOfAOInsert (offsetof(xl_ao_header,offset) + sizeof(uint64))
 
 typedef struct xl_ao_insert
 {

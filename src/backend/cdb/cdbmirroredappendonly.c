@@ -2221,6 +2221,14 @@ void MirroredAppendOnly_Append(
 		xl_ao_insert xlaohdr;
 		xlaohdr.hdr.node = open->relFileNode;
 		xlaohdr.hdr.segment_filenum = open->segmentFileNum;
+		/*
+		 * Using FileSeek to fetch the current write offset.
+		 * Passing 0 offset with SEEK_CUR avoids actual disk-io,
+		 * as it just returns from VFDCache the current file position value.
+		 * Make sure to populate this before the FileWrite call else the file
+		 * pointer has moved forward.
+		 */
+		xlaohdr.hdr.offset = FileSeek(open->primaryFile, 0, SEEK_CUR);
 
 		XLogRecData rdata[2];
 		rdata[0].data = (char*) &xlaohdr;
@@ -2359,4 +2367,57 @@ int MirroredAppendOnly_Read(
 	
 	errno = 0;
 	return FileRead(open->primaryFile, buffer, bufferLen);
+}
+
+void
+ao_xlog_insert(XLogRecord *record)
+{
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	char *dbPath; 
+	char *path;
+	File file;
+	
+	xl_ao_insert *xlrec = (xl_ao_insert*)XLogRecGetData(record);
+	char *buffer = (char*)xlrec + SizeOfAOInsert;
+	uint64 len = record->xl_len - SizeOfAOInsert;
+	
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+										xlrec->hdr.node.spcNode,
+										&primaryFilespaceLocation,
+										&mirrorFilespaceLocation);
+
+	dbPath = (char*)palloc(MAXPGPATH + 1);
+	path = (char*)palloc(MAXPGPATH + 1);
+
+	FormDatabasePath(
+				dbPath,
+				primaryFilespaceLocation,
+				xlrec->hdr.node.spcNode,
+				xlrec->hdr.node.dbNode);
+
+	if (xlrec->hdr.segment_filenum == 0)
+		sprintf(path, "%s/%u", dbPath, xlrec->hdr.node.relNode);
+	else
+		sprintf(path, "%s/%u.%u", dbPath, xlrec->hdr.node.relNode, xlrec->hdr.segment_filenum);
+
+	errno = 0;
+
+	file = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
+				
+	if (file < 0)
+	{
+		elog(ERROR, "Failed to open file to write for AO");
+	}
+
+	pfree(dbPath);
+	pfree(path);
+
+	FileSeek(file, xlrec->hdr.offset, SEEK_SET);
+	
+	if ((int) FileWrite(file, buffer, len) != len)
+	{
+		elog(ERROR, "Failed to write the AO file");
+	}
+	FileClose(file);
 }

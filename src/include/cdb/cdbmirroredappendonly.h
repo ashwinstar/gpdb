@@ -311,6 +311,9 @@ extern int MirroredAppendOnly_Read(
 	
 	int32					bufferLen);
 
+extern void
+ao_xlog_insert(XLogRecord *record);
+
 #endif   /* CDBMIRROREDAPPENDONLY_H */
 
 

@@ -584,6 +584,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 		case RM_DBASE_ID:
 		case RM_TBLSPC_ID:
 		case RM_MMXLOG_ID:
+		case RM_APPEND_ONLY_ID:
 			break;
 			
 		/* 

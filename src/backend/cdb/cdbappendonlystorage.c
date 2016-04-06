@@ -33,7 +33,16 @@ void
 appendonly_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8       info = record->xl_info & ~XLR_INFO_MASK;
-	/* TODO add logic here to replay AO xlog records */
+	/* 
+	 * TODO add logic here to replay AO xlog records,
+	 * currently Ao only has insert as record type.
+	 */
+
+	if(IsStandbyMode())
+	{
+		elog(LOG, "Replaying the AO xlog record");
+		ao_xlog_insert(record);
+	}
 }
 
 void
