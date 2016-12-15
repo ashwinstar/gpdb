@@ -237,6 +237,7 @@ extern DatumStreamWrite *create_datumstreamwrite(
 						int32 maxsz,
 						Form_pg_attribute attr,
 						char *relname,
+						Oid relId,
 						char *title);
 
 extern DatumStreamRead *create_datumstreamread(

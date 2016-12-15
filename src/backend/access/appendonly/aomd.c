@@ -25,6 +25,7 @@
 #include <sys/file.h>
 
 #include "utils/guc.h"
+#include "utils/rel.h"
 #include "access/appendonlytid.h"
 #include "cdb/cdbappendonlystorage.h"
 #include "cdb/cdbmirroredappendonly.h"
@@ -138,10 +139,10 @@ OpenAOSegmentFile(
 	int primaryError;
 
 	if (!ReadGpRelationNode(
-				rel->rd_node.relNode,
-				segmentFileNum,
-				&persistentTid,
-				&persistentSerialNum))
+			RelationGetRelid(rel),
+			segmentFileNum,
+			&persistentTid,
+			&persistentSerialNum))
 	{
 		if (logicalEof == 0)
 			return false;

@@ -50,6 +50,7 @@ typedef struct AppendOnlyStorageWrite
 	 * Name of the relation to use in system logging and error messages.
 	 */
 	char	   *relationName;
+	Oid relationId;
 
 	/*
 	 * A phrase that better describes the purpose of the this open.
@@ -171,11 +172,12 @@ typedef struct AppendOnlyStorageWrite
 } AppendOnlyStorageWrite;
 
 extern void AppendOnlyStorageWrite_Init(AppendOnlyStorageWrite *storageWrite,
-							MemoryContext memoryContext,
-							int32 maxBufferLen,
-							char *relationName,
-							char *title,
-							AppendOnlyStorageAttributes *storageAttributes);
+										MemoryContext memoryContext,
+										int32 maxBufferLen,
+										char *relationName,
+										Oid relationId,
+										char *title,
+										AppendOnlyStorageAttributes *storageAttributes);
 extern void AppendOnlyStorageWrite_FinishSession(AppendOnlyStorageWrite *storageWrite);
 
 extern void AppendOnlyStorageWrite_TransactionCreateFile(AppendOnlyStorageWrite *storageWrite,

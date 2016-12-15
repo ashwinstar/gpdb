@@ -484,6 +484,7 @@ create_datumstreamwrite(
 						int32 maxsz,
 						Form_pg_attribute attr,
 						char *relname,
+						Oid relId,
 						char *title)
 {
 	DatumStreamWrite *acc = palloc0(sizeof(DatumStreamWrite));
@@ -551,6 +552,7 @@ create_datumstreamwrite(
 								 /* memoryContext */ NULL,
 								acc->maxAoBlockSize,
 								relname,
+								relId,
 								title,
 								&acc->ao_attr);
 
@@ -806,7 +808,7 @@ datumstreamwrite_open_file(DatumStreamWrite * ds, char *fn, int64 eof, int64 eof
 	else
 	{
 		if (!ReadGpRelationNode(
-								relFileNode.relNode,
+								ds->ao_write.relationId,
 								segmentFileNum,
 								&persistentTid,
 								&persistentSerialNum))

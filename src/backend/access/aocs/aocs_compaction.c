@@ -53,10 +53,10 @@ AOCSCompaction_DropSegmentFile(Relation aorel,
 		pseudoSegNo = (col*AOTupleId_MultiplierSegmentFileNum) + segno;
 
 		if (!ReadGpRelationNode(
-						aorel->rd_node.relNode,
-						pseudoSegNo,
-						&persistentTid,
-						&persistentSerialNum))
+				RelationGetRelid(aorel),
+				pseudoSegNo,
+				&persistentTid,
+				&persistentSerialNum))
 		{
 			/* There is nothing to drop */
 			return;

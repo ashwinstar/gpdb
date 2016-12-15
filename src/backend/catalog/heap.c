@@ -1234,7 +1234,6 @@ InsertGpRelationNodeTuple(
 	Relation 		gp_relation_node,
 	Oid				relationId,
 	char			*relname,
-	Oid				relfilenode,
 	int32			segmentFileNum,
 	bool			updateIndex,
 	ItemPointer		persistentTid,
@@ -1248,10 +1247,9 @@ InsertGpRelationNodeTuple(
 		PersistentStore_IsZeroTid(persistentTid))
 	{	
 		elog(ERROR, 
-			 "Inserting with invalid TID (0,0) into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT,
+			 "Inserting with invalid TID (0,0) into relation id %u '%s', segment file #%d, serial number " INT64_FORMAT,
 			 relationId,
 			 relname,
-			 relfilenode,
 			 segmentFileNum,
 			 persistentSerialNum);
 	}
@@ -1261,17 +1259,16 @@ InsertGpRelationNodeTuple(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-			 "InsertGpRelationNodeTuple: Inserting into relation id %u '%s', relfilenode %u, segment file #%d, serial number " INT64_FORMAT ", TID %s",
+			 "InsertGpRelationNodeTuple: Inserting into relation id %u '%s' segment file #%d, serial number " INT64_FORMAT ", TID %s",
 			 relationId,
 			 relname,
-			 relfilenode,
 			 segmentFileNum,
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
 
 	GpRelationNode_SetDatumValues(
 								values,
-								relfilenode,
+								relationId,
 								segmentFileNum,
 								/* createMirrorDataLossTrackingSessionNum */ 0,
 								persistentTid,
@@ -1295,7 +1292,7 @@ void
 UpdateGpRelationNodeTuple(
 	Relation 	gp_relation_node,
 	HeapTuple 	tuple,
-	Oid			relfilenode,
+	Oid			relid,
 	int32		segmentFileNum,
 	ItemPointer persistentTid,
 	int64 		persistentSerialNum)
@@ -1309,16 +1306,16 @@ UpdateGpRelationNodeTuple(
 		PersistentStore_IsZeroTid(persistentTid))
 	{	
 		elog(ERROR, 
-			 "Updating with invalid TID (0,0) in relfilenode %u, segment file #%d, serial number " INT64_FORMAT,
-			 relfilenode,
+			 "Updating with invalid TID (0,0) in relid %u, segment file #%d, serial number " INT64_FORMAT,
+			 relid,
 			 segmentFileNum,
 			 persistentSerialNum);
 	}
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-			 "UpdateGpRelationNodeTuple: Updating relfilenode %u, segment file #%d, serial number " INT64_FORMAT " at TID %s",
-			 relfilenode,
+			 "UpdateGpRelationNodeTuple: Updating relid %u, segment file #%d, serial number " INT64_FORMAT " at TID %s",
+			 relid,
 			 segmentFileNum,
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
@@ -1328,7 +1325,7 @@ UpdateGpRelationNodeTuple(
 	memset(repl_repl, false, sizeof(repl_null));
 
 	repl_repl[Anum_gp_relation_node_relfilenode_oid - 1] = true;
-	repl_val[Anum_gp_relation_node_relfilenode_oid - 1] = ObjectIdGetDatum(relfilenode);
+	repl_val[Anum_gp_relation_node_relfilenode_oid - 1] = ObjectIdGetDatum(relid);
 	
 	repl_repl[Anum_gp_relation_node_segment_file_num - 1] = true;
 	repl_val[Anum_gp_relation_node_segment_file_num - 1] = Int32GetDatum(segmentFileNum);
@@ -1360,14 +1357,12 @@ AddNewRelationNodeTuple(
 	{
 		InsertGpRelationNodeTuple(
 							gp_relation_node,
-							new_rel->rd_id,
+							RelationGetRelid(new_rel),
 							new_rel->rd_rel->relname.data,
-							new_rel->rd_rel->relfilenode,
 							/* segmentFileNum */ 0,
 							/* updateIndex */ true,
 							&new_rel->rd_segfile0_relationnodeinfo.persistentTid,
 							new_rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
-							
 	}
 }
 
@@ -2268,11 +2263,10 @@ remove_gp_relation_node_and_schedule_drop(Relation rel)
 	
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-			 "remove_gp_relation_node_and_schedule_drop: dropping relation '%s', relation id %u '%s', relfilenode %u",
+			 "remove_gp_relation_node_and_schedule_drop: dropping relation '%s', relation id %u '%s'",
 			 rel->rd_rel->relname.data,
 			 rel->rd_id,
-			 relpath(rel->rd_node),
-			 rel->rd_rel->relfilenode);
+			 relpath(rel->rd_node));
 
 	relStorageMgr = ((RelationIsAoRows(rel) || RelationIsAoCols(rel)) ?
 													PersistentFileSysRelStorageMgr_AppendOnly:
@@ -2311,8 +2305,7 @@ remove_gp_relation_node_and_schedule_drop(Relation rel)
 		GpRelationNodeBeginScan(
 						SnapshotNow,
 						relNodeRelation,
-						rel->rd_id,
-						rel->rd_rel->relfilenode,
+						RelationGetRelid(rel),
 						&gpRelationNodeScan);
 		
 		while ((tuple = GpRelationNodeGetNext(
@@ -2323,9 +2316,8 @@ remove_gp_relation_node_and_schedule_drop(Relation rel)
 		{
 			if (Debug_persistent_print)
 				elog(Persistent_DebugPrintLevel(), 
-					 "remove_gp_relation_node_and_schedule_drop: For Append-Only relation %u relfilenode %u scanned segment file #%d, serial number " INT64_FORMAT " at TID %s for DROP",
+					 "remove_gp_relation_node_and_schedule_drop: For Append-Only relation %u scanned segment file #%d, serial number " INT64_FORMAT " at TID %s for DROP",
 					 rel->rd_id,
-					 rel->rd_rel->relfilenode,
 					 segmentFileNum,
 					 persistentSerialNum,
 					 ItemPointerToString(&persistentTid));

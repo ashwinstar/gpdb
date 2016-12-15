@@ -58,6 +58,7 @@ AppendOnlyStorageWrite_Init(AppendOnlyStorageWrite *storageWrite,
 							MemoryContext memoryContext,
 							int32 maxBufferLen,
 							char *relationName,
+							Oid relationId,
 							char *title,
 							AppendOnlyStorageAttributes *storageAttributes)
 {
@@ -71,6 +72,7 @@ AppendOnlyStorageWrite_Init(AppendOnlyStorageWrite *storageWrite,
 	/* UNDONE: Range check maxBufferLen */
 
 	Assert(relationName != NULL);
+	Assert(relationId != 0);
 	Assert(storageAttributes != NULL);
 
 	/* UNDONE: Range check fields in storageAttributes */
@@ -101,6 +103,8 @@ AppendOnlyStorageWrite_Init(AppendOnlyStorageWrite *storageWrite,
 	relationNameLen = strlen(relationName);
 	storageWrite->relationName = (char *) palloc(relationNameLen + 1);
 	memcpy(storageWrite->relationName, relationName, relationNameLen + 1);
+
+	storageWrite->relationId = relationId;
 
 	storageWrite->title = title;
 
@@ -269,7 +273,7 @@ AppendOnlyStorageWrite_TransactionCreateFile(AppendOnlyStorageWrite *storageWrit
 	/*
 	 * We may or may not have a gp_relation_node entry when the EOF is 0.
 	 */
-	if (ReadGpRelationNode(relFileNode->relNode,
+	if (ReadGpRelationNode(storageWrite->relationId,
 						   segmentFileNum,
 						   persistentTid,
 						   persistentSerialNum))
@@ -291,14 +295,10 @@ AppendOnlyStorageWrite_TransactionCreateFile(AppendOnlyStorageWrite *storageWrit
 	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
 	InsertGpRelationNodeTuple(gp_relation_node,
-							   /* relationId */ 0,		/* UNDONE: Don't have
-														 * this value here --
-														 * currently only used
-														 * for tracing... */
+							  storageWrite->relationId,
 							  storageWrite->relationName,
-							  relFileNode->relNode,
 							  segmentFileNum,
-							   /* updateIndex */ true,
+							  /* updateIndex */ true,
 							  persistentTid,
 							  *persistentSerialNum);
 

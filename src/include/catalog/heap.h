@@ -76,7 +76,6 @@ extern void InsertGpRelationNodeTuple(
 	Relation 		gp_relation_node,
 	Oid				relationId,
 	char			*relname,
-	Oid				relation,
 	int32			segmentFileNum,
 	bool			updateIndex,
 	ItemPointer		persistentTid,

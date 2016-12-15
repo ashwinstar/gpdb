@@ -519,8 +519,7 @@ DefineQueryRewrite(char *rulename,
 			GpRelationNodeBeginScan(
 							SnapshotNow,
 							relNodeRelation,
-							event_relation->rd_id,
-							event_relation->rd_rel->relfilenode,
+							RelationGetRelid(event_relation),
 							&gpRelationNodeScan);
 			
 			while ((tuple = GpRelationNodeGetNext(

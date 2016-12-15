@@ -727,14 +727,13 @@ index_create(Oid heapRelationId,
 	if (gp_relation_node != NULL)
 	{
 		InsertGpRelationNodeTuple(
-							gp_relation_node,
-							indexRelation->rd_id,
-							indexRelation->rd_rel->relname.data,
-							indexRelation->rd_rel->relfilenode,
-							/* segmentFileNum */ 0,
-							/* updateIndex */ true,
-							&indexRelation->rd_segfile0_relationnodeinfo.persistentTid,
-							indexRelation->rd_segfile0_relationnodeinfo.persistentSerialNum);
+			gp_relation_node,
+			RelationGetRelid(indexRelation),
+			indexRelation->rd_rel->relname.data,
+			/* segmentFileNum */ 0,
+			/* updateIndex */ true,
+			&indexRelation->rd_segfile0_relationnodeinfo.persistentTid,
+			indexRelation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 	
 		heap_close(gp_relation_node, RowExclusiveLock);
 	}
@@ -1547,9 +1546,8 @@ setNewRelfilenode(Relation relation, TransactionId freezeXid)
 								relation->rd_index->indrelid == GpRelationNodeRelationId;
 	InsertGpRelationNodeTuple(
 						gp_relation_node,
-						relation->rd_id,
+						RelationGetRelid(relation),
 						NameStr(relation->rd_rel->relname),
-						newrelfilenode,
 						/* segmentFileNum */ 0,
 						/* updateIndex */ !is_gp_relation_node_index,
 						&persistentTid,

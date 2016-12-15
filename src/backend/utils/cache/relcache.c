@@ -313,35 +313,22 @@ GpRelationNodeBeginScan(
 	Snapshot	snapshot,
 	Relation 	gp_relation_node,
 	Oid		relationId,
-	Oid 		relfilenode,
 	GpRelationNodeScan 	*gpRelationNodeScan)
 {
-	Assert (relfilenode != 0);
+	Assert (relationId != 0);
 
 	MemSet(gpRelationNodeScan, 0, sizeof(GpRelationNodeScan));
 
 	/*
 	 * form a scan key
 	 */
-	/* XXX XXX: break this out -- find callers - jic 2011/12/09 */
-	/* maybe it's ok - return a cql context ? */
-
-	/* XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX */
-	/* no json defs for persistent tables ? */
-/*
-	cqxx("SELECT * FROM gp_relation_node_relfilenode "
-		 " WHERE oid = :1 ",
-		 ObjectIdGetDatum(relfilenode));
-*/
-	/* XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX */
-
 	ScanKeyInit(&gpRelationNodeScan->scankey[0],
 				Anum_gp_relation_node_relfilenode_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(relfilenode));
+				ObjectIdGetDatum(relationId));
 
 	/*
-	 * Open pg_class and fetch a tuple.  Force heap scan if we haven't yet
+	 * Open gp_relation_node and fetch a tuple.  Force heap scan if we haven't yet
 	 * built the critical relcache entries (this includes initdb and startup
 	 * without a pg_internal.init file).  The caller can also force a heap
 	 * scan by setting indexOK == false.
@@ -355,7 +342,6 @@ GpRelationNodeBeginScan(
 
 	gpRelationNodeScan->gp_relation_node = gp_relation_node;
 	gpRelationNodeScan->relationId = relationId;
-	gpRelationNodeScan->relfilenode = relfilenode;
 }
 
 HeapTuple
@@ -370,7 +356,7 @@ GpRelationNodeGetNext(
 	bool			nulls[Natts_gp_relation_node];
 	Datum			values[Natts_gp_relation_node];
 	
-	Oid actualRelationNode;
+	Oid actualRelId;
 	
 	int64 createMirrorDataLossTrackingSessionNum;
 
@@ -390,17 +376,16 @@ GpRelationNodeGetNext(
 		
 	GpRelationNode_GetValues(
 						values,
-						&actualRelationNode,
+						&actualRelId,
 						segmentFileNum,
 						&createMirrorDataLossTrackingSessionNum,
 						persistentTid,
 						persistentSerialNum);
-	if (actualRelationNode != gpRelationNodeScan->relfilenode)
+	if (actualRelId != gpRelationNodeScan->relationId)
 		elog(FATAL, "Index on gp_relation_node broken."
-			   "Mismatch in node tuple for gp_relation_node for relation %u, relfilenode %u, relation node %u",
+			   "Mismatch in node tuple for gp_relation_node for relation %u found relationId %u",
 			 gpRelationNodeScan->relationId, 
-			 gpRelationNodeScan->relfilenode,
-			 actualRelationNode);
+			 actualRelId);
 
 	return tuple;
 }
@@ -417,40 +402,29 @@ GpRelationNodeEndScan(
 static HeapTuple
 ScanGpRelationNodeTuple(
 	Relation 	gp_relation_node,
-	Oid 		relfilenode,
+	Oid 		relid,
 	int32		segmentFileNum)
 {
 	HeapTuple	tuple;
 	SysScanDesc scan;
 	ScanKeyData key[2];
 
-	Assert (relfilenode != 0);
+	Assert (relid != 0);
 
 	/*
 	 * form a scan key
 	 */
-
-	/* XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX */
-/*
-	cqxx("SELECT * FROM gp_relation_node "
-		 " WHERE relfilenode_oid = :1 "
-		 " AND segment_file_num = :2 ",
-		 ObjectIdGetDatum(relfilenode),
-		 Int32GetDatum(segmentFileNum));
-*/
-	/* XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX */
-
 	ScanKeyInit(&key[0],
 				Anum_gp_relation_node_relfilenode_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(relfilenode));
+				ObjectIdGetDatum(relid));
 	ScanKeyInit(&key[1],
 				Anum_gp_relation_node_segment_file_num,
 				BTEqualStrategyNumber, F_INT4EQ,
 				Int32GetDatum(segmentFileNum));
 
 	/*
-	 * Open pg_class and fetch a tuple.  Force heap scan if we haven't yet
+	 * Open gp_relation_node and fetch a tuple.  Force heap scan if we haven't yet
 	 * built the critical relcache entries (this includes initdb and startup
 	 * without a pg_internal.init file).  The caller can also force a heap
 	 * scan by setting indexOK == false.
@@ -477,7 +451,7 @@ ScanGpRelationNodeTuple(
 HeapTuple
 FetchGpRelationNodeTuple(
 	Relation 		gp_relation_node,
-	Oid 			relfilenode,
+	Oid 			relid,
 	int32			segmentFileNum,
 	ItemPointer		persistentTid,
 	int64			*persistentSerialNum)
@@ -487,16 +461,16 @@ FetchGpRelationNodeTuple(
 	bool			nulls[Natts_gp_relation_node];
 	Datum			values[Natts_gp_relation_node];
 	
-	Oid actualRelationNode;
+	Oid actualRelId;
 	int32 actualSegmentFileNum;
 
 	int64 createMirrorDataLossTrackingSessionNum;
 
-	Assert (relfilenode != 0);
+	Assert (relid != 0);
 	
 	tuple = ScanGpRelationNodeTuple(
 					gp_relation_node,
-					relfilenode,
+					relid,
 					segmentFileNum);
 	
 	/*
@@ -513,18 +487,18 @@ FetchGpRelationNodeTuple(
 		
 	GpRelationNode_GetValues(
 						values,
-						&actualRelationNode,
+						&actualRelId,
 						&actualSegmentFileNum,
 						&createMirrorDataLossTrackingSessionNum,
 						persistentTid,
 						persistentSerialNum);
 	
-	if (actualRelationNode != relfilenode)
+	if (actualRelId != relid)
 	{
 		elog(ERROR, "Index on gp_relation_node broken."
-			   "Mismatch in node tuple for gp_relation_node intended relfilenode %u, fetched relfilenode %u",
-			 relfilenode,
-			 actualRelationNode);
+			   "Mismatch in node tuple for gp_relation_node intended relid %u, fetched relid %u",
+			 relid,
+			 actualRelId);
 	}
 
 	return tuple;
@@ -547,15 +521,14 @@ DeleteGpRelationNodeTuple(
 	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
 
 	tuple = FetchGpRelationNodeTuple(gp_relation_node,
-				relation->rd_rel->relfilenode,
-				segmentFileNum,
-				&persistentTid,
-				&persistentSerialNum);
+									 RelationGetRelid(relation),
+									 segmentFileNum,
+									 &persistentTid,
+									 &persistentSerialNum);
 
 	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d",
+		elog(ERROR, "could not find node tuple for relation %u, segment file #%d",
 			 RelationGetRelid(relation),
-			 relation->rd_rel->relfilenode,
 			 segmentFileNum);
 
 	/* delete the relation tuple from gp_relation_node, and finish up */
@@ -567,12 +540,9 @@ DeleteGpRelationNodeTuple(
 
 bool
 ReadGpRelationNode(
-	Oid 			relfilenode,
-	
+	Oid 			relid,
 	int32			segmentFileNum,
-
 	ItemPointer		persistentTid,
-
 	int64			*persistentSerialNum)
 {
 	Relation gp_relation_node;
@@ -586,7 +556,7 @@ ReadGpRelationNode(
 
 	tuple = FetchGpRelationNodeTuple(
 						gp_relation_node,
-						relfilenode,
+						relid,
 						segmentFileNum,
 						persistentTid,
 						persistentSerialNum);
@@ -611,8 +581,8 @@ ReadGpRelationNode(
 			tupleVisibilitySummaryString = GetTupleVisibilitySummaryString(&tupleVisibilitySummary);
 			
 			elog(Persistent_DebugPrintLevel(), 
-				 "ReadGpRelationNode: For relfilenode %u, segment file #%d found persistent serial number " INT64_FORMAT ", TID %s (gp_relation_node tuple visibility: %s)",
-				 relfilenode,
+				 "ReadGpRelationNode: For relid %u, segment file #%d found persistent serial number " INT64_FORMAT ", TID %s (gp_relation_node tuple visibility: %s)",
+				 relid,
 				 segmentFileNum,
 				 *persistentSerialNum,
 				 ItemPointerToString(persistentTid),
@@ -647,15 +617,14 @@ RelationFetchSegFile0GpRelationNode(
 		}
 
 		if (!ReadGpRelationNode(
-					relation->rd_node.relNode,
+				RelationGetRelid(relation),
 					/* segmentFileNum */ 0,
 					&relation->rd_segfile0_relationnodeinfo.persistentTid,
 					&relation->rd_segfile0_relationnodeinfo.persistentSerialNum))
 		{
-			elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u, relfilenode %u",
+			elog(ERROR, "Did not find gp_relation_node entry for relation name %s, relation id %u",
 				 relation->rd_rel->relname.data,
-				 relation->rd_id,
-				 relation->rd_node.relNode);
+				 RelationGetRelid(relation));
 		}
 
 		Assert(!Persistent_BeforePersistenceWork());
@@ -686,15 +655,15 @@ RelationFetchSegFile0GpRelationNode(
 		int64			persistentSerialNum;
 
 		if (!ReadGpRelationNode(
-					relation->rd_node.relNode,
-					/* segmentFileNum */ 0,
-					&persistentTid,
-					&persistentSerialNum))
+				RelationGetRelid(relation),
+				/* segmentFileNum */ 0,
+				&persistentTid,
+				&persistentSerialNum))
 		{
 			elog(ERROR,
 				 "did not find gp_relation_node entry for relation name %s, "
-				 "relation id %u, relfilenode %u", relation->rd_rel->relname.data,
-				 relation->rd_id, relation->rd_node.relNode);
+				 "relation id %u", relation->rd_rel->relname.data,
+				 RelationGetRelid(relation));
 		}
 
 		if (ItemPointerCompare(&persistentTid,
@@ -704,12 +673,11 @@ RelationFetchSegFile0GpRelationNode(
 			ereport(ERROR,
 					(errmsg("invalid persistent TID and/or serial number in "
 							"relcache entry"),
-					 errdetail("relation name %s, relation id %u, relfilenode %u "
+					 errdetail("relation name %s, relation id %u "
 							   "contains invalid persistent TID %s and/or serial "
 							   "number " INT64_FORMAT ".  Expected TID is %s and "
 							   "serial number " INT64_FORMAT,
-							   relation->rd_rel->relname.data, relation->rd_id,
-							   relation->rd_node.relNode,
+							   relation->rd_rel->relname.data, RelationGetRelid(relation),
 							   ItemPointerToString(
 								   &relation->rd_segfile0_relationnodeinfo.persistentTid),
 							   relation->rd_segfile0_relationnodeinfo.persistentSerialNum,

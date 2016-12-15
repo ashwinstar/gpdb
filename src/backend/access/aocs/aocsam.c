@@ -166,6 +166,7 @@ open_ds_write(Relation rel, DatumStreamWrite **ds, TupleDesc relationTupleDesc,
 									blksz,
 									attr,
 									RelationGetRelationName(rel),
+									RelationGetRelid(rel),
 									/* title */ titleBuf.data);
 
 	}
@@ -688,7 +689,7 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
 			for (int i=0; i < nvp; i++)
 			{
 				if (desc->cur_segno > 0 &&
-					ReadGpRelationNode(desc->aoi_rel->rd_node.relNode,
+					ReadGpRelationNode(RelationGetRelid(desc->aoi_rel),
 									   (i * AOTupleId_MultiplierSegmentFileNum) + desc->cur_segno,
 									   &persistentTid,
 									   &persistentSerialNum))
@@ -1789,6 +1790,7 @@ aocs_addcol_init(Relation rel,
 		desc->dsw[i] = create_datumstreamwrite(
 				ct, clvl, rel->rd_appendonly->checksum, 0, blksz /* safeFSWriteSize */,
 				attr, RelationGetRelationName(rel),
+				RelationGetRelid(rel),
 				titleBuf.data);
 	}
 	return desc;

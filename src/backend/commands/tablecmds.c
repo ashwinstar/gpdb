@@ -9589,7 +9589,6 @@ ATExecSetTableSpace_AppendOnly(
 					SnapshotNow,
 					gp_relation_node,
 					tableOid,
-					rel->rd_rel->relfilenode,
 					&gpRelationNodeScan);
 	segmentCount = 0;
 	while ((tuple = GpRelationNodeGetNext(
@@ -9822,7 +9821,7 @@ ATExecSetTableSpace_BufferPool(
 	/* Fetch relation's gp_relation_node row */
 	nodeTuple = FetchGpRelationNodeTuple(
 					gp_relation_node,
-					rel->rd_rel->relfilenode,
+					RelationGetRelid(rel),
 					/* segmentFileNum */ 0,
 					&oldPersistentTid,
 					&oldPersistentSerialNum);

@@ -162,7 +162,6 @@ static void PersistentBuild_ScanGpPersistentRelationNodeForGlobal(
 						gp_relation_node,
 						relFileNode.relNode, 	// pg_class OID
 						/* relationName */ NULL,	// Optional.
-						relFileNode.relNode,	// pg_class relfilenode
 						/* segmentFileNum */ 0,
 						/* updateIndex */ false,
 						&persistentTid,
@@ -278,7 +277,6 @@ static void PersistentBuild_PopulateGpRelationNode(
 							gp_relation_node,
 							dbInfoRel->relationOid,	// pg_class OID
 							dbInfoRel->relname,
-							relFileNode.relNode,	// pg_class relfilenode
 							/* segmentFileNum */ 0,
 							/* updateIndex */ false,
 							&persistentTid,
@@ -397,7 +395,6 @@ static void PersistentBuild_PopulateGpRelationNode(
 								gp_relation_node,
 								dbInfoRel->relationOid, // pg_class OID
 								dbInfoRel->relname,
-								relFileNode.relNode,	// pg_class relfilenode
 								physicalSegmentFileNum,
 								/* updateIndex */ false,
 								&persistentTid,

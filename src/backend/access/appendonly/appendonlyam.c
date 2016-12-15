@@ -498,7 +498,7 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 		 */
 		if (gp_appendonly_verify_eof &&
 			aoInsertDesc->cur_segno > 0 &&
-			ReadGpRelationNode(aoInsertDesc->aoi_rel->rd_node.relNode,
+			ReadGpRelationNode(RelationGetRelid(aoInsertDesc->aoi_rel),
 							   aoInsertDesc->cur_segno,
 							   &persistentTid,
 							   &persistentSerialNum))
@@ -547,10 +547,10 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	else
 	{
 		if (!ReadGpRelationNode(
-					aoInsertDesc->aoi_rel->rd_node.relNode,
-					aoInsertDesc->cur_segno,
-					&persistentTid,
-					&persistentSerialNum))
+				RelationGetRelid(aoInsertDesc->aoi_rel),
+				aoInsertDesc->cur_segno,
+				&persistentTid,
+				&persistentSerialNum))
 		{
 			elog(ERROR, "Did not find gp_relation_node entry for relation name"
 						" %s, relation id %u, relfilenode %u, segment file #%d,"
@@ -2759,6 +2759,7 @@ appendonly_insert_init(Relation rel, int segno, bool update_mode)
 						NULL,
 						aoInsertDesc->usableBlockSize,
 						RelationGetRelationName(aoInsertDesc->aoi_rel),
+						RelationGetRelid(aoInsertDesc->aoi_rel),
 						aoInsertDesc->title,
 						&aoInsertDesc->storageAttributes);
 

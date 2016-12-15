@@ -1884,8 +1884,7 @@ CheckCOConsistencyWithGpRelationNode( Snapshot snapshot, Relation rel, int total
 	GpRelationNodeBeginScan(
 					snapshot,
 					gp_relation_node,
-					rel->rd_id,
-					rel->rd_rel->relfilenode,
+					RelationGetRelid(rel),
 					&gpRelationNodeScan);
 	while ((NULL != GpRelationNodeGetNext(
 						&gpRelationNodeScan,
