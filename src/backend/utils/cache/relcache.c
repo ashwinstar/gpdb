@@ -739,6 +739,64 @@ RelationFetchGpRelationNodeForXLog_Index(
 	deep--;
 }
 
+void
+swap_entries_in_gp_relation_node(Oid r1, Oid r2)
+{
+	Relation	gp_relation_node;
+	HeapTuple	tmp_tuple;
+	ScanKeyData scankey[1];
+	struct SysScanDescData  *scan;
+	Form_gp_relation_node relform;
+	ItemPointerData tuple_ctid[100];
+	int i;
+
+	ScanKeyInit(&scankey[0],
+				Anum_gp_relation_node_relfilenode_oid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(r1));
+
+	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
+	scan = systable_beginscan(gp_relation_node, GpRelationNodeOidIndexId,
+							  /* indexOK */ true,
+							  SnapshotNow,
+							  /* nKeys */ 1,
+							  scankey);
+	i = 0;
+	while(tmp_tuple = systable_getnext((SysScanDesc)scan))
+	{
+		tmp_tuple = heap_copytuple(tmp_tuple);
+		relform = (Form_gp_relation_node) GETSTRUCT(tmp_tuple);
+		relform->relfilenode_oid = r2;
+		simple_heap_update(gp_relation_node, &tmp_tuple->t_self, tmp_tuple);
+		ItemPointerCopy(tuple_ctid[i], tmp_tuple->t_self);
+		i++;
+	}
+	systable_endscan(scan);
+
+	/*
+	 * Now update the next skiping the ones we just added above
+	 */
+	ScanKeyInit(&scankey[0],
+				Anum_gp_relation_node_relfilenode_oid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(r2));
+
+	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
+	scan = systable_beginscan(gp_relation_node, GpRelationNodeOidIndexId,
+							  /* indexOK */ true,
+							  SnapshotNow,
+							  /* nKeys */ 1,
+							  scankey);
+	while(tmp_tuple = systable_getnext((SysScanDesc)scan))
+	{
+		tmp_tuple = heap_copytuple(tmp_tuple);
+		relform = (Form_gp_relation_node) GETSTRUCT(tmp_tuple);
+		relform->relfilenode_oid = r1;
+		simple_heap_update(gp_relation_node, &tmp_tuple->t_self, tmp_tuple);
+	}
+	systable_endscan(scan);
+}
+
 /*
  *		AllocateRelationDesc
  *
