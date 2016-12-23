@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * xact.c
- *	  top level transaction system support routines
+ *	  top level transaction system support routines.
  *
  * See src/backend/access/transam/README for more information.
  *
