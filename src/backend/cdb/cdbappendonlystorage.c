@@ -38,7 +38,17 @@ int32 AppendOnlyStorage_GetUsableBlockSize(int32 configBlockSize)
 void
 appendonly_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
-	/* TODO add logic here to replay AO xlog records */
+	/*
+	 * Currently only for standby mode, redo of AO xlogs is performed. As in
+	 * normal mode still fsync is performed on file close do not need to
+	 * replay the AO xlog records.
+	 *
+	 * Are we missing the case where standby gets promoted and during that
+	 * time xlog replay records for AO will be missed, hence we cannot really
+	 * have this check ??
+	 */
+	if (IsStandbyMode())
+		ao_xlog_insert(record);
 }
 
 void

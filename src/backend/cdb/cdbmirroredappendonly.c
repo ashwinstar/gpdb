@@ -2364,3 +2364,59 @@ int MirroredAppendOnly_Read(
 	errno = 0;
 	return FileRead(open->primaryFile, buffer, bufferLen);
 }
+
+void
+ao_xlog_insert(XLogRecord *record)
+{
+	char *primaryFilespaceLocation;
+	char *mirrorFilespaceLocation;
+	char *dbPath;
+	char *path;
+	File file;
+
+	xl_ao_insert *xlrec = (xl_ao_insert*) XLogRecGetData(record);
+	char *buffer = (char*)xlrec + SizeOfAOInsert;
+	uint64 len = record->xl_len - SizeOfAOInsert;
+
+	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
+		xlrec->node.spcNode,
+		&primaryFilespaceLocation,
+		&mirrorFilespaceLocation);
+
+	dbPath = (char*)palloc(MAXPGPATH + 1);
+	path = (char*)palloc(MAXPGPATH + 1);
+
+	FormDatabasePath(
+				dbPath,
+				primaryFilespaceLocation,
+				xlrec->node.spcNode,
+				xlrec->node.dbNode);
+
+	if (xlrec->segment_filenum == 0)
+		sprintf(path, "%s/%u", dbPath, xlrec->node.relNode);
+	else
+		sprintf(path, "%s/%u.%u", dbPath, xlrec->node.relNode, xlrec->segment_filenum);
+
+	errno = 0;
+
+	file = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
+
+	if (file < 0)
+	{
+		elog(ERROR, "Failed to open file to write for AO");
+	}
+
+	pfree(dbPath);
+	pfree(path);
+
+	FileSeek(file, xlrec->offset, SEEK_SET);
+
+	if ((int) FileWrite(file, buffer, len) != len)
+	{
+		elog(ERROR, "Failed to write the AO file");
+	}
+
+	/* Seem will need fsync here ?? */
+
+	FileClose(file);
+}
