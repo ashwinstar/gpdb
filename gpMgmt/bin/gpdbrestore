@@ -337,11 +337,11 @@ class GpdbRestore(Operation):
         """
         Checking cluster status, no primary should be down.
         """
-        fault_action = self.context.gparray.getFaultStrategy()
+        fault_action = self.context.gparray.hasMirrors
         primaries = self.context.get_current_primaries()
         fail_count = len([seg for seg in primaries if seg.isSegmentDown()])
 
-        if fault_action == 'readonly' and fail_count != 0:
+        if fail_count != 0:
             logger.fatal("There are %d primary segment databases marked as invalid")
             logger.fatal("Array fault action is set to readonly, unable to initiate a restore")
             logger.info("Use gprecoverseg utility to recover failed segment instances")
