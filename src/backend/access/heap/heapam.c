@@ -6165,8 +6165,7 @@ heap_mask(char *pagedata, BlockNumber blkno)
 			}
 
 			/* mask out GPDB specific hint-bits */
-			page_htup->t_infomask2 &= ~HEAP_XMIN_DISTRIBUTED_SNAPSHOT_IGNORE;
-			page_htup->t_infomask2 &= ~HEAP_XMAX_DISTRIBUTED_SNAPSHOT_IGNORE;
+			page_htup->t_infomask2 = MASK_MARKER;
 
 			/*
 			 * During replay, we set Command Id to FirstCommandId. Hence, mask
