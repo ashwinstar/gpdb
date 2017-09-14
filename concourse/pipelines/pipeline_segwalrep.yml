@@ -88,7 +88,7 @@ jobs:
     image: centos-gpdb-dev-6
     params:
       MAKE_TEST_COMMAND: PGOPTIONS='-c optimizer=on' installcheck-world
-      BLDWRAP_POSTGRES_CONF_ADDONS: "fsync=off"
+      BLDWRAP_POSTGRES_CONF_ADDONS: "fsync=off|wal_consistency_checking='heap,heap2'"
       TEST_OS: centos
       CONFIGURE_FLAGS: "--enable-segwalrep"
 
@@ -107,7 +107,7 @@ jobs:
     image: centos-gpdb-dev-6
     params:
       MAKE_TEST_COMMAND: PGOPTIONS='-c optimizer=off' installcheck-world
-      BLDWRAP_POSTGRES_CONF_ADDONS: "fsync=off"
+      BLDWRAP_POSTGRES_CONF_ADDONS: "fsync=off|wal_consistency_checking='heap,heap2'"
       TEST_OS: centos
       CONFIGURE_FLAGS: "--enable-segwalrep"
 
@@ -126,7 +126,7 @@ jobs:
     image: centos-gpdb-dev-6
     params:
       MAKE_TEST_COMMAND: "-C src/test/regress && make -C src/test/walrep install installcheck"
-      BLDWRAP_POSTGRES_CONF_ADDONS: "fsync=off"
+      BLDWRAP_POSTGRES_CONF_ADDONS: "fsync=off|wal_consistency_checking='heap,heap2'"
       TEST_OS: centos
       CONFIGURE_FLAGS: "--enable-segwalrep"
       WITH_MIRRORS: false
