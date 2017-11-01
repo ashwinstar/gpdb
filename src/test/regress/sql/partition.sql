@@ -633,7 +633,7 @@ copy partsupp from stdin with delimiter '|';
 \.
 drop table partsupp;
 --MPP-3285
-CREATE TABLE LINEITEM (
+CREATE TABLE partition_lineitem (
                 L_ORDERKEY INT8,
                 L_PARTKEY INTEGER,
                 L_SUPPKEY INTEGER,
@@ -656,7 +656,7 @@ partition by range (l_commitdate)
 partition p1 start('1992-01-31') end('1998-11-01') every(interval '20 months')
 
 );
-copy lineitem from stdin with delimiter '|';
+copy partition_lineitem from stdin with delimiter '|';
 18182|5794|3295|4|9|15298.11|0.04|0.01|N|O|1995-07-04|1995-05-30|1995-08-03|DELIVER IN PERSON|RAIL|y special platelets
 \.
 
@@ -667,9 +667,9 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
   pg_get_expr(parlistvalues, parchildrelid, false) as list from
    pg_partition_rule
     r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and
-	 p.parrelid = 'lineitem'::regclass order by 1;
+	 p.parrelid = 'partition_lineitem'::regclass order by 1;
 
-drop table lineitem;
+drop table partition_lineitem;
 
 -- Make sure ADD creates dependencies
 create table i (i int) partition by range(i) (start (1) end(3) every(1));
@@ -1535,22 +1535,22 @@ select * from rank_exc_1_prt_boys_2_prt_year7;
 select * from rank_exc;
 
 --exchange test
-create table r (like rank_exc);
+create table partition_r (like rank_exc);
 insert into rank_exc values(3, 3, 2004, 'F', 100);
-insert into r values(3, 3, 2004, 'F', 100000);
-alter table rank_exc alter partition girls exchange partition year4 with table r;
+insert into partition_r values(3, 3, 2004, 'F', 100000);
+alter table rank_exc alter partition girls exchange partition year4 with table partition_r;
 select * from rank_exc_1_prt_girls_2_prt_year4;
-select * from r;
-alter table rank_exc alter partition girls exchange partition year4 with table r;
+select * from partition_r;
+alter table rank_exc alter partition girls exchange partition year4 with table partition_r;
 select * from rank_exc_1_prt_girls_2_prt_year4;
-select * from r;
+select * from partition_r;
 
 -- Split test
 alter table rank_exc alter partition girls split default partition start('2008')
   end('2020') into (partition years, partition gfuture);
 insert into rank_exc values(4, 4, 2009, 'F', 100);
 drop table rank_exc;
-drop table r;
+drop table partition_r;
 
 -- MPP-4245: remove virtual subpartition templates when we drop the partitioned
 -- table
@@ -1570,7 +1570,7 @@ select count(*) = 0 as passed from pg_partition_rule pr
 
 -- MPP-4172
 -- should fail
-create table ggg (a char(1), b int)
+create table ggg_partition (a char(1), b int)
 distributed by (b)
 partition by range(a)
 (

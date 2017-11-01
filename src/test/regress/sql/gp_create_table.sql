@@ -22,38 +22,38 @@ create table distrand(i int, j int, constraint "test" unique (i, j))
 drop table distrand;
 create table distrand(i int, j int) distributed randomly;
 create unique index distrand_idx on distrand(i);
-drop table distrand; 
+drop table distrand;
 
 -- Make sure distribution policy determined from CTAS actually works, MPP-101
-create table distpol as select random(), 1 as a, 2 as b distributed by (random);
+create table gp_create_table_distpol as select random(), 1 as a, 2 as b distributed by (random);
 select attrnums from gp_distribution_policy where 
-  localoid = 'distpol'::regclass;
-drop table distpol;
-create table distpol as select random(), 2 as foo distributed by (foo);
+  localoid = 'gp_create_table_distpol'::regclass;
+drop table gp_create_table_distpol;
+create table gp_create_table_distpol as select random(), 2 as foo distributed by (foo);
 select attrnums from gp_distribution_policy where 
-  localoid = 'distpol'::regclass;
-drop table distpol;
+  localoid = 'gp_create_table_distpol'::regclass;
+drop table gp_create_table_distpol;
 -- now test that MPP-101 /actually/ works
-create table distpol (i int, j int, k int) distributed by (i);
-alter table distpol add primary key (j);
+create table gp_create_table_distpol (i int, j int, k int) distributed by (i);
+alter table gp_create_table_distpol add primary key (j);
 select attrnums from gp_distribution_policy where 
-  localoid = 'distpol'::regclass;
+  localoid = 'gp_create_table_distpol'::regclass;
 -- make sure we can't overwrite it
-create unique index distpol_uidx on distpol(k);
+create unique index gp_create_table_distpol_uidx on gp_create_table_distpol(k);
 -- should be able to now
-alter table distpol drop constraint distpol_pkey;
-create unique index distpol_uidx on distpol(k);
+alter table gp_create_table_distpol drop constraint gp_create_table_distpol_pkey;
+create unique index gp_create_table_distpol_uidx on gp_create_table_distpol(k);
 select attrnums from gp_distribution_policy where 
-  localoid = 'distpol'::regclass;
-drop index distpol_uidx;
+  localoid = 'gp_create_table_distpol'::regclass;
+drop index gp_create_table_distpol_uidx;
 -- expressions shouldn't be able to update the distribution key
-create unique index distpol_uidx on distpol(ln(k));
-drop index distpol_uidx;
+create unique index gp_create_table_distpol_uidx on gp_create_table_distpol(ln(k));
+drop index gp_create_table_distpol_uidx;
 -- lets make sure we don't change the policy when the table is full
-insert into distpol values(1, 2, 3);
-create unique index distpol_uidx on distpol(i);
-alter table distpol add primary key (i);
-drop table distpol;
+insert into gp_create_table_distpol values(1, 2, 3);
+create unique index gp_create_table_distpol_uidx on gp_create_table_distpol(i);
+alter table gp_create_table_distpol add primary key (i);
+drop table gp_create_table_distpol;
 
 -- Make sure that distribution policy is derived correctly from PRIMARY KEY
 -- or UNIQUE index. Even with gp_create_table_random_default_distribution=on

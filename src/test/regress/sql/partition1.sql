@@ -1757,7 +1757,7 @@ alter table mpp14613_list alter partition others split partition subothers at (1
 alter table mpp14613_range alter partition others split partition subothers at (10) into (partition b1, partition b2);
 
 -- ALTER TABLE ... ALTER PARTITION ... SPLIT DEFAULT PARTITION
-create table foo(
+create table partition1_foo(
   a int,
   b int,
   c int,
@@ -1775,10 +1775,10 @@ create table foo(
     start(1) end(5) every(1)
  );
 
-alter table foo alter partition others split partition subothers at (10) into (partition b1, default partition);
-alter table foo alter partition others split partition subothers at (10) into (partition b1, partition subothers);
-alter table foo alter partition others split default partition at (10) into (partition b1, default partition);
-drop table foo;
+alter table partition1_foo alter partition others split partition subothers at (10) into (partition b1, default partition);
+alter table partition1_foo alter partition others split partition subothers at (10) into (partition b1, partition subothers);
+alter table partition1_foo alter partition others split default partition at (10) into (partition b1, default partition);
+drop table partition1_foo;
 
 -- Drop table as gpcheckcat will complaint of not having constraint for newly
 -- created tables due to split.

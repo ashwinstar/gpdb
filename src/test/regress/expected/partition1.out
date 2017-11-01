@@ -3442,7 +3442,7 @@ ERROR:  SPLIT PARTITION is not currently supported when leaf partition is list p
 alter table mpp14613_range alter partition others split partition subothers at (10) into (partition b1, partition b2);
 ERROR:  AT clause cannot be used when splitting a default RANGE partition
 -- ALTER TABLE ... ALTER PARTITION ... SPLIT DEFAULT PARTITION
-create table foo(
+create table partition1_foo(
   a int,
   b int,
   c int,
@@ -3461,33 +3461,33 @@ create table foo(
  );
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_others" for table "foo"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_others_2_prt_subothers" for table "foo_1_prt_others"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_others_2_prt_s1" for table "foo_1_prt_others"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_others_2_prt_s2" for table "foo_1_prt_others"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_2_2_prt_subothers" for table "foo_1_prt_2"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_2_2_prt_s1" for table "foo_1_prt_2"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_2_2_prt_s2" for table "foo_1_prt_2"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_3_2_prt_subothers" for table "foo_1_prt_3"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_3_2_prt_s1" for table "foo_1_prt_3"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_3_2_prt_s2" for table "foo_1_prt_3"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_4_2_prt_subothers" for table "foo_1_prt_4"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_4_2_prt_s1" for table "foo_1_prt_4"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_4_2_prt_s2" for table "foo_1_prt_4"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_5_2_prt_subothers" for table "foo_1_prt_5"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_5_2_prt_s1" for table "foo_1_prt_5"
-NOTICE:  CREATE TABLE will create partition "foo_1_prt_5_2_prt_s2" for table "foo_1_prt_5"
-alter table foo alter partition others split partition subothers at (10) into (partition b1, default partition);
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_others" for table "partition1_foo"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_others_2_prt_subothers" for table "partition1_foo_1_prt_others"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_others_2_prt_s1" for table "partition1_foo_1_prt_others"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_others_2_prt_s2" for table "partition1_foo_1_prt_others"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_2" for table "partition1_foo"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_2_2_prt_subothers" for table "partition1_foo_1_prt_2"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_2_2_prt_s1" for table "partition1_foo_1_prt_2"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_2_2_prt_s2" for table "partition1_foo_1_prt_2"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_3" for table "partition1_foo"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_3_2_prt_subothers" for table "partition1_foo_1_prt_3"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_3_2_prt_s1" for table "partition1_foo_1_prt_3"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_3_2_prt_s2" for table "partition1_foo_1_prt_3"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_4" for table "partition1_foo"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_4_2_prt_subothers" for table "partition1_foo_1_prt_4"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_4_2_prt_s1" for table "partition1_foo_1_prt_4"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_4_2_prt_s2" for table "partition1_foo_1_prt_4"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_5" for table "partition1_foo"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_5_2_prt_subothers" for table "partition1_foo_1_prt_5"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_5_2_prt_s1" for table "partition1_foo_1_prt_5"
+NOTICE:  CREATE TABLE will create partition "partition1_foo_1_prt_5_2_prt_s2" for table "partition1_foo_1_prt_5"
+alter table partition1_foo alter partition others split partition subothers at (10) into (partition b1, default partition);
 ERROR:  SPLIT PARTITION is not currently supported when leaf partition is list partitioned in multi level partition table
-alter table foo alter partition others split partition subothers at (10) into (partition b1, partition subothers);
+alter table partition1_foo alter partition others split partition subothers at (10) into (partition b1, partition subothers);
 ERROR:  SPLIT PARTITION is not currently supported when leaf partition is list partitioned in multi level partition table
-alter table foo alter partition others split default partition at (10) into (partition b1, default partition);
+alter table partition1_foo alter partition others split default partition at (10) into (partition b1, default partition);
 ERROR:  SPLIT PARTITION is not currently supported when leaf partition is list partitioned in multi level partition table
-drop table foo;
+drop table partition1_foo;
 -- Drop table as gpcheckcat will complaint of not having constraint for newly
 -- created tables due to split.
 drop table mpp14613_list;

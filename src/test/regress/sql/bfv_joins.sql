@@ -21,7 +21,7 @@ create table z(x int) distributed by (x);
 
 CREATE TABLE bfv_joins_foo AS SELECT i as a, i+1 as b from generate_series(1,10)i;
 CREATE TABLE bfv_joins_bar AS SELECT i as c, i+1 as d from generate_series(1,10)i;
-CREATE TABLE t AS SELECT bfv_joins_foo.a,bfv_joins_foo.b,bfv_joins_bar.d FROM bfv_joins_foo,bfv_joins_bar WHERE bfv_joins_foo.a = bfv_joins_bar.d;
+CREATE TABLE bfv_joins_t AS SELECT bfv_joins_foo.a,bfv_joins_foo.b,bfv_joins_bar.d FROM bfv_joins_foo,bfv_joins_bar WHERE bfv_joins_foo.a = bfv_joins_bar.d;
 
 CREATE FUNCTION my_equality(a int, b int) RETURNS BOOL
     AS $$ SELECT $1 < $2 $$
@@ -64,7 +64,7 @@ explain select 1 as mrs_t1 where 1 <= ALL (select x from z);
 -- Test for wrong results in window functions under joins #1
 --
 select * from
-(SELECT bfv_joins_bar.*, AVG(t.b) OVER(PARTITION BY t.a ORDER BY t.b desc) AS e FROM t,bfv_joins_bar) bfv_joins_foo, t
+(SELECT bfv_joins_bar.*, AVG(bfv_joins_t.b) OVER(PARTITION BY bfv_joins_t.a ORDER BY bfv_joins_t.b desc) AS e FROM bfv_joins_t,bfv_joins_bar) bfv_joins_foo, bfv_joins_t
 where e < 10
 order by 1, 2, 3, 4, 5, 6;
 
@@ -72,23 +72,23 @@ order by 1, 2, 3, 4, 5, 6;
 -- Test for wrong results in window functions under joins #2
 --
 select * from (
-SELECT cup.*, SUM(t.d) OVER(PARTITION BY t.b) FROM (
-	SELECT bfv_joins_bar.*, AVG(t.b) OVER(PARTITION BY t.a ORDER BY t.b desc) AS e FROM t,bfv_joins_bar
+SELECT cup.*, SUM(bfv_joins_t.d) OVER(PARTITION BY bfv_joins_t.b) FROM (
+	SELECT bfv_joins_bar.*, AVG(bfv_joins_t.b) OVER(PARTITION BY bfv_joins_t.a ORDER BY bfv_joins_t.b desc) AS e FROM bfv_joins_t,bfv_joins_bar
 ) AS cup,
-t WHERE cup.e < 10
-GROUP BY cup.c,cup.d, cup.e ,t.d, t.b) i
+bfv_joins_t WHERE cup.e < 10
+GROUP BY cup.c,cup.d, cup.e ,bfv_joins_t.d, bfv_joins_t.b) i
 order by 1, 2, 3, 4;
 
 --
 -- Test for wrong results in window functions under joins #3
 --
 select * from (
-WITH t(a,b,d) as (SELECT bfv_joins_foo.a,bfv_joins_foo.b,bfv_joins_bar.d FROM bfv_joins_foo,bfv_joins_bar WHERE bfv_joins_foo.a = bfv_joins_bar.d )
-SELECT cup.*, SUM(t.d) OVER(PARTITION BY t.b) FROM (
-	SELECT bfv_joins_bar.*, AVG(t.b) OVER(PARTITION BY t.a ORDER BY t.b desc) AS e FROM t,bfv_joins_bar
+WITH bfv_joins_t(a,b,d) as (SELECT bfv_joins_foo.a,bfv_joins_foo.b,bfv_joins_bar.d FROM bfv_joins_foo,bfv_joins_bar WHERE bfv_joins_foo.a = bfv_joins_bar.d )
+SELECT cup.*, SUM(bfv_joins_t.d) OVER(PARTITION BY bfv_joins_t.b) FROM (
+	SELECT bfv_joins_bar.*, AVG(bfv_joins_t.b) OVER(PARTITION BY bfv_joins_t.a ORDER BY bfv_joins_t.b desc) AS e FROM bfv_joins_t,bfv_joins_bar
 ) as cup,
-t WHERE cup.e < 10
-GROUP BY cup.c,cup.d, cup.e ,t.d,t.b) i
+bfv_joins_t WHERE cup.e < 10
+GROUP BY cup.c,cup.d, cup.e ,bfv_joins_t.d,bfv_joins_t.b) i
 order by 1, 2, 3, 4;
 
 --
@@ -110,7 +110,7 @@ drop function func_x(int);
 drop table if exists z;
 drop table if exists bfv_joins_foo;
 drop table if exists bfv_joins_bar;
-drop table if exists t;
+drop table if exists bfv_joins_t;
 drop table if exists x_non_part;
 drop table if exists x_part;
 drop function my_equality(int, int);
