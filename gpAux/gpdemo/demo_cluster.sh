@@ -219,7 +219,7 @@ MIRROR_DIRS_LIST=${MIRROR_DIRS_LIST#* }
 # Host configuration
 #*****************************************************************************************
 
-LOCALHOST=`hostname`
+LOCALHOST=localhost
 echo $LOCALHOST > hostfile
 
 #*****************************************************************************************
