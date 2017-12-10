@@ -31,7 +31,6 @@
 #include "access/xact.h"
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepservice.h"
-#include "cdb/cdbresynchronizechangetracking.h"
 #include "cdb/cdbutil.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/fts.h"
@@ -1410,14 +1409,6 @@ FaultInjector_SetFaultInjection(
 				break;
 			}
 			length = snprintf(entry->bufOutput, sizeof(entry->bufOutput), "Success: ");
-			
-			if (entry->faultInjectorIdentifier == ChangeTrackingCompactingReport)
-			{
-				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
-						 "Success: compacting in progress %s",
-						 ChangeTrackingIsCompactingInProgress() ? "true" : "false");
-				break;
-			}
 			
 			hash_seq_init(&hash_status, faultInjectorShmem->hash);
 
