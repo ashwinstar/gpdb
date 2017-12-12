@@ -39,6 +39,7 @@
 #include "utils/faultinjector.h"
 #include "utils/hsearch.h"
 #include "miscadmin.h"
+#include "postmaster/primary_mirror_mode.h"
 
 #ifdef FAULT_INJECTOR
 
@@ -557,7 +558,6 @@ FaultInjector_InjectFaultNameIfSet(
 
 	snprintf(databaseNameLocal, sizeof(databaseNameLocal), "%s", databaseName);
 	snprintf(tableNameLocal, sizeof(tableNameLocal), "%s", tableName);
-	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 
 	FiLockAcquire();
 
@@ -588,7 +588,7 @@ FaultInjector_InjectFaultNameIfSet(
 		}
 
 		/* Update the injection fault entry in hash table */
-		if (entryShared->occurrence != FILEREP_UNDEFINED)
+		if (entryShared->occurrence != OCCURRENCE_UNDEFINED)
 		{
 			if (entryShared->occurrence > 1)
 			{
@@ -624,42 +624,9 @@ FaultInjector_InjectFaultNameIfSet(
 			pg_usleep(entryLocal->sleepTime * 1000000L);
 			break;
 		case FaultInjectorTypeFault:
-			
-			switch (entryLocal->faultInjectorIdentifier)
-			{	
-				case FileRepConsumer:
-				case FileRepConsumerVerification:
-				case FileRepSender:
-				case FileRepReceiver:
-				case FileRepResync:
-				case FileRepResyncInProgress:
-				case FileRepResyncWorker:
-				case FileRepResyncWorkerRead:
-				case FileRepTransitionToInResyncMirrorReCreate:
-				case FileRepTransitionToInResyncMarkReCreated:
-				case FileRepTransitionToInResyncMarkCompleted:
-				case FileRepTransitionToInSyncBegin:
-				case FileRepTransitionToInSync:
-				case FileRepTransitionToInSyncMarkCompleted:
-				case FileRepTransitionToInSyncBeforeCheckpoint:
-				case FileRepIsOperationCompleted:
-			
-					FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
-					break;
-					
-				case FileRepTransitionToChangeTracking:
-
-					FileRep_SetPostmasterReset();
-					break;
-
-				default:
-					
-					FileRep_SetSegmentState(SegmentStateFault, FaultTypeIO);
-					break;
-			}
-			ereport(LOG, 
+			ereport(ERROR,
 					(errcode(ERRCODE_FAULT_INJECT),
-					 errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
+					 errmsg("currently this fault type has no implementation, fault name:'%s' fault type:'%s' ",
 							entryLocal->faultName,
 							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
 			
@@ -671,7 +638,7 @@ FaultInjector_InjectFaultNameIfSet(
 			 * and hence we wont get a chance to disable it or put it in completed
 			 * state.
 			 */
-			if (entryLocal->occurrence != FILEREP_UNDEFINED)
+			if (entryLocal->occurrence != OCCURRENCE_UNDEFINED)
 			{
 				entryLocal->faultInjectorState = FaultInjectorStateCompleted;
 				FaultInjector_UpdateHashEntry(entryLocal);
@@ -691,7 +658,7 @@ FaultInjector_InjectFaultNameIfSet(
 			 * and hence we wont get a chance to disable it or put it in completed
 			 * state. For PANIC it may be unnecessary though.
 			 */
-			if (entryLocal->occurrence != FILEREP_UNDEFINED)
+			if (entryLocal->occurrence != OCCURRENCE_UNDEFINED)
 			{
 				entryLocal->faultInjectorState = FaultInjectorStateCompleted;
 				FaultInjector_UpdateHashEntry(entryLocal);
@@ -711,7 +678,7 @@ FaultInjector_InjectFaultNameIfSet(
 			 * and hence we wont get a chance to disable it or put it in completed
 			 * state.
 			 */
-			if (entryLocal->occurrence != FILEREP_UNDEFINED)
+			if (entryLocal->occurrence != OCCURRENCE_UNDEFINED)
 			{
 				entryLocal->faultInjectorState = FaultInjectorStateCompleted;
 				FaultInjector_UpdateHashEntry(entryLocal);
@@ -735,7 +702,7 @@ FaultInjector_InjectFaultNameIfSet(
 			for (ii=0; ii < cnt; ii++)
 			{
 				pg_usleep(1000000L); // sleep for 1 sec (1 sec * 3600 = 1 hour)
-				
+				SegmentState_e segmentState;
 				getFileRepRoleAndState(NULL, &segmentState, NULL, NULL, NULL);
 
 				if ((entryLocal->faultInjectorIdentifier != FileRepImmediateShutdownRequested) &&
@@ -875,7 +842,7 @@ FaultInjector_InjectFaultNameIfSet(
 
 		case FaultInjectorTypeCheckpointAndPanic:
 		{
-			if (entryLocal->occurrence != FILEREP_UNDEFINED)
+			if (entryLocal->occurrence != OCCURRENCE_UNDEFINED)
 			{
 				entryLocal->faultInjectorState = FaultInjectorStateCompleted;
 				FaultInjector_UpdateHashEntry(entryLocal);
@@ -902,7 +869,7 @@ FaultInjector_InjectFaultNameIfSet(
 			break;
 	}
 		
-	if (entryLocal->occurrence != FILEREP_UNDEFINED)
+	if (entryLocal->occurrence != OCCURRENCE_UNDEFINED)
 	{
 		entryLocal->faultInjectorState = FaultInjectorStateCompleted;
 	}
@@ -1078,156 +1045,7 @@ FaultInjector_NewHashEntry(
 				goto exit;
 		}
 	}
-	
-	/* check role */
-	
-	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-	
-	switch (entry->faultInjectorIdentifier)
-	{
-		case ChangeTrackingDisable:
-		case FileRepConsumerVerification:
-		case FileRepResync:
-		case FileRepResyncInProgress:
-		case FileRepResyncWorker:
-		case FileRepResyncWorkerRead:
-		case FileRepTransitionToInResyncMirrorReCreate:
-		case FileRepTransitionToInResyncMarkReCreated:
-		case FileRepTransitionToInResyncMarkCompleted:
-		case FileRepTransitionToInSyncBegin:
-		case FileRepTransitionToInSync:
-		case FileRepTransitionToInSyncMarkCompleted:
-		case FileRepTransitionToInSyncBeforeCheckpoint:
-		case FileRepTransitionToChangeTracking:
-		case FileRepIsOperationCompleted:
-		case FileRepImmediateShutdownRequested:
-		case FileRepChangeTrackingCompacting:
-			if (fileRepRole != FileRepPrimaryRole)
-			{
-				FiLockRelease();
-				status = STATUS_ERROR;
-				ereport(WARNING,
-						(errmsg("could not insert fault injection entry into table, segment not in primary role"
-								"fault name:'%s' fault type:'%s' ",
-								entry->faultName,
-								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
-				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
-						 "could not insert fault injection, segment not in primary role");
-				
-				goto exit;
-			}			
-			break;
-		
-		case FileRepConsumer:
-		case FileRepSender:
-		case FileRepReceiver:
-		case FileRepFlush:
-			if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
-			{
-				FiLockRelease();
-				status = STATUS_ERROR;
-				ereport(WARNING,
-						(errmsg("could not insert fault injection entry into table, "
-								"segment not in primary or mirror role, "
-								"fault name:'%s' fault type:'%s' ",
-								entry->faultName,
-								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
-				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
-						 "could not insert fault injection, segment not in primary or mirror role");
-				
-				goto exit;
-			}			
-			break;
-			
-		case TransactionAbortAfterDistributedPrepared:
-		case DtmBroadcastPrepare:
-		case DtmBroadcastCommitPrepared:
-		case DtmBroadcastAbortPrepared:
-		case DtmXLogDistributedCommit:
-		case OptRelcacheTranslatorCatalogAccess:
-			
-			if (fileRepRole != FileRepNoRoleConfigured)
-			{
-				FiLockRelease();
-				status = STATUS_ERROR;
-				ereport(WARNING,
-						(errmsg("could not insert fault injection entry into table, "
-								"segment not in master role, "
-								"fault name:'%s' fault type:'%s' ",
-								entry->faultName,
-								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
-				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
-						 "could not insert fault injection, segment not in master role");
-				
-				goto exit;
-			}			
-			break;
-			
 
-		case StartPrepareTx:
-		case FinishPreparedTransactionCommitPass1FromCreatePendingToCreated:
-		case FinishPreparedTransactionCommitPass2FromCreatePendingToCreated:
-			
-		case FinishPreparedTransactionCommitPass1FromDropInMemoryToDropPending:
-		case FinishPreparedTransactionCommitPass2FromDropInMemoryToDropPending:
-			
-		case FinishPreparedTransactionCommitPass1AbortingCreateNeeded:
-		case FinishPreparedTransactionCommitPass2AbortingCreateNeeded:
-			
-		case FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate:
-			
-		case FinishPreparedTransactionAbortPass1AbortingCreateNeeded:
-		case FinishPreparedTransactionAbortPass2AbortingCreateNeeded:
-		case TwoPhaseTransactionCommitPrepared:
-		case TwoPhaseTransactionAbortPrepared:
-		
-		/* We do not use vmem on master. Therefore, we only attempt large palloc on segments. */
-		case MultiExecHashLargeVmem:
-		case FaultInBackgroundWriterMain:
-		case SendQEDetailsInitBackend:
-		
-		case FaultBeforePendingDeleteRelationEntry:
-		case FaultBeforePendingDeleteDatabaseEntry:
-		case FaultBeforePendingDeleteTablespaceEntry:
-		case FaultBeforePendingDeleteFilespaceEntry:	
-		case PgControl:
-		case PgXlog:
-		case SegmentTransitionRequest:
-		case SegmentProbeResponse:
-
-		case LocalTmRecordTransactionCommit:
-		case Checkpoint:
-		case AbortTransactionFail:
-		case WorkfileCreationFail:
-		case WorkfileWriteFail:
-		case WorkfileHashJoinFailure:
-		case UpdateCommittedEofInPersistentTable:
-		case ExecSortBeforeSorting:
-		case FaultDuringExecDynamicTableScan:
-		case FaultExecHashJoinNewBatch:
-		case RunawayCleanup:
-		case ExecSortMKSortMergeRuns:
-		case ExecShareInputNext:
-			if (fileRepRole != FileRepNoRoleConfigured && fileRepRole != FileRepPrimaryRole)
-			{
-				FiLockRelease();
-				status = STATUS_ERROR;
-				ereport(WARNING,
-						(errmsg("could not insert fault injection entry into table, "
-								"segment not in primary or master role, "
-								"fault name:'%s' fault type:'%s' ",
-								entry->faultName,
-								FaultInjectorTypeEnumToString[entry->faultInjectorType])));
-				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
-						 "could not insert fault injection, segment not in primary or master role");
-				
-				goto exit;
-			}			
-			break;
-
-		default:
-			break;
-	}
 	entryLocal = FaultInjector_InsertHashEntry(entry->faultName, &exists);
 		
 	if (entryLocal == NULL) {
@@ -1272,7 +1090,7 @@ FaultInjector_NewHashEntry(
 	}
 	else 
 	{
-		entryLocal->occurrence = FILEREP_UNDEFINED;
+		entryLocal->occurrence = OCCURRENCE_UNDEFINED;
 	}
 
 	entryLocal->numTimesTriggered = 0;
@@ -1355,8 +1173,6 @@ FaultInjector_SetFaultInjection(
 	int		status = STATUS_OK;
 	bool	isRemoved = FALSE;
 	
-	getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-
 	switch (entry->faultInjectorType) {
 		case FaultInjectorTypeReset:
 		{
