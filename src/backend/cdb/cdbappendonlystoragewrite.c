@@ -637,44 +637,7 @@ AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 											 &originalMirrorDataLossTrackingState,
 											 &originalMirrorDataLossTrackingSessionNum);
 
-	if (*newLogicalEof - startEof > 0)
-	{
-		/*
-		 * This routine will handle both updating the persistent information
-		 * about the new EOF and copy data to the mirror if we are now in
-		 * synchronized state.
-		 */
-		elogif(Debug_persistent_print, Persistent_DebugPrintLevel(),
-			   "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror catchup required %s, "
-			   "mirror data loss tracking (state '%s', session num " INT64_FORMAT "), "
-			   "mirror start EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
-			   relFileNode.spcNode,
-			   relFileNode.dbNode,
-			   relFileNode.relNode,
-			   segmentFileNum,
-			   persistentSerialNum,
-			   ItemPointerToString(&persistentTid),
-			   (mirrorCatchupRequired ? "true" : "false"),
-			   MirrorDataLossTrackingState_Name(originalMirrorDataLossTrackingState),
-			   originalMirrorDataLossTrackingSessionNum,
-			   startEof,
-			   *newLogicalEof);
-		MirroredAppendOnly_AddMirrorResyncEofs(
-											   &relFileNode,
-											   segmentFileNum,
-											   storageWrite->relationName,
-											   &persistentTid,
-											   persistentSerialNum,
-											   &mirroredLockLocalVars,
-											   mirrorCatchupRequired,
-											   originalMirrorDataLossTrackingState,
-											   originalMirrorDataLossTrackingSessionNum,
-											   *newLogicalEof);
-
-	}
-
 	MIRRORED_UNLOCK;
-
 }
 
 

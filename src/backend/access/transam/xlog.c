@@ -8208,8 +8208,6 @@ StartupXLOG_Pass2(void)
 
 	PersistentRecovery_Drop();
 
-	PersistentRecovery_UpdateAppendOnlyMirrorResyncEofs();
-
 #ifdef USE_ASSERT_CHECKING
 //	PersistentRecovery_VerifyTablesAgainstMemory();
 #endif

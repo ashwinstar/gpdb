@@ -17,7 +17,6 @@
 #include "miscadmin.h"
 #include "access/persistentendxactrec.h"
 #include "storage/smgr.h"
-#include "storage/smgr_ao.h"
 #include "utils/guc.h"
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentfilesysobj.h"
@@ -153,10 +152,6 @@ static int PersistentEndXactRec_CountForObject(
 	{
 	case PersistentEndXactObjKind_FileSysAction:
 		count = len / sizeof(PersistentEndXactFileSysActionInfo);
-		break;
-		
-	case PersistentEndXactObjKind_AppendOnlyMirrorResyncEofs:
-		count = len / sizeof(PersistentEndXactAppendOnlyMirrorResyncEofs);
 		break;
 		
 	default:
@@ -313,14 +308,6 @@ int32 PersistentEndXactRec_FetchObjectsFromSmgr(
 										(PersistentEndXactFileSysActionInfo*)data,
 										count);
 			break;
-			
-		case PersistentEndXactObjKind_AppendOnlyMirrorResyncEofs:
-			count = smgrGetAppendOnlyMirrorResyncEofs(
-									endXactRecKind,
-									(PersistentEndXactAppendOnlyMirrorResyncEofs**)&data);
-			len = count * sizeof(PersistentEndXactAppendOnlyMirrorResyncEofs);
-			break;
-
 		default:
 			elog(ERROR, "Unexpected persistent transaction object kind: %d",
 				 objKind);
@@ -351,13 +338,6 @@ bool PersistentEndXactRec_WillHaveObjectsFromSmgr(
 		{
 		case PersistentEndXactObjKind_FileSysAction:
 			if (smgrIsPendingFileSysWork(endXactRecKind))
-			{
-				return true;
-			}
-			break;
-			
-		case PersistentEndXactObjKind_AppendOnlyMirrorResyncEofs:
-			if (smgrIsAppendOnlyMirrorResyncEofs(endXactRecKind))
 			{
 				return true;
 			}

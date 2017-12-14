@@ -118,27 +118,6 @@ extern void MirroredAppendOnly_OpenReadWrite(
 	
 	int 						*primaryError);
 
-extern void MirroredAppendOnly_AddMirrorResyncEofs(
-	RelFileNode						*relFileNode,
-
-	int32							segmentFileNum,
-
-	char							*relationName,
-
-	ItemPointer						persistentTid,
-
-	int64							persistentSerialNum,
-
-	MirroredLockLocalVars 			*mirroredLockByRefVars,
-
-	bool							originalMirrorCatchupRequired,
-
-	MirrorDataLossTrackingState 	originalMirrorDataLossTrackingState,
-
-	int64 							originalMirrorDataLossTrackingSessionNum,
-
-	int64							mirrorNewEof);
-
 extern void MirroredAppendOnly_EndXactCatchup(
 		int 							entryIndex,
 	

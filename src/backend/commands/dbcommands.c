@@ -563,40 +563,6 @@ static void copy_append_only_segment_file(
 
 	FileClose(srcFile);
 	
-	if (eof > 0)
-	{
-		/* 
-		 * This routine will handle both updating the persistent information about the
-		 * new EOFs and copy data to the mirror if we are now in synchronized state.
-		 */
-		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(), 
-				 "copy_append_only_segment_file: Exit %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror catchup required %s, "
-				 "mirror data loss tracking (state '%s', session num " INT64_FORMAT "), mirror new EOF " INT64_FORMAT,
-				 dstRelFileNode->spcNode,
-				 dstRelFileNode->dbNode,
-				 dstRelFileNode->relNode,
-				 segmentFileNum,
-				 persistentSerialNum,
-				 ItemPointerToString(persistentTid),
-				 (mirrorCatchupRequired ? "true" : "false"),
-				 MirrorDataLossTrackingState_Name(originalMirrorDataLossTrackingState),
-				 originalMirrorDataLossTrackingSessionNum,
-				 eof);
-		MirroredAppendOnly_AddMirrorResyncEofs(
-										dstRelFileNode,
-										segmentFileNum,
-										relationName,
-										persistentTid,
-										persistentSerialNum,
-										&mirroredLockLocalVars,
-										mirrorCatchupRequired,
-										originalMirrorDataLossTrackingState,
-										originalMirrorDataLossTrackingSessionNum,
-										eof);
-
-	}
-	
 	MIRRORED_UNLOCK;
 
 }

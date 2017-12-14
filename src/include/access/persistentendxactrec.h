@@ -40,7 +40,6 @@ typedef enum PersistentEndXactObjKind
 {
 	PersistentEndXactObjKind_None = 0,
 	PersistentEndXactObjKind_FileSysAction = 1,
-	PersistentEndXactObjKind_AppendOnlyMirrorResyncEofs = 2,
 	MaxPersistentEndXactObjKind /* must always be last */
 } PersistentEndXactObjKind;
 

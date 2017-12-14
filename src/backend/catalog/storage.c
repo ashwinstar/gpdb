@@ -35,7 +35,6 @@
 #include "postmaster/primary_mirror_mode.h"
 #include "utils/faultinjector.h"
 #include "storage/lmgr.h"
-#include "storage/smgr_ao.h"
 
 /*
  * We keep a list of all relations (represented as RelFileNode values)
@@ -414,18 +413,6 @@ RelationDropStorage(RelFileNode *relFileNode,
 	pending->relStorageMgr = relStorageMgr;
 	pending->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
 	pending->isLocalBuf = isLocalBuf;	/*CDB*/
-
-	if (relStorageMgr == PersistentFileSysRelStorageMgr_AppendOnly)
-	{
-		/*
-		 * Remove pending updates for Append-Only mirror resync EOFs, too.
-		 *
-		 * But only at this transaction level !!!
-		 */
-		AppendOnlyMirrorResyncEofs_RemoveForDrop(relFileNode,
-												 segmentFileNum,
-												 GetCurrentTransactionNestLevel());
-	}
 
 	SUPPRESS_ERRCONTEXT_POP();
 
@@ -867,11 +854,6 @@ smgrSubTransAbort(void)
 	Assert(subTransList == NULL);
 	Assert(subTransCount == 0);
 
-	/*
-	 * Throw away sub-transaction Append-Only mirror resync EOFs.
-	 */
-	smgrAppendOnlySubTransAbort();
-
 	END_CRIT_SECTION();
 }
 
@@ -923,17 +905,6 @@ AtEOXact_smgr(bool isCommit)
 		pendingDeletesSorted = false;
 		pendingDeletesPerformed = true;
 	}
-
-	/*
-	 * Update the Append-Only mirror resync EOFs.
-	 */
-	smgrDoAppendOnlyResyncEofs(isCommit);
-
-	/*
-	 * Free the Append-Only mirror resync EOFs hash table.
-	 */
-	AppendOnlyMirrorResyncEofs_HashTableRemove("AtEOXact_smgr");
-
 
 	END_CRIT_SECTION();
 }
@@ -1420,11 +1391,6 @@ PostPrepare_smgr(void)
 	pendingDeletesSorted = false;
 	pendingDeletesPerformed = true;
 
-	/*
-	 * Free the Append-Only mirror resync EOFs hash table.
-	 */
-	AppendOnlyMirrorResyncEofs_HashTableRemove("PostPrepare_smgr");
-
 	// UNDONE: We are passing the responsibility on to PersistentFileSysObj_PreparedEndXactAction...
 }
 
@@ -1436,32 +1402,7 @@ PostPrepare_smgr(void)
 void
 AtSubCommit_smgr(void)
 {
-	int			nestLevel = GetCurrentTransactionNestLevel();
-	PendingDelete *pending;
-
-	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
-	{
-		if (pending->nestLevel >= nestLevel)
-		{
-			pending->nestLevel = nestLevel - 1;
-
-			if (pending->fsObjName.type == PersistentFsObjType_RelationFile &&
-				pending->relStorageMgr == PersistentFileSysRelStorageMgr_AppendOnly)
-			{
-				/*
-				 * If we are promoting a DROP of an Append-Only table, be sure to remove any
-				 * pending Append-Only mirror resync EOFs updates for the NEW TRANSACTION
-				 * LEVEL, too.
-				 */
-				AppendOnlyMirrorResyncEofs_RemoveForDrop(
-													PersistentFileSysObjName_GetRelFileNodePtr(&pending->fsObjName),
-													PersistentFileSysObjName_GetSegmentFileNum(&pending->fsObjName),
-													pending->nestLevel);
-			}
-		}
-	}
-
-	AtSubCommit_smgr_appendonly();	
+	return;
 }
 
 /*
