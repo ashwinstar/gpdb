@@ -109,11 +109,17 @@ probeRecordResponse(FtsConnectionInfo *ftsInfo, PGresult *result)
 	Assert (isSyncRepEnabled);
 	ftsInfo->result->isSyncRepEnabled = *isSyncRepEnabled;
 
-	write_log("FTS: segment (content=%d, dbid=%d, role=%c) reported isMirrorUp %d, isInSync %d, and isSyncRepEnabled %d to the prober.",
+	int *retry = (int *) PQgetvalue(result, 0,
+											   Anum_fts_message_response_retry);
+	Assert (retry);
+	ftsInfo->result->retry = *retry;
+
+	write_log("FTS: segment (content=%d, dbid=%d, role=%c) reported isMirrorUp %d, isInSync %d, and isSyncRepEnabled %d retry %d to the prober.",
 			  ftsInfo->segmentId, ftsInfo->dbId, ftsInfo->role,
 			  ftsInfo->result->isMirrorAlive,
 			  ftsInfo->result->isInSync,
-			  ftsInfo->result->isSyncRepEnabled);
+			  ftsInfo->result->isSyncRepEnabled,
+			  ftsInfo->result->retry);
 }
 
 /*
@@ -213,7 +219,15 @@ ftsReceive(FtsConnectionInfo *ftsInfo)
 	 * the gp_segment_configuration to avoid waiting the fts probe interval.
 	 */
 	if (strcmp(ftsInfo->message, FTS_MSG_PROBE) == 0)
+	{
 		probeRecordResponse(ftsInfo, lastResult);
+		if (ftsInfo->result->retry)
+		{
+			write_log("FTS: primary asked to retry the probe for (content=%d, dbid=%d)",
+					  ftsInfo->segmentId, ftsInfo->dbId);
+			return false;
+		}
+	}
 	/* Primary must have syncrep disabled in response to SYNCREP_OFF message. */
 	AssertImply(strcmp(ftsInfo->message, FTS_MSG_SYNCREP_OFF) == 0,
 				PQgetvalue(lastResult, 0, Anum_fts_message_response_is_syncrep_enabled) != NULL &&

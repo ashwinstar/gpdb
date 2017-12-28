@@ -757,6 +757,7 @@ InitWalSenderSlot(void)
 			 * Found a free slot. Reserve it for us.
 			 */
 			walsnd->pid = MyProcPid;
+			walsnd->pid_zero_time = 0;
 			MemSet(&walsnd->sentPtr, 0, sizeof(XLogRecPtr));
 			walsnd->state = WALSNDSTATE_STARTUP;
 			/* Will be decided in hand-shake */
@@ -814,6 +815,7 @@ WalSndKill(int code, Datum arg)
 
 			/* Mark WalSnd struct no longer in use. */
 			MyWalSnd->pid = 0;
+			MyWalSnd->pid_zero_time = (pg_time_t) time(NULL);
 			SpinLockRelease(&MyWalSnd->mutex);
 
 			DisownLatch(&MyWalSnd->latch);
@@ -837,6 +839,7 @@ WalSndKill(int code, Datum arg)
 	 * for this.
 	 */
 	walsnd->pid = 0;
+	walsnd->pid_zero_time = (pg_time_t) time(NULL);
 }
 
 /*
@@ -1272,6 +1275,7 @@ WalSndShmemInit(void)
 
 			SpinLockInit(&walsnd->mutex);
 			InitSharedLatch(&walsnd->latch);
+			walsnd->pid_zero_time = (pg_time_t) time(NULL);
 		}
 	}
 }

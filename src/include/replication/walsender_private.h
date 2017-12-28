@@ -84,6 +84,7 @@ typedef struct WalSnd
 	int			sync_standby_priority;
 
 	bool		synchronous;
+	pg_time_t   pid_zero_time;
 } WalSnd;
 
 extern WalSnd *MyWalSnd;

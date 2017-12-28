@@ -23,6 +23,7 @@ void GetMirrorStatus(FtsResponse *response)
 {
 	response->IsMirrorUp = false;
 	response->IsInSync = false;
+	response->retry = false;
 
 	/*
 	 * Greenplum currently supports only ONE mirror per primary.
@@ -37,7 +38,16 @@ void GetMirrorStatus(FtsResponse *response)
 		/* use volatile pointer to prevent code rearrangement */
 		volatile WalSnd *walsnd = &WalSndCtl->walsnds[i];
 
-		if (walsnd->pid != 0)
+		if (walsnd->pid == 0)
+		{
+			pg_time_t   now = (pg_time_t) time(NULL);
+			if ((now - walsnd->pid_zero_time) < 20)
+			{
+				elog(LOG, "fts needs to retry as mirror status not known yet");
+				response->retry = true;
+			}
+		}
+		else
 		{
 			if(walsnd->state == WALSNDSTATE_CATCHUP
 			   || walsnd->state == WALSNDSTATE_STREAMING)
