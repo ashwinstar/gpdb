@@ -48,10 +48,10 @@ insert into fts_unblock_primary values (1);
 
 -- turn off fts
 ! gpconfig -c gp_fts_probe_pause -v true --masteronly --skipvalidation;
-1U: select pg_ctl((select datadir from gp_segment_configuration c where c.role='p' and c.content=-1), 'reload', NULL, NULL);
+-1U: select pg_ctl((select datadir from gp_segment_configuration c where c.role='p' and c.content=-1), 'reload', NULL, NULL);
 
 -- stop a mirror
-1U: select pg_ctl((select datadir from gp_segment_configuration c where c.role='m' and c.content=2), 'stop', NULL, NULL);
+-1U: select pg_ctl((select datadir from gp_segment_configuration c where c.role='m' and c.content=2), 'stop', NULL, NULL);
 
 -- this should block since mirror is not up and sync replication is on
 2: begin;
@@ -63,7 +63,7 @@ insert into fts_unblock_primary values (3);
 
 -- turn on fts
 ! gpconfig -c gp_fts_probe_pause -v false --masteronly --skipvalidation;
-1U: select pg_ctl((select datadir from gp_segment_configuration c where c.role='p' and c.content=-1), 'reload', NULL, NULL);
+-1U: select pg_ctl((select datadir from gp_segment_configuration c where c.role='p' and c.content=-1), 'reload', NULL, NULL);
 
 --trigger fts probe and check to see primary marked n/u and mirror n/d
 select gp_request_fts_probe_scan();
