@@ -2837,6 +2837,17 @@ retry1:
 			 * Do we want to just remove this case entirely? */
 			Assert(port->canAcceptConnections != CAC_WAITBACKUP);
 			break;
+		case CAC_MIRROR_READY:
+			if (am_ftshandler)
+			{
+				Assert(am_mirror);
+				break;
+			}
+			ereport(FATAL,
+					(errcode(ERRCODE_MIRROR_READY),
+					 errSendAlert(true),
+					 errmsg("mirror ready")));
+			break;
 		case CAC_OK:
 			break;
 	}
@@ -3543,6 +3554,14 @@ canAcceptConnections(void)
 		 */
 		if (isQuiescentMode(&mirrorMode))
 			return CAC_MIRROR_OR_QUIESCENT;
+
+		/*
+		 * returns true only when walreciver process has created, which means
+		 * its in PM_RECOVERY and completed startup sequence and will connect
+		 * to primary.
+		 */
+		if (WalRcvRunning())
+			return CAC_MIRROR_READY;
 
 		if (!FatalError &&
 			(pmState == PM_STARTUP ||
