@@ -2846,7 +2846,7 @@ retry1:
 			ereport(FATAL,
 					(errcode(ERRCODE_MIRROR_READY),
 					 errSendAlert(true),
-					 errmsg("mirror ready")));
+					 errmsg("mirror does not accept connections")));
 			break;
 		case CAC_OK:
 			break;
