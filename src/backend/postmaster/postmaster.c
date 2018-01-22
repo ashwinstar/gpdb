@@ -155,7 +155,7 @@ void FtsProbeMain(int argc, char *argv[]);
 #endif
 
 bool am_mirror = false;
-
+bool pm_launch_walreceiver = false;
 
 /*
  * List of active backends (or child processes anyway; we don't actually
@@ -3556,11 +3556,10 @@ canAcceptConnections(void)
 			return CAC_MIRROR_OR_QUIESCENT;
 
 		/*
-		 * returns true only when walreciver process has created, which means
-		 * its in PM_RECOVERY and completed startup sequence and will connect
-		 * to primary.
+		 * If the wal receiver has been launched at least once, return that
+		 * the mirror is ready.
 		 */
-		if (WalRcvRunning())
+		if (pm_launch_walreceiver)
 			return CAC_MIRROR_READY;
 
 		if (!FatalError &&
@@ -4081,6 +4080,9 @@ do_reaper()
 			 */
 			FatalError = false;
 			pmState = PM_RUN;
+
+			/* Unset this since we are in normal operation */
+			pm_launch_walreceiver = false;
 
 			/*
 			 * Load the flat authorization file into postmaster's cache. The
@@ -6844,6 +6846,9 @@ sigusr1_handler(SIGNAL_ARGS)
 	{
 		/* Startup Process wants us to start the walreceiver process. */
 		WalReceiverPID = StartWalReceiver();
+
+		/* wal receiver has been launched */
+		pm_launch_walreceiver = true;
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC_LAUNCHER))

@@ -892,17 +892,3 @@ WalRcvGetStateString(WalRcvState state)
 	}
 	return "UNKNOWN";
 }
-
-bool
-WalRcvRunning(void)
-{
-	volatile WalRcvData *walrcv = WalRcv;
-	bool ret = false;
-
-	SpinLockAcquire(&walrcv->mutex);
-	if (walrcv->walRcvState == WALRCV_RUNNING)
-		ret = true;
-	SpinLockRelease(&walrcv->mutex);
-
-	return ret;
-}
