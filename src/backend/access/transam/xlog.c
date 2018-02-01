@@ -78,6 +78,7 @@
 #include "cdb/cdbvars.h"
 #include "utils/resscheduler.h"
 #include "utils/snapmgr.h"
+#include <zstd.h>
 
 extern uint32 bootstrap_data_checksum_version;
 
@@ -1081,15 +1082,30 @@ begin:;
 		rdt->next = &(dtbuf_rdt2[i]);
 		rdt = rdt->next;
 
+		ZSTD_CCtx *zstd_compress_context = ZSTD_createCCtx();
+		char dst[BLCKSZ];
+		unsigned long dst_length_used;
+		unsigned long orig_len;
+
 		if (bkpb->hole_length == 0)
 		{
+			dst_length_used = ZSTD_compressCCtx(zstd_compress_context,
+												dst, BLCKSZ,
+												page, BLCKSZ,
+												10);
 			rdt->data = page;
 			rdt->len = BLCKSZ;
 			write_len += BLCKSZ;
 			rdt->next = NULL;
+			orig_len = BLCKSZ;
 		}
 		else
 		{
+			dst_length_used = ZSTD_compressCCtx(zstd_compress_context,
+												dst, BLCKSZ,
+												page, bkpb->hole_offset,
+												10);
+
 			/* must skip the hole */
 			rdt->data = page;
 			rdt->len = bkpb->hole_offset;
@@ -1098,11 +1114,20 @@ begin:;
 			rdt->next = &(dtbuf_rdt3[i]);
 			rdt = rdt->next;
 
+			orig_len = bkpb->hole_offset;
+
 			rdt->data = page + (bkpb->hole_offset + bkpb->hole_length);
 			rdt->len = BLCKSZ - (bkpb->hole_offset + bkpb->hole_length);
 			write_len += rdt->len;
+			orig_len +=rdt->len;
 			rdt->next = NULL;
+			dst_length_used += ZSTD_compressCCtx(zstd_compress_context,
+												dst, BLCKSZ,
+												rdt->data, rdt->len,
+												10);
 		}
+		elog(LOG, "COMPRESS of FPI original size:%lu compressed size: %lu (delta:%lu)",
+			 orig_len, dst_length_used, (orig_len - dst_length_used));
 	}
 
 	/*
