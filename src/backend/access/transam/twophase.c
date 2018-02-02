@@ -110,7 +110,7 @@ int			max_prepared_xacts = 0;
  * twophase.h
  */
 #define GIDSIZE 200
-
+#define MAX_CACHED_RELS 64
 extern List *expectedTLIs;
 
 typedef struct GlobalTransactionData
@@ -124,6 +124,12 @@ typedef struct GlobalTransactionData
 	BackendId	locking_backend; /* backend currently working on the xact */
 	bool		valid;			/* TRUE if PGPROC entry is in proc array */
 	char		gid[GIDSIZE];	/* The GID assigned to the prepared xact */
+	uint64 startpreparelen;
+	bool cachevalid;
+	uint32 ncommitrels;
+	uint32 nabortrels;
+	RelFileNode commitrels[MAX_CACHED_RELS];
+	RelFileNode abortrels[MAX_CACHED_RELS];
 } GlobalTransactionData;
 
 /*
@@ -1076,6 +1082,7 @@ StartPrepare(GlobalTransaction gxact)
 
 	save_state_data(&hdr, sizeof(TwoPhaseFileHeader));
 
+	gxact->cachevalid=true;
 	/* Add the additional info about subxacts and deletable files */
 	if (hdr.nsubxacts > 0)
 	{
@@ -1086,13 +1093,27 @@ StartPrepare(GlobalTransaction gxact)
 	if (hdr.ncommitrels > 0)
 	{
 		save_state_data(commitrels, hdr.ncommitrels * sizeof(RelFileNode));
+		gxact->ncommitrels = hdr.ncommitrels;
+		if (hdr.ncommitrels <= MAX_CACHED_RELS)
+			memcpy(gxact->commitrels, commitrels, hdr.ncommitrels * sizeof(RelFileNode));
+		else
+			gxact->cachevalid=false;
+
 		pfree(commitrels);
 	}
 	if (hdr.nabortrels > 0)
 	{
 		save_state_data(abortrels, hdr.nabortrels * sizeof(RelFileNode));
+		gxact->nabortrels = hdr.nabortrels;
+		if (hdr.ncommitrels <= MAX_CACHED_RELS)
+			memcpy(gxact->abortrels, abortrels, hdr.nabortrels * sizeof(RelFileNode));
+		else
+			gxact->cachevalid=false;
+
 		pfree(abortrels);
 	}
+
+	gxact->startpreparelen = records.total_len;
 
 	SIMPLE_FAULT_INJECTOR(StartPrepareTx);
 }
@@ -1107,7 +1128,9 @@ EndPrepare(GlobalTransaction gxact)
 {
 	TransactionId xid = gxact->proc.xid;
 	TwoPhaseFileHeader *hdr;
-	char		path[MAXPGPATH];
+
+	if (gxact->startpreparelen != records.total_len)
+		gxact->cachevalid=false;
 
 	/* Add the end sentinel to the list of 2PC records */
 	RegisterTwoPhaseRecord(TWOPHASE_RM_END_ID, 0,
@@ -1126,16 +1149,6 @@ EndPrepare(GlobalTransaction gxact)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("two-phase state file maximum length exceeded")));
-
-	/*
-	 * Create the 2PC state file.
-	 *
-	 * Note: because we use BasicOpenFile(), we are responsible for ensuring
-	 * the FD gets closed in any error exit path.  Once we get into the
-	 * critical section, though, it doesn't matter since any failure causes
-	 * PANIC anyway.
-	 */
-	TwoPhaseFilePath(path, xid);
 
 	/*
 	 * We have to set inCommit here, too; otherwise a checkpoint starting
@@ -1251,6 +1264,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	RelFileNode *delrels;
 	int			ndelrels;
 	int			i;
+	TwoPhaseFileHeader tmphdr;
 
     XLogRecPtr   tfXLogRecPtr;
     XLogRecord  *tfRecord  = NULL;
@@ -1273,61 +1287,76 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 		 "FinishPreparedTransaction(): got xid %d for gid '%s'", xid, gid);
 
-    /*
-     * Check for recovery control file, and if so set up state for offline
-     * recovery
-     */
-    XLogReadRecoveryCommandFile(DEBUG5);
-
-    /* Now we can determine the list of expected TLIs */
-    expectedTLIs = XLogReadTimeLineHistory(ThisTimeLineID);
-
-
-    /* get the two phase information from the xlog */
-	XLogCloseReadRecord();
-	tfRecord = XLogReadRecord(&tfXLogRecPtr, false, LOG);
-	if (tfRecord == NULL)
+	if (!gxact->cachevalid ||
+		gxact->proc.subxids.overflowed)
 	{
 		/*
-		 * Invalid XLOG record means record is corrupted.
-		 * Failover is required, hopefully mirror is in healthy state.
+		 * Check for recovery control file, and if so set up state for offline
+		 * recovery
 		 */
-		ereport(WARNING,
-				(errmsg("primary failure, "
-						"xlog record is invalid, "
-						"failover requested"),
-				 errhint("run gprecoverseg to re-establish mirror connectivity")));
+		XLogReadRecoveryCommandFile(DEBUG5);
 
-		ereport(ERROR,
-				(errcode(ERRCODE_DATA_CORRUPTED),
-				 errmsg("xlog record is invalid"),
-				 errSendAlert(true)));
+		/* Now we can determine the list of expected TLIs */
+		expectedTLIs = XLogReadTimeLineHistory(ThisTimeLineID);
+
+
+		/* get the two phase information from the xlog */
+		XLogCloseReadRecord();
+		tfRecord = XLogReadRecord(&tfXLogRecPtr, false, LOG);
+		if (tfRecord == NULL)
+		{
+			/*
+			 * Invalid XLOG record means record is corrupted.
+			 * Failover is required, hopefully mirror is in healthy state.
+			 */
+			ereport(WARNING,
+					(errmsg("primary failure, "
+							"xlog record is invalid, "
+							"failover requested"),
+					 errhint("run gprecoverseg to re-establish mirror connectivity")));
+
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_CORRUPTED),
+					 errmsg("xlog record is invalid"),
+					 errSendAlert(true)));
+		}
+
+		buf = XLogRecGetData(tfRecord);
+
+		if (buf == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_CORRUPTED),
+					 errmsg("two-phase state information for transaction %u is corrupt",
+							xid),
+					 errSendAlert(true)));
+
+		/*
+		 * Disassemble the header area
+		 */
+		hdr = (TwoPhaseFileHeader *) buf;
+		Assert(TransactionIdEquals(hdr->xid, xid));
+		bufptr = buf + MAXALIGN(sizeof(TwoPhaseFileHeader));
+		children = (TransactionId *) bufptr;
+		bufptr += MAXALIGN(hdr->nsubxacts * sizeof(TransactionId));
+		commitrels = (RelFileNode *) bufptr;
+		bufptr += MAXALIGN(hdr->ncommitrels * sizeof(RelFileNode));
+		abortrels = (RelFileNode *) bufptr;
+		bufptr += MAXALIGN(hdr->nabortrels * sizeof(RelFileNode));
+
+		/* compute latestXid among all children */
+		latestXid = TransactionIdLatest(xid, hdr->nsubxacts, children);
 	}
-
-	buf = XLogRecGetData(tfRecord);
-
-	if (buf == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATA_CORRUPTED),
-				 errmsg("two-phase state information for transaction %u is corrupt",
-						xid),
-				 errSendAlert(true)));
-
-	/*
-	 * Disassemble the header area
-	 */
-	hdr = (TwoPhaseFileHeader *) buf;
-	Assert(TransactionIdEquals(hdr->xid, xid));
-	bufptr = buf + MAXALIGN(sizeof(TwoPhaseFileHeader));
-	children = (TransactionId *) bufptr;
-	bufptr += MAXALIGN(hdr->nsubxacts * sizeof(TransactionId));
-	commitrels = (RelFileNode *) bufptr;
-	bufptr += MAXALIGN(hdr->ncommitrels * sizeof(RelFileNode));
-	abortrels = (RelFileNode *) bufptr;
-	bufptr += MAXALIGN(hdr->nabortrels * sizeof(RelFileNode));
-
-	/* compute latestXid among all children */
-	latestXid = TransactionIdLatest(xid, hdr->nsubxacts, children);
+	else
+	{
+		elog(LOG, "USING CACHE FOR 2PC");
+		children = gxact->proc.subxids.xids;
+		commitrels = gxact->commitrels;
+		abortrels = gxact->abortrels;
+		tmphdr.nsubxacts = gxact->proc.subxids.nxids;
+		tmphdr.ncommitrels = gxact->ncommitrels;
+		tmphdr.nabortrels = gxact->nabortrels;
+		hdr = &tmphdr;
+	}
 
 	// NOTE: This use to be inside RecordTransactionCommitPrepared  and
 	// NOTE: RecordTransactionAbortPrepared.  Moved out here so the mirrored
