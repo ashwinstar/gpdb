@@ -79,6 +79,7 @@ typedef struct RelFileNode
 	Oid			spcNode;		/* tablespace */
 	Oid			dbNode;			/* database */
 	Oid			relNode;		/* relation */
+	int			relStorage;		/* heap / ao / co */
 } RelFileNode;
 
 /*
@@ -123,5 +124,12 @@ inline static bool RelFileNode_IsEmpty(
 		    relFileNode->dbNode == 0 &&
 		    relFileNode->relNode == 0);
 }
+
+typedef enum
+{
+	RELFILENODE_HEAP = 0,
+	RELFILENODE_AO,
+	RELFILENODE_CO
+} RelFileNodeRelStorage;
 
 #endif   /* RELFILENODE_H */

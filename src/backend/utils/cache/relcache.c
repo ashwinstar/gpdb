@@ -991,6 +991,13 @@ RelationInitPhysicalAddr(Relation relation)
 			elog(ERROR, "could not find relation mapping for relation \"%s\", OID %u",
 				 RelationGetRelationName(relation), relation->rd_id);
 	}
+
+	if (RelationIsAoRows(relation))
+		relation->rd_node.relStorage = RELFILENODE_AO;
+	else if ( RelationIsAoCols(relation))
+		relation->rd_node.relStorage = RELFILENODE_CO;
+	else
+		relation->rd_node.relStorage = RELFILENODE_HEAP;
 }
 
 /*
