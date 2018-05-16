@@ -304,7 +304,9 @@ smgrdounlink(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 	 * Get rid of any remaining buffers for the relation.  bufmgr will just
 	 * drop them without bothering to write the contents.
 	 */
-	DropRelFileNodeBuffers(rnode, forknum, 0);
+	if ((rnode.relStorage != RELFILENODE_AO) &&
+		(rnode.relStorage != RELFILENODE_CO))
+		DropRelFileNodeBuffers(rnode, forknum, 0);
 
 	/*
 	 * It'd be nice to tell the stats collector to forget it immediately, too.
