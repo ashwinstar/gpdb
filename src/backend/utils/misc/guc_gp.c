@@ -5323,10 +5323,14 @@ set_gp_replication_config(const char *name, const char *value)
 	char GpReplicationConfigTempFilename[MAXPGPATH];
 	char GpReplicationConfigFilename[MAXPGPATH];
 
-	if (!superuser())
+	/*
+	 * Currently fts handler process is only user of this function on QEs. But
+	 * just-in-case for future, if used outside of fts handler process.
+	 */
+	if (!am_ftshandler && !superuser())
 		ereport(ERROR,
-		        (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				        (errmsg("must be superuser to update %s", gp_replication_config_filename))));
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("must be superuser to update %s", gp_replication_config_filename))));
 
 	/*
 	 * GP_REPLICATION_CONFIG_FILENAME and its corresponding temporary file are always in
