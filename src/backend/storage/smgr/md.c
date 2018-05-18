@@ -20,6 +20,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include "access/appendonlywriter.h"
+#include "access/appendonlytid.h"
 #include "catalog/catalog.h"
 #include "miscadmin.h"
 #include "portability/instr_time.h"
@@ -348,6 +350,92 @@ mdcreate_ao(RelFileNodeBackend rnode, int32 segmentFileNum, bool isRedo)
 		pfree(path);
 }
 
+/*
+ * mdunlink_co() removes prefex files corresponding to an CO table.
+ *
+ *   CO Tables: non contiguous extensions
+ *          [  .1 - .127] for first column
+ *          [.128 - .255] for second column
+ *          [.256 - .283] for third column
+ *          etc
+ *
+ *  Algorithm is coded with the assumption that for a given concurrency level
+ *  either all columns have the file or none.
+ *
+ *  1) Finds for which concurrency levels the table has files. This is
+ *     calculated based off the first column. It performs 127
+ *     (MAX_AOREL_CONCURRENCY) access().
+ *  2) Finds number of columns in the table. This is calculated using a binary
+ *     search as the number of columns is finite (MaxHeapAttributeNumber).
+ *     This will performs 11 access() == ln(1600).
+ *  3) Based on the previous 2 steps we know exactly which files are associated
+ *     with the given CO table. Therefore we can iterate and delete CO table's
+ *     files. It performs (concurrency level) x (number of columns) unlink().
+ */
+static void
+mdunlink_co(const char *path, char *segpath)
+{
+	int min_search_range = 0;
+	int max_search_range = MaxHeapAttributeNumber - 1;
+	int selected_column = 0;
+	int total_number_of_columns = 0;
+	int concurrency_file_exists[MAX_AOREL_CONCURRENCY];
+
+	for (int concurrency_index=1; concurrency_index < MAX_AOREL_CONCURRENCY; concurrency_index++)
+	{
+		sprintf(segpath, "%s.%u", path, concurrency_index);
+		if (access(segpath, F_OK) < 0)
+			concurrency_file_exists[concurrency_index] = false;
+		else
+		{
+			concurrency_file_exists[concurrency_index] = true;
+			if (!selected_column)
+				selected_column = concurrency_index;
+		}
+	}
+
+	if (!selected_column)
+		return;
+
+	/* For rest of columns also file must exist for this concurrency level */
+	while (max_search_range >= min_search_range)
+	{
+		int midpoint = (max_search_range-min_search_range)/2 + min_search_range;
+		int filenum =  (midpoint*AOTupleId_MultiplierSegmentFileNum) + selected_column;
+		sprintf(segpath, "%s.%u", path, filenum);
+		if (access(segpath, F_OK) < 0)
+		{
+			/*
+			 * Assume that any error whether ENOENT or EACCES that file is
+			 * considered as not present
+			 */
+			max_search_range = midpoint - 1;
+		}
+		else
+		{
+			total_number_of_columns = midpoint;
+			min_search_range = midpoint + 1;
+		}
+	}
+
+	for (int concurrency_index=1; concurrency_index < MAX_AOREL_CONCURRENCY; concurrency_index++)
+	{
+		if (concurrency_file_exists[concurrency_index])
+		{
+			for (int colnum=0; colnum <= total_number_of_columns; colnum++)
+			{
+				int filenum =  (colnum*AOTupleId_MultiplierSegmentFileNum) + concurrency_index;
+				sprintf(segpath, "%s.%u", path, filenum);
+				if (unlink(segpath) < 0)
+				{
+					ereport(WARNING,
+							(errcode_for_file_access(),
+							 errmsg("could not remove file \"%s\": %m", segpath)));
+				}
+			}
+		}
+	}
+}
 
 /*
  *	mdunlink() -- Unlink a relation.
@@ -457,111 +545,69 @@ mdunlink(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo)
 		BlockNumber segno;
 
 		/*
-		 * Note that because we loop until getting ENOENT, we will correctly
-		 * remove all inactive segments as well as active ones.
+		 * Delete All segment file extensions, in case it was an AO or AOCS
+		 * table.
+		 *
+		 * There are different rules for the naming of the files, depending on
+		 * the type of table:
+		 *
+		 *   Heap Tables: contiguous extensions, no upper bound
+		 *   AO Tables: non contiguous extensions [.1 - .127]
+		 *   CO Tables: non contiguous extensions
+		 *          [  .1 - .127] for first column
+		 *          [.128 - .255] for second column
+		 *          [.256 - .283] for third column
+		 *          etc
+		 *
+		 * However, we don't try to be smart here, we just always scan the
+		 * directory. We don't know what kind of a table it was down here.
+		 *
+		 * NOTE: If you find a smarter way to do this than by scanning the dir,
+		 * consider changing copy_append_only_data(), in tablecmds.c, to also
+		 * use the smarter way.
 		 */
-		for (segno = 1;; segno++)
+		
+		if (rnode.relStorage == RELFILENODE_HEAP)
 		{
-			sprintf(segpath, "%s.%u", path, segno);
-			if (unlink(segpath) < 0)
-			{
-				/* ENOENT is expected after the last segment... */
-				if (errno != ENOENT)
-					ereport(WARNING,
-							(errcode_for_file_access(),
-					   errmsg("could not remove file \"%s\": %m", segpath)));
-				break;
-			}
-		}
-
-		if ((rnode.relStorage == RELFILENODE_AO) ||
-			(rnode.relStorage == RELFILENODE_CO))
-		{
-
 			/*
-			 * Delete All segment file extensions, in case it was an AO or AOCS
-			 * table.
-			 *
-			 * WALREP_FIXME: This currently works by scanning the directory, looking
-			 * for the pattern "<relfilenode>.<segno>". That is slow. We used to do
-			 * do this before, and had to switch over to the information from the
-			 * persistent tables for performance reasons somewhere around GPDB 3.X
-			 * or 4.X. Persistent tables are no more, so we had to go back to
-			 * scanning the directory, but we know that's going to be unacceptably
-			 * slow if there are a lot of files in the directory.
-			 *
-			 * There are different rules for the naming of the files, depending on
-			 * the type of table:
-			 *
-			 *   Heap Tables: contiguous extensions, no upper bound
-			 *   AO Tables: non contiguous extensions [.1 - .127]
-			 *   CO Tables: non contiguous extensions
-			 *          [  .1 - .127] for first column
-			 *          [.128 - .255] for second column
-			 *          [.256 - .283] for third column
-			 *          etc
-			 *
-			 * However, we don't try to be smart here, we just always scan the
-			 * directory. We don't know what kind of a table it was down here.
-			 *
-			 * NOTE: If you find a smarter way to do this than by scanning the dir,
-			 * consider changing copy_append_only_data(), in tablecmds.c, to also
-			 * use the smarter way.
+			 * Note that because we loop until getting ENOENT, we will correctly
+			 * remove all inactive segments as well as active ones.
 			 */
-			if (forkNum == MAIN_FORKNUM)
+			for (segno = 1;; segno++)
 			{
-				DIR		   *dir;
-				struct dirent *de;
-				char	   *dirpart;
-				char	   *filepart;
-				char	   *filedot;
-
-				/*
-				 * The base path is like "<path>/<rnode>". Split it into
-				 * path and filename parts.
-				 */
-				reldir_and_filename(rnode.node, InvalidBackendId, forkNum, &dirpart, &filepart);
-				filedot = psprintf("%s.", filepart);
-
-				/* Scan the directory */
-				dir = AllocateDir(dirpart);
-				while ((de = ReadDir(dir, dirpart)) != NULL)
+				sprintf(segpath, "%s.%u", path, segno);
+				if (unlink(segpath) < 0)
 				{
-					char	   *suffix;
-
-					if (strcmp(de->d_name, ".") == 0 ||
-						strcmp(de->d_name, "..") == 0)
-						continue;
-
-					/* Does it begin with the relfilenode? */
-					if (strlen(de->d_name) <= strlen(filedot) ||
-						strncmp(de->d_name, filedot, strlen(filedot)) != 0)
-						continue;
-
-					/*
-					 * Does it have a digits-only suffix? (This is not really
-					 * necessary to check, but better be conservative when deleting
-					 * files.)
-					 */
-					suffix = de->d_name + strlen(filedot);
-					if (strspn(suffix, "0123456789") != strlen(suffix) ||
-						strlen(suffix) > 10)
-						continue;
-
-					/* Looks like a match. Go ahead and delete it. */
-					sprintf(segpath, "%s.%s", path, suffix);
-					if (unlink(segpath) < 0)
-					{
+					/* ENOENT is expected after the last segment... */
+					if (errno != ENOENT)
 						ereport(WARNING,
 								(errcode_for_file_access(),
-								 errmsg("could not remove segment %s of relation %s: %m",
-										suffix, path)));
+								 errmsg("could not remove file \"%s\": %m", segpath)));
+					break;
+				}
+			}
+		}
+		else if (forkNum == MAIN_FORKNUM)
+		{
+			if (rnode.relStorage == RELFILENODE_AO)
+			{
+				for (int concurrency_index=1; concurrency_index < MAX_AOREL_CONCURRENCY; concurrency_index++)
+				{
+					sprintf(segpath, "%s.%u", path, concurrency_index);
+					if (unlink(segpath) < 0)
+					{
+						/* ENOENT is expected as we don't know if this file exists or not */
+						if (errno != ENOENT)
+							ereport(WARNING,
+									(errcode_for_file_access(),
+									 errmsg("could not remove file \"%s\": %m", segpath)));
 					}
 				}
-				FreeDir(dir);
-				pfree(filedot);
-				pfree(filepart);
-				pfree(dirpart);
+			}
+			else
+			{
+				Assert(rnode.relStorage == RELFILENODE_CO);
+				mdunlink_co(path, segpath);
 			}
 		}
 		pfree(segpath);
