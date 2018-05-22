@@ -493,9 +493,9 @@ mdunlink(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo)
 	 * requests for a temp relation, though.
 	 */
 	if ((!RelFileNodeBackendIsTemp(rnode)) &&
-		(rnode.relStorage != RELFILENODE_AO) &&
-		(rnode.relStorage != RELFILENODE_CO))
-		ForgetRelationFsyncRequests(rnode, forkNum);
+		(rnode.node.relStorage != RELFILENODE_AO) &&
+		(rnode.node.relStorage != RELFILENODE_CO))
+		ForgetRelationFsyncRequests(rnode.node, forkNum);
 
 	path = relpath(rnode, forkNum);
 
@@ -567,7 +567,7 @@ mdunlink(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo)
 		 * use the smarter way.
 		 */
 		
-		if (rnode.relStorage == RELFILENODE_HEAP)
+		if (rnode.node.relStorage == RELFILENODE_HEAP)
 		{
 			/*
 			 * Note that because we loop until getting ENOENT, we will correctly
@@ -589,7 +589,7 @@ mdunlink(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo)
 		}
 		else if (forkNum == MAIN_FORKNUM)
 		{
-			if (rnode.relStorage == RELFILENODE_AO)
+			if (rnode.node.relStorage == RELFILENODE_AO)
 			{
 				for (int concurrency_index=1; concurrency_index < MAX_AOREL_CONCURRENCY; concurrency_index++)
 				{
@@ -606,7 +606,7 @@ mdunlink(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo)
 			}
 			else
 			{
-				Assert(rnode.relStorage == RELFILENODE_CO);
+				Assert(rnode.node.relStorage == RELFILENODE_CO);
 				mdunlink_co(path, segpath);
 			}
 		}
