@@ -637,11 +637,15 @@ static void
 create_tablespace_directories(const char *location, const Oid tablespaceoid)
 {
 	char	   *linkloc = palloc(OIDCHARS + OIDCHARS + 1);
+	char *location_with_timestamp = palloc(strlen(location) + 1 + 25);
+	sprintf(location_with_timestamp, "%s/G%d_" INT64_FORMAT, location,
+			GpIdentity.segindex, GetCurrentTimestamp());
+
 	char	   *location_with_version_dir = palloc(strlen(location) + 1 +
-										strlen(tablespace_version_directory()) + 1);
+												   strlen(tablespace_version_directory()) + 1 + strlen(location_with_timestamp));
 
 	sprintf(linkloc, "pg_tblspc/%u", tablespaceoid);
-	sprintf(location_with_version_dir, "%s/%s", location,
+	sprintf(location_with_version_dir, "%s/%s", location_with_timestamp,
 										tablespace_version_directory());
 
 	/*
@@ -669,25 +673,6 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 
 		/*
 		 * Our theory for replaying a CREATE is to forcibly drop the target
-		 * subdirectory if present, and then recreate it. This may be
-		 * more work than needed, but it is simple to implement.
-		 */
-		if (stat(location_with_version_dir, &st) == 0 && S_ISDIR(st.st_mode))
-		{
-			if (!rmtree(location_with_version_dir, true))
-				/* If this failed, mkdir() below is going to error. */
-				ereport(WARNING,
-						(errmsg("some useless files may be left behind in old database directory \"%s\"",
-								location_with_version_dir)));
-		}
-	}
-
-	if (InRecovery)
-	{
-		struct stat st;
-
-		/*
-		 * Our theory for replaying a CREATE is to forcibly drop the target
 		 * subdirectory if present, and then recreate it. This may be more
 		 * work than needed, but it is simple to implement.
 		 */
@@ -699,6 +684,24 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 						(errmsg("some useless files may be left behind in old database directory \"%s\"",
 								location_with_version_dir)));
 		}
+	}
+
+	/*
+	 * The creation of the version directory prevents more than one tablespace
+	 * in a single location.
+	 */
+	if (mkdir(location_with_timestamp, S_IRWXU) < 0)
+	{
+		if (errno == EEXIST)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					 errmsg("directory \"%s\" already in use as a tablespace",
+							location_with_version_dir)));
+		else
+			ereport(ERROR,
+					(errcode_for_file_access(),
+				  errmsg("could not create directory \"%s\": %m",
+						 location_with_version_dir)));
 	}
 
 	/*
@@ -729,20 +732,10 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 							linkloc)));
 	}
 
-	/* Remove old symlink in recovery, in case it points to the wrong place */
-	if (InRecovery)
-	{
-		if (unlink(linkloc) < 0 && errno != ENOENT)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not remove symbolic link \"%s\": %m",
-							linkloc)));
-	}
-
 	/*
 	 * Create the symlink under PGDATA
 	 */
-	if (symlink(location, linkloc) < 0)
+	if (symlink(location_with_timestamp, linkloc) < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not create symbolic link \"%s\": %m",
@@ -750,6 +743,7 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 
 	pfree(linkloc);
 	pfree(location_with_version_dir);
+	pfree(location_with_timestamp);
 }
 
 
@@ -869,11 +863,25 @@ destroy_tablespace_directories(Oid tablespaceoid, bool redo)
 	}
 	else
 	{
+		char    targetpath[MAXPGPATH];
+		int rllen;
+
+		rllen = readlink(linkloc, targetpath, sizeof(targetpath));
+		if (rllen < 0 || rllen >= sizeof(targetpath))
+			ereport(ERROR,
+					(errmsg("could not read symbolic link \"%s\": %m", linkloc)));
+		targetpath[rllen] = '\0';
 		if (unlink(linkloc) < 0)
 			ereport(ERROR,
 					(errcode_for_file_access(),
 					 errmsg("could not remove symbolic link \"%s\": %m",
 							linkloc)));
+
+		if (rmdir(targetpath) < 0)
+			ereport(WARNING,
+					(errcode_for_file_access(),
+					 errmsg("could not remove directory \"%s\": %m",
+							targetpath)));
 	}
 
 	pfree(linkloc_with_version_dir);
