@@ -45,6 +45,7 @@
 #include "libpq/pqcomm.h"
 /* include stuff found in fe only */
 #include "pqexpbuffer.h"
+#include "libpq/zpq_stream.h"
 
 #ifdef ENABLE_GSS
 #if defined(HAVE_GSSAPI_H)
@@ -365,7 +366,8 @@ struct pg_conn
 	char	   *sslrootcert;	/* root certificate filename */
 	char	   *sslcrl;			/* certificate revocation list filename */
 	char	   *requirepeer;	/* required peer credentials for local sockets */
-
+	char       *compression;    /* stream compression (0 or 1) */
+	
 #if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
 	char	   *krbsrvname;		/* Kerberos service name */
 #endif
@@ -504,6 +506,8 @@ struct pg_conn
 
 	/* Buffer for receiving various parts of messages */
 	PQExpBufferData workBuffer; /* expansible string */
+	/* Compression stream */
+	ZpqStream* zstream;
 };
 
 /* PGcancel stores all data necessary to cancel a connection. A copy of this

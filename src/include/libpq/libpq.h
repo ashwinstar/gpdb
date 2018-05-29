@@ -51,6 +51,7 @@ extern int	StreamConnection(pgsocket server_fd, Port *port);
 extern void StreamClose(pgsocket sock);
 extern void TouchSocketFile(void);
 extern void pq_init(void);
+extern int  pq_configure(Port* port);
 extern void pq_comm_reset(void);
 extern void pq_comm_close_fatal(void);                                  /* GPDB only */
 extern int	pq_getbytes(char *s, size_t len);

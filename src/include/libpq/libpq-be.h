@@ -181,6 +181,7 @@ typedef struct Port
 	char		*peer_cn;
 	unsigned long count;
 #endif
+	bool        use_compression;
 } Port;
 
 

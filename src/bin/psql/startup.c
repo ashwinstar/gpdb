@@ -68,6 +68,7 @@ struct adhoc_opts
 	bool		no_readline;
 	bool		no_psqlrc;
 	bool		single_txn;
+	bool        compression;
 };
 
 static void parse_psql_options(int argc, char *argv[],
@@ -191,8 +192,10 @@ main(int argc, char *argv[])
 		values[5] = pset.progname;
 		keywords[6] = "client_encoding";
 		values[6] = (pset.notty || getenv("PGCLIENTENCODING")) ? NULL : "auto";
-		keywords[7] = NULL;
-		values[7] = NULL;
+		keywords[7] = "compression";
+		values[7] = options.compression ? "on" : "off";
+		keywords[8] = NULL;
+		values[8] = NULL;
 
 		new_pass = false;
 		pset.db = PQconnectdbParams(keywords, values, true);
@@ -333,6 +336,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 		{"echo-all", no_argument, NULL, 'a'},
 		{"no-align", no_argument, NULL, 'A'},
 		{"command", required_argument, NULL, 'c'},
+		{"compression", no_argument, NULL, 'Z'},
 		{"dbname", required_argument, NULL, 'd'},
 		{"echo-queries", no_argument, NULL, 'e'},
 		{"echo-hidden", no_argument, NULL, 'E'},
@@ -372,7 +376,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 
 	memset(options, 0, sizeof *options);
 
-	while ((c = getopt_long(argc, argv, "aAc:d:eEf:F:h:HlL:no:p:P:qR:sStT:U:v:VwWxX?1",
+	while ((c = getopt_long(argc, argv, "aAc:d:eEf:F:h:HlL:no:p:P:qR:sStT:U:v:VwWxX?1Z",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -429,6 +433,9 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 				break;
 			case 'p':
 				options->port = optarg;
+				break;
+			case 'Z':
+				options->compression = true;
 				break;
 			case 'P':
 				{
