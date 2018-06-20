@@ -37,6 +37,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbpq.h"
 #include "miscadmin.h"
+#include "commands/sequence.h"
 
 #define DISPATCH_WAIT_TIMEOUT_MSEC 2000
 
@@ -977,5 +978,41 @@ processResults(CdbDispatchResult *dispatchResult)
 		}
 	}
 
+	/*
+	 * If there was nextval request then respond back on this libpq connection
+	 * with the next value.
+	 */
+	PGnotify *nextval = PQnotifies(segdbDesc->conn);
+	if (nextval && strncmp(nextval->relname, "nextval", strlen("nextval")) == 0)
+	{
+		int dbid;
+		int tablespace;
+		int seq_oid;
+		char relpersistence;
+		if (sscanf(nextval->extra, "%d:%d:%d:%c", &dbid, &tablespace, &seq_oid, &relpersistence) != 4)
+		{
+			/* Didn't assign all 4 input values. */
+			elog(ERROR, "invalid nextval message");
+		}
+
+		int64 last;
+		int64 cached;
+		int64 increment;
+		bool overflow;
+		nextval_qd(seq_oid, &last, &cached, &increment, &overflow);
+		/*
+		 * respond back on this libpq connection with the next value
+		 */
+		pqPutMsgStart('?', false, segdbDesc->conn);
+		pqPutInt(last >> 32, 4, segdbDesc->conn);
+		pqPutInt(last, 4, segdbDesc->conn);
+		pqPutInt(cached >> 32, 4, segdbDesc->conn);
+		pqPutInt(cached, 4, segdbDesc->conn);
+		pqPutInt(increment >> 32, 4, segdbDesc->conn);
+		pqPutInt(increment, 4, segdbDesc->conn);
+		pqPutInt(overflow, 4, segdbDesc->conn);
+		pqPutMsgEnd(segdbDesc->conn);
+		pqFlush(segdbDesc->conn);
+	}
 	return false;				/* we must keep on monitoring this socket */
 }

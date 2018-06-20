@@ -29,9 +29,12 @@
 
 #include "access/xact.h"
 #include "miscadmin.h"
+#include "libpq/libpq.h"
 #include "libpq/pqsignal.h"
+#include "libpq/pqformat.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbselect.h"
+#include "commands/async.h"
 #include "commands/sequence.h"
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
@@ -47,6 +50,7 @@
 #include "tcop/tcopprot.h"
 #include "utils/ps_status.h"
 #include "storage/backendid.h"
+#include "utils/builtins.h"
 #include "utils/resowner.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
@@ -167,182 +171,60 @@ sendSequenceRequest(int     sockfd,
 			 		int64  *pincrement,
 			 		bool   *poverflow)
 {	
-	int		n;
-	int    bytesWritten = 0;
-	int	   bytesRead = 0;
-	int			saved_err;
-	mpp_fd_set	rset, wset;
+	StringInfoData buf;
 
 	Oid     dbid = seqrel->rd_node.dbNode;
     Oid     tablespaceid = seqrel->rd_node.spcNode;
     Oid     seq_oid = seqrel->rd_id;
     char	relpersistence = seqrel->rd_rel->relpersistence;
 
-	/* request message */
-    NextValRequest  request;
-	int     reqlen = sizeof(request);
-	
-	/* response message */
-    NextValResponse response;
-	int     resplen = sizeof(response);
-	
-	
-	if (sockfd == -1)
-		elog(ERROR, "Lost Connection to seqserver");
-		
-	/*
-	 * send the sequence request to the sequence server
-	 */
-    memset(&request, 0, sizeof(request));	
-	request.startCookie = SEQ_SERVER_REQUEST_START;
-	request.dbid = htonl(dbid);
-	request.tablespaceid = htonl(tablespaceid);
-	request.seq_oid = htonl(seq_oid);
-	request.relpersistence = relpersistence;
-    request.session_id = htonl(session_id);
-	request.endCookie = SEQ_SERVER_REQUEST_END;
+    char payload[128];
+	snprintf(payload, sizeof(payload), "%d:%d:%d:%c", dbid, tablespaceid, seq_oid, relpersistence);
+	pq_beginmessage(&buf, 'A');
+	pq_sendint(&buf, session_id, sizeof(int32));
+	pq_sendstring(&buf, "nextval"); //channel
+	// construct a string from parts of the nextval message
+	// this will be the payload for notify message.
+	pq_sendstring(&buf, payload);
+	elog(LOG, "sending nextval request: %s", buf.data);
+	pq_endmessage(&buf);
+	pq_flush();
 
-	/*
-	 * write the request
-	 */	
-	while (bytesWritten < reqlen)
+	// read nextval response from QD
+	initStringInfo(&buf);
+	char	qtype;
+	qtype = pq_getbyte();
+	Assert(qtype == '?');
+	if (pq_getmessage(&buf, 0) != 0)
 	{
-		CHECK_FOR_INTERRUPTS();
-					
-		n = write(sockfd, ((char *)&request)+bytesWritten, reqlen - bytesWritten);
-		saved_err = errno;
-	
-		if (n == 0)
-		{
-			elog(ERROR, "Error: seqserver socket closed.");
-			return;
-		}
-		
-		if (n < 0)
-		{
-			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
-			{
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-								errmsg("Error: Could not write()  message to seqserver: %s",
-									   strerror(errno)),
-								errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
-										  errno, sockfd)));
-			}
-
-			if (saved_err == EWOULDBLOCK)
-			{
-				/* we shouldn't really get here since we are dealing with
-				 * small messages, but once we've read a bit of data we
-				 * need to finish out reading till we get the message (or error)
-				 */
-				do
-				{
-					struct timeval timeout = tval;
-					
-					CHECK_FOR_INTERRUPTS();
-					
-					MPP_FD_ZERO(&wset);
-					MPP_FD_SET(sockfd, &wset);
-					n = select(sockfd + 1, NULL, (fd_set *)&wset, NULL, &timeout);
-					if (n == 0 || (n < 0 && errno == EINTR))
-						continue;
-					else if (n < 0)
-					{
-						saved_err = errno;
-
-						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-										errmsg("Error: Could not write()  message to seqserver: %s",
-											   strerror(errno)),
-										errdetail("error during write() call (error:%d) to seqserver on sockfd: %d ",
-												  errno, sockfd)));
-						return;
-					}
-				}
-				while (n < 1);
-			}
-			/* else saved_err == EINTR */
-
-			continue;
-		}
-
-		bytesWritten += n;
+		// error out here.
 	}
+
+	int *pint32 = (int32 *) plast;
+	*pint32 = ntohl(*((int32 *) buf.data + 1));
+	pint32++;
+	*pint32 = ntohl(*(int32 *) (buf.data));
+
+	pint32 = (int32 *) pcached;
+	*pint32 = ntohl(*((int32 *) buf.data + 1));
+	pint32++;
+	*pint32 = ntohl(*((int32 *) buf.data));
+
+	pint32 = (int32 *) pincrement;
+	*pint32 = ntohl(*((int32 *) buf.data + 1));
+	pint32++;
+	*pint32 = ntohl(*((int32 *) buf.data));
+
+	*poverflow = ntohl(*((int32 *) buf.data));
 	
-	/*
-	 * read the response
-	 */	
-	while (bytesRead < resplen)
-	{
-		CHECK_FOR_INTERRUPTS();
-			
-		n = read(sockfd, ((char *)&response)+bytesRead, resplen - bytesRead);
-		saved_err = errno;
-		
-		if (n == 0)
-		{
-			elog( ERROR, "seqserver socket is closed");
-			return;
-		}
-		
-		if (n < 0)
-		{
-			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
-			{
-				elog( ERROR, "Error: Could not read() message from seqserver."
-					  "(error:%d). Closing connection.", saved_err);
-			}
-
-			if (saved_err == EWOULDBLOCK)
-			{
-				/* we shouldn't really get here since we are dealing with
-				 * small messages, but once we've read a bit of data we
-				 * need to finish out reading till we get the message (or error)
-				 */
-				do
-				{
-					struct timeval timeout = tval;
-					
-					CHECK_FOR_INTERRUPTS();
-					
-					MPP_FD_ZERO(&rset);
-					MPP_FD_SET(sockfd, &rset);
-					n = select(sockfd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
-					if (n == 0 || (n < 0 && errno == EINTR))
-						continue;
-					else if (n < 0)
-					{
-						saved_err = errno;
-
-						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-									    errmsg("Error: Could not read() message from seqserver"),
-										errdetail("error during read() call (error:%d) from remote"
-												  "sockfd = %d", errno, sockfd)));
-						return;		
-					}
-				}
-				while (n < 1);
-			}
-			/* else saved_err == EINTR */
-
-			continue;
-		}
-		else
-			bytesRead += n;
-	}
-	
-	if (response.poverflowed)
+	if (*poverflow)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 						errmsg("nextval: reached %s value of sequence \"%s\" (" INT64_FORMAT ")",
-								response.pincrement>0 ? "maximum":"minimum",
-								RelationGetRelationName(seqrel), response.plast)));
+								*pincrement>0 ? "maximum":"minimum",
+								RelationGetRelationName(seqrel), *plast)));
 	}
-
-	*plast = response.plast;
-	*pcached = response.pcached;
-	*pincrement = response.pincrement;
-	*poverflow = response.poverflowed;
 }
 
 

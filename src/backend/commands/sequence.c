@@ -29,6 +29,8 @@
 #include "commands/sequence.h"
 #include "commands/tablecmds.h"
 #include "funcapi.h"
+#include "libpq/libpq.h"
+#include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "storage/smgr.h"               /* RelationCloseSmgr -> smgrclose */
 #include "nodes/makefuncs.h"
@@ -610,6 +612,17 @@ nextval_oid(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 
 	PG_RETURN_INT64(nextval_internal(relid));
+}
+
+void
+nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, bool   *poverflow)
+{
+	Assert(IS_QUERY_DISPATCHER());
+
+	*plast = nextval_internal(relid);
+	*pcached = last_used_seq->cached;
+	*pincrement = last_used_seq->increment;
+	*poverflow = !last_used_seq->last_valid;
 }
 
 static int64
@@ -1825,7 +1838,7 @@ cdb_sequence_relation_term(Relation seqrel)
 
 
 /*
- * CDB: forward a nextval request from qExec to the sequence server
+ * CDB: forward a nextval request from qExec to the QD
  */
 void
 cdb_sequence_nextval_proxy(Relation	seqrel,
@@ -1835,15 +1848,61 @@ cdb_sequence_nextval_proxy(Relation	seqrel,
                            bool    *poverflow)
 {
 
-	sendSequenceRequest(GetSeqServerFD(),
-						seqrel,
-    					gp_session_id,
-    					plast,
-    					pcached,
-    					pincrement,
-    					poverflow);
+	StringInfoData buf;
 
-}                               /* cdb_sequence_server_nextval */
+	/*
+	 * Construct a nextval NOTIFY message to send to the QD using "nextval"
+	 * channel. Sends pq_beginmessage(..., 'A') to signal that this is a NOTIFY
+	 * message. Payload includes all info required to update the sequence
+	 * value.
+	 */
+	char payload[128];
+	snprintf(payload, sizeof(payload), "%d:%d:%d:%c", dbid, tablespaceid, seq_oid, relpersistence);
+	pq_beginmessage(&buf, 'A');
+	pq_sendint(&buf, gp_session_id, sizeof(int32));
+	pq_sendstring(&buf, "nextval"); /* channel */
+	pq_sendstring(&buf, payload);
+	pq_endmessage(&buf);
+	pq_flush();
+
+	/*
+	 * Read nextval response from QD.
+	 */
+	initStringInfo(&buf);
+	char	qtype;
+	qtype = pq_getbyte();
+	Assert(qtype == '?');
+	if (pq_getmessage(&buf, 0) != 0)
+	{
+		elog(ERROR, "unable to parse nextval response from QD");
+	}
+
+	int *pint32 = (int32 *) plast;
+	*pint32 = ntohl(*((int32 *) buf.data + 1));
+	pint32++;
+	*pint32 = ntohl(*(int32 *) (buf.data));
+
+	pint32 = (int32 *) pcached;
+	*pint32 = ntohl(*((int32 *) buf.data + 1));
+	pint32++;
+	*pint32 = ntohl(*((int32 *) buf.data));
+
+	pint32 = (int32 *) pincrement;
+	*pint32 = ntohl(*((int32 *) buf.data + 1));
+	pint32++;
+	*pint32 = ntohl(*((int32 *) buf.data));
+
+	*poverflow = ntohl(*((int32 *) buf.data));
+	
+	if (*poverflow)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						errmsg("nextval: reached %s value of sequence \"%s\" (" INT64_FORMAT ")",
+								*pincrement>0 ? "maximum":"minimum",
+								RelationGetRelationName(seqrel), *plast)));
+	}
+}
 
 
 /*
