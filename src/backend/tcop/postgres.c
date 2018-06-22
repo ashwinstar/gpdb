@@ -1312,9 +1312,6 @@ exec_mpp_query(const char *query_string,
 						  list_make1(plan ? (Node*)plan : (Node*)utilityStmt),
 						  NULL);
 
-		/* Set up the sequence server */
-		SetupSequenceServer(seqServerHost, seqServerPort);
-
 		/*
 		 * Start the portal.
 		 */
@@ -1735,9 +1732,6 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 						  commandTag,
 						  plantree_list,
 						  NULL);
-
-		/* Set up the sequence server */
-		SetupSequenceServer(seqServerHost, seqServerPort);
 
 		/*
 		 * Start the portal.  No parameters here.
@@ -5283,7 +5277,6 @@ PostgresMain(int argc, char *argv[],
 					int serializedPlantreelen = 0;
 					int serializedParamslen = 0;
 					int serializedQueryDispatchDesclen = 0;
-					int seqServerHostlen = 0;
 					int seqServerPort = -1;
 					int resgroupInfoLen = 0;
 
@@ -5336,9 +5329,6 @@ PostgresMain(int argc, char *argv[],
 					/* get the transaction options */
 					unusedFlags = pq_getmsgint(&input_message, 4);
 
-					seqServerHostlen = pq_getmsgint(&input_message, 4);
-					seqServerPort = pq_getmsgint(&input_message, 4);
-
 					/* get the query string and kick off processing. */
 					if (query_string_len > 0)
 						query_string = pq_getmsgbytes(&input_message,query_string_len);
@@ -5354,9 +5344,6 @@ PostgresMain(int argc, char *argv[],
 
 					if (serializedQueryDispatchDesclen > 0)
 						serializedQueryDispatchDesc = pq_getmsgbytes(&input_message,serializedQueryDispatchDesclen);
-
-					if (seqServerHostlen > 0)
-						seqServerHost = pq_getmsgbytes(&input_message, seqServerHostlen);
 
 					numSlices = pq_getmsgint(&input_message, 4);
 

@@ -53,8 +53,6 @@
 #include "cdb/cdbmotion.h"
 #include "cdb/ml_ipc.h"
 
-#include "postmaster/seqserver.h"
-
 
 /*
  * We don't want to log each fetching of a value from a sequence,
@@ -878,19 +876,6 @@ cdb_sequence_nextval(SeqTable elm,
 		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG, rdata);
 
 		PageSetLSN(page, recptr);
-
-		/* need to update where we've inserted to into shmem so that the QD can flush it
-		 * when necessary
-		 */
-		LWLockAcquire(SeqServerControlLock, LW_EXCLUSIVE);
-
-		if (XLByteLT(seqServerCtl->lastXlogEntry, recptr))
-		{
-			seqServerCtl->lastXlogEntry.xlogid = recptr.xlogid;
-			seqServerCtl->lastXlogEntry.xrecoff = recptr.xrecoff;
-		}
-
-		LWLockRelease(SeqServerControlLock);
 	}
 
 	/* Now update sequence tuple to the intended final state */
@@ -1791,53 +1776,6 @@ seq_desc(StringInfo buf, XLogRecord *record)
 
 
 /*
- * Initialize a pseudo relcache entry with just enough info to call bufmgr.
- */
-static void
-cdb_sequence_relation_init(Relation seqrel,
-                           Oid      tablespaceid,
-                           Oid      dbid,
-                           Oid      relid,
-						   char     relpersistence)
-{
-    /* See RelationBuildDesc in relcache.c */
-    memset(seqrel, 0, sizeof(*seqrel));
-
-    seqrel->rd_smgr = NULL;
-    seqrel->rd_refcnt = 99;
-
-    seqrel->rd_id = relid;
-
-	seqrel->rd_rel = (Form_pg_class)palloc0(CLASS_TUPLE_SIZE);
-    sprintf(seqrel->rd_rel->relname.data, "pg_class.oid=%d", relid);
-	seqrel->rd_rel->relpersistence = relpersistence;
-	seqrel->rd_rel->relkind = RELKIND_SEQUENCE;
-
-    /* as in RelationInitPhysicalAddr... */
-    seqrel->rd_node.spcNode = tablespaceid;
-    seqrel->rd_node.dbNode = dbid;
-    seqrel->rd_node.relNode = relid;
-	/* GPDB_91_MERGE_FIXME: Do we ever use the seqserver for temp sequences? I think not.. */
-	seqrel->rd_backend = InvalidBackendId;
-
-}                               /* cdb_sequence_relation_init */
-
-/*
- * Clean up pseudo relcache entry.
- */
-static void
-cdb_sequence_relation_term(Relation seqrel)
-{
-    /* Close the file. */
-    RelationCloseSmgr(seqrel);
-
-    if (seqrel->rd_rel)
-        pfree(seqrel->rd_rel);
-}                               /* cdb_sequence_relation_term */
-
-
-
-/*
  * CDB: forward a nextval request from qExec to the QD
  */
 void
@@ -1849,6 +1787,10 @@ cdb_sequence_nextval_proxy(Relation	seqrel,
 {
 
 	StringInfoData buf;
+	Oid dbid = seqrel->rd_node.dbNode;
+	Oid tablespaceid = seqrel->rd_node.spcNode;
+	Oid seq_oid = seqrel->rd_id;
+	char relpersistence = seqrel->rd_rel->relpersistence;
 
 	/*
 	 * Construct a nextval NOTIFY message to send to the QD using "nextval"
@@ -1893,7 +1835,7 @@ cdb_sequence_nextval_proxy(Relation	seqrel,
 	*pint32 = ntohl(*((int32 *) buf.data));
 
 	*poverflow = ntohl(*((int32 *) buf.data));
-	
+
 	if (*poverflow)
 	{
 		ereport(ERROR,
@@ -1904,57 +1846,6 @@ cdb_sequence_nextval_proxy(Relation	seqrel,
 	}
 }
 
-
-/*
- * CDB: nextval entry point called by sequence server
- */
-void
-cdb_sequence_nextval_server(Oid    tablespaceid,
-                            Oid    dbid,
-                            Oid    relid,
-                            char relpersistence,
-                            int64 *plast,
-                            int64 *pcached,
-                            int64 *pincrement,
-                            bool  *poverflow)
-{
-    RelationData    fakerel;
-	SeqTable	elm;
-	Relation	    seqrel = &fakerel;
-
-    *plast = 0;
-    *pcached = 0;
-    *pincrement = 0;
-
-	/*
-	 * In Postgres, this method is to find the SeqTable entry for the sequence.
-	 * This is not required by sequence server. We only need to initialize
-	 * the `elm` which is used later in `cdb_sequence_nextval()`, which
-	 * is calling `read_seq_tuple()` method, and require `elm` parameter.
-	 *
-	 * In GPDB, a sequence server is used to generate unique values for all the sequence.
-	 * It doesn't have to lock on the sequence relation, because there will be
-	 * only a single instance of sequence server to handle all the requests from
-	 * segments to generate the sequence values.
-	 * To prevent collision of generating sequence values between 'master'
-	 * (e.g.`select nextval(seq)`) and 'segments' (e.g. `insert into table with
-	 * serial column`), an BUFFER_LOCK_EXCLUSIVE lock is held on the shared buffer
-	 * of the sequence relation.
-	 */
-	init_sequence(relid, &elm, NULL);
-
-    /* Build a pseudo relcache entry with just enough info to call bufmgr. */
-    seqrel = &fakerel;
-    cdb_sequence_relation_init(seqrel, tablespaceid, dbid, relid, relpersistence);
-
-    /* CDB TODO: Catch errors. */
-
-    /* Update the sequence object. */
-    cdb_sequence_nextval(elm, seqrel, plast, pcached, pincrement, poverflow);
-
-    /* Cleanup. */
-    cdb_sequence_relation_term(seqrel);
-}                               /* cdb_sequence_server_nextval */
 
 /*
  * Mask last_value and log_cnt for consistency checking

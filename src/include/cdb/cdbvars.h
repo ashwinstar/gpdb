@@ -952,8 +952,6 @@ typedef struct SeqServerControlBlock
 	XLogRecPtr  lastXlogEntry;
 }	SeqServerControlBlock;
 
-extern SeqServerControlBlock *seqServerCtl;
-
 /*
  * Thread-safe routine to write to the log
  */

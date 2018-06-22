@@ -85,11 +85,6 @@ extern void WaitInterconnectQuit(void);
 void
 checkForCancelFromQD(ChunkTransportState *pTransportStates);
 
-/* Returns the fd of the socket that connects to the seqserver.  This value
- * is -1 if it has not been setup.
- */
-extern int  GetSeqServerFD(void);
-
 /* The SetupInterconnect() function should be called at the beginning of
  * executing any DML statement that will need to use the interconnect.
  *
@@ -126,7 +121,6 @@ extern void TeardownInterconnect(ChunkTransportState *transportStates,
 
 extern void WaitInterconnectQuit(void);
 
-extern void SetupSequenceServer(const char *host, int port);
 extern void TeardownSequenceServer(void);
 
 

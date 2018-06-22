@@ -116,7 +116,6 @@
 #include "postmaster/fork_process.h"
 #include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
-#include "postmaster/seqserver.h"
 #include "postmaster/fts.h"
 #include "postmaster/perfmon.h"
 #include "postmaster/syslogger.h"
@@ -143,7 +142,6 @@
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
-void SeqServerMain(int argc, char *argv[]);
 
 void FtsProbeMain(int argc, char *argv[]);
 #endif
@@ -184,8 +182,7 @@ static Dllist *BackendList;
 /* CDB */
 typedef enum pmsub_type
 {
-	SeqServerProc = 0,
-	FtsProbeProc,
+	FtsProbeProc = 0,
 	PerfmonProc,
 	BackoffProc,
 	PerfmonSegmentInfoProc,
@@ -367,9 +364,6 @@ typedef struct pmsubproc
 
 static PMSubProc PMSubProcList[MaxPMSubType] =
 {
-	{0, SeqServerProc,
-	 (PMSubStartCallback*)&seqserver_start,
-	 "seqserver process", PMSUBPROC_FLAG_QD, true},
 	{0, FtsProbeProc,
 	 (PMSubStartCallback*)&ftsprobe_start,
 	 "ftsprobe process", PMSUBPROC_FLAG_QD, true},
@@ -4913,23 +4907,6 @@ SubPostmasterMain(int argc, char *argv[])
 		/* Do not want to attach to shared memory */
 
 		SysLoggerMain(argc, argv);
-		proc_exit(0);
-	}
-	if (strcmp(argv[1], "--forkseqserver") == 0)
-	{
-		/* Close the postmaster's sockets */
-		ClosePostmasterPorts(false);
-
-		/* Restore basic shared memory pointers */
-		InitShmemAccess(UsedShmemSegAddr);
-
-		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitAuxiliaryProcess();
-
-		/* Attach process to shared data structures */
-		CreateSharedMemoryAndSemaphores(false, 0);
-
-		SeqServerMain(argc - 2, argv + 2);
 		proc_exit(0);
 	}
 	if (strcmp(argv[1], "--forkglobaldeadlockdetector") == 0)
