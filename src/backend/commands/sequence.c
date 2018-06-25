@@ -312,18 +312,6 @@ ResetSequence(Oid seq_relid)
 	HeapTuple	tuple;
 
 	/*
-	 * GPDB_91_MERGE_FIXME: GPDB does not support transactional restart of
-	 * sequence relations.  This is a consequence of the assumption in sequence
-	 * server that relfilenode of a sequence relation is identical to its OID.
-	 * The RelationSetNewRelfilenode() call below violates that assumption and
-	 * breaks sequence server implementation.  Until sequences in GPDB are
-	 * redesigned, we have to resort to non-transactional sequence restarts.
-	 */
-	gp_alter_sequence_internal(
-		seq_relid, list_make1(makeDefElem("restart", NULL)));
-	return;
-
-	/*
 	 * Read the old sequence.  This does a bit more work than really
 	 * necessary, but it's simple, and we do want to double-check that it's
 	 * indeed a sequence.

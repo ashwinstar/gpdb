@@ -68,9 +68,6 @@ typedef struct interconnect_handle_t
 int			TCP_listenerFd;
 int			UDP_listenerFd;
 
-/* Socket file descriptor for the sequence server. */
-static int	savedSeqServerFd = -1;
-
 static interconnect_handle_t *open_interconnect_handles;
 static bool interconnect_resowner_callback_registered;
 
@@ -250,7 +247,6 @@ InitMotionLayerIPC(void)
 	uint16		udp_listener = 0;
 
 	/* activated = false; */
-	savedSeqServerFd = -1;
 
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_TCP)
 		InitMotionTCP(&TCP_listenerFd, &tcp_listener);
@@ -523,31 +519,6 @@ DeregisterReadInterest(ChunkTransportState *transportStates,
 		MPP_FD_CLR(conn->sockfd, &pEntry->readSet);
 	}
 	return;
-}
-
-void
-TeardownSequenceServer(void)
-{
-	/*
-	 * If we setup a connection to the seqserver then we need to disconnect
-	 */
-	if (savedSeqServerFd != -1)
-	{
-		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-			elog(DEBUG3, "tearing down seqserver connection");
-
-		shutdown(savedSeqServerFd, SHUT_RDWR);
-		closesocket(savedSeqServerFd);
-		savedSeqServerFd = -1;
-	}
-
-	/*
-	 * Note, we are not releasing the savedSeqServerHost here (MPP-25193).
-	 * This may result in a small memory leak. However, we still free this
-	 * during SetupSequenceServer call. Therefore, in the worse case there
-	 * would be only one savedSeqServerHost instance leaking, irrespective of
-	 * how many portals we have, which is rather unnoticeable.
-	 */
 }
 
 void

@@ -943,15 +943,6 @@ extern GpId GpIdentity;
  */
 extern uint32 Gp_listener_port;
 
-
-
-/* SequenceServer information to be shared with everyone */
-typedef struct SeqServerControlBlock
-{
-	int4		seqServerPort;
-	XLogRecPtr  lastXlogEntry;
-}	SeqServerControlBlock;
-
 /*
  * Thread-safe routine to write to the log
  */

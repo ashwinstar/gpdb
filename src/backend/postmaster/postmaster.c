@@ -2701,11 +2701,6 @@ pmdie(SIGNAL_ARGS)
 				/* and the walwriter too */
 				if (WalWriterPID != 0)
 					signal_child(WalWriterPID, SIGTERM);
-				/*
-				 * Note: We don't kill the seqserver yet. It might be needed
-				 * by running backends. We will kill that after all the live
-				 * backends have exited.
-				 */
 
 				/*
 				 * If we're in recovery, we can't kill the startup process
@@ -3470,26 +3465,6 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 								 "SIGQUIT",
 								 (int) PgArchPID)));
 		signal_child(PgArchPID, SIGQUIT);
-	}
-
-	/* Force a power-cycle of the seqserver process too */
-	/* (Shouldn't be necessary, but just for luck) */
-	{
-		int ii;
-
-		for (ii=0; ii < MaxPMSubType; ii++)
-		{
-			PMSubProc *subProc = &PMSubProcList[ii];
-
-			if (subProc->pid != 0 && !FatalError)
-			{
-				ereport(DEBUG2,
-						(errmsg_internal("sending %s to process %d",
-										 "SIGQUIT",
-										 (int) subProc->pid)));
-				signal_child(subProc->pid, SIGQUIT);
-			}
-		}
 	}
 
 	/*
@@ -4739,7 +4714,6 @@ SubPostmasterMain(int argc, char *argv[])
 		strcmp(argv[1], "--forkavlauncher") == 0 ||
 		strcmp(argv[1], "--forkavworker") == 0 ||
 		strcmp(argv[1], "--forkautovac") == 0   ||
-		strcmp(argv[1], "--forkseqserver") == 0 ||
 		strcmp(argv[1], "--forkglobaldeadlockdetector") == 0 ||
 		strcmp(argv[1], "--forkboot") == 0)
 		PGSharedMemoryReAttach();

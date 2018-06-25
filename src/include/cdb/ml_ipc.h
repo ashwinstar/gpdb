@@ -121,8 +121,6 @@ extern void TeardownInterconnect(ChunkTransportState *transportStates,
 
 extern void WaitInterconnectQuit(void);
 
-extern void TeardownSequenceServer(void);
-
 
 /* Sends a tuple chunk from the Postgres process to the local AMS process via
  * IPC.  This function does not block; if the IPC channel cannot accept the
