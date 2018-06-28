@@ -68,7 +68,7 @@ typedef struct xl_seq_rec
 
 extern Datum nextval(PG_FUNCTION_ARGS);
 extern Datum nextval_oid(PG_FUNCTION_ARGS);
-extern void nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, bool *poverflow);
+extern void nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, char *poverflow);
 extern Datum currval_oid(PG_FUNCTION_ARGS);
 extern Datum setval_oid(PG_FUNCTION_ARGS);
 extern Datum setval3_oid(PG_FUNCTION_ARGS);

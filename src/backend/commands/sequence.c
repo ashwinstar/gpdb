@@ -106,7 +106,7 @@ static SeqTable seqtab = NULL;	/* Head of list of SeqTable items */
 static SeqTableData *last_used_seq = NULL;
 
 static void fill_seq_with_data(Relation rel, HeapTuple tuple);
-static int64 nextval_internal(Oid relid);
+static int64 nextval_internal(Oid relid, bool throwable);
 static Relation open_share_lock(SeqTable seq);
 static void init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel);
 static Form_pg_sequence read_seq_tuple(SeqTable elm, Relation rel,
@@ -589,7 +589,7 @@ nextval(PG_FUNCTION_ARGS)
 	sequence = makeRangeVarFromNameList(textToQualifiedNameList(seqin));
 	relid = RangeVarGetRelid(sequence, false);
 
-	PG_RETURN_INT64(nextval_internal(relid));
+	PG_RETURN_INT64(nextval_internal(relid, true));
 }
 
 Datum
@@ -597,22 +597,22 @@ nextval_oid(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
 
-	PG_RETURN_INT64(nextval_internal(relid));
+	PG_RETURN_INT64(nextval_internal(relid, true));
 }
 
 void
-nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, bool   *poverflow)
+nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, char *poverflow)
 {
 	Assert(IS_QUERY_DISPATCHER());
 
-	*plast = nextval_internal(relid);
+	*plast = nextval_internal(relid, false);
 	*pcached = last_used_seq->cached;
 	*pincrement = last_used_seq->increment;
-	*poverflow = !last_used_seq->last_valid;
+	*poverflow = !last_used_seq->last_valid ? 1 : 0;
 }
 
 static int64
-nextval_internal(Oid relid)
+nextval_internal(Oid relid, bool throwable)
 {
 	SeqTable	elm;
 	Relation	seqrel;
@@ -665,13 +665,16 @@ nextval_internal(Oid relid)
 	{
 		char	   *relname = pstrdup(RelationGetRelationName(seqrel));
 
-		relation_close(seqrel, NoLock);
 
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("nextval: reached %s value of sequence \"%s\" (" INT64_FORMAT ")",
-                        elm->increment>0 ? "maximum":"minimum",
-                        relname, elm->last)));
+		if (throwable)
+		{
+			relation_close(seqrel, NoLock);
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("nextval: reached %s value of sequence \"%s\" (" INT64_FORMAT ")",
+					 elm->increment>0 ? "maximum":"minimum",
+					 relname, elm->last)));
+		}
 	}
 	else
 		elm->last_valid = true;
@@ -1822,7 +1825,8 @@ cdb_sequence_nextval_proxy(Relation	seqrel,
 	pint32++;
 	*pint32 = ntohl(*((int32 *) buf.data));
 
-	*poverflow = ntohl(*((int32 *) buf.data));
+	pint32++;
+	*poverflow = *(char *)pint32;
 
 	if (*poverflow)
 	{

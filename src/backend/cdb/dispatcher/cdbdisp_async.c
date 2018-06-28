@@ -998,7 +998,7 @@ processResults(CdbDispatchResult *dispatchResult)
 		int64 last;
 		int64 cached;
 		int64 increment;
-		bool overflow;
+		char overflow;
 		nextval_qd(seq_oid, &last, &cached, &increment, &overflow);
 		/*
 		 * respond back on this libpq connection with the next value
@@ -1010,7 +1010,7 @@ processResults(CdbDispatchResult *dispatchResult)
 		pqPutInt(cached, 4, segdbDesc->conn);
 		pqPutInt(increment >> 32, 4, segdbDesc->conn);
 		pqPutInt(increment, 4, segdbDesc->conn);
-		pqPutInt(overflow, 4, segdbDesc->conn);
+		pqPutc(overflow, segdbDesc->conn);
 		pqPutMsgEnd(segdbDesc->conn);
 		pqFlush(segdbDesc->conn);
 	}
