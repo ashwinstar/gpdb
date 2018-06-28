@@ -622,10 +622,6 @@ nextval_internal(Oid relid, bool throwable)
 	init_sequence(relid, &elm, &seqrel);
 
 	/* read-only transactions may only modify temp sequences */
-	/*
-	 * GPDB_91_MERGE_FIXME: if it's possible to get another session's relation
-	 * here, this code will not function as expected.
-	 */
 	if (seqrel->rd_backend != TempRelBackendId)
 		PreventCommandIfReadOnly("nextval()");
 
@@ -1001,10 +997,6 @@ do_setval(Oid relid, int64 next, bool iscalled)
 						RelationGetRelationName(seqrel))));
 
 	/* read-only transactions may only modify temp sequences */
-	/*
-	 * GPDB_91_MERGE_FIXME: if it's possible to get another session's relation
-	 * here, this code will not function as expected.
-	 */
 	if (seqrel->rd_backend != TempRelBackendId)
 		PreventCommandIfReadOnly("setval()");
 
