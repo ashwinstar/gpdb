@@ -324,7 +324,6 @@ typedef enum
 	PM_RUN,						/* normal "database is alive" state */
 	PM_WAIT_BACKUP,				/* waiting for online backup mode to end */
 	PM_WAIT_READONLY,			/* waiting for read only backends to exit */
-	PM_WAIT_REGULAR_BACKENDS,	/* waiting for live backends to exit, but not seqserver (GPDB-specific) */
 	PM_WAIT_BACKENDS,			/* waiting for live backends to exit (including seqserver) */
 	PM_SHUTDOWN,				/* waiting for bgwriter to do shutdown ckpt */
 	PM_SHUTDOWN_2,				/* waiting for archiver and walsenders to
@@ -2760,7 +2759,6 @@ pmdie(SIGNAL_ARGS)
 			else if (pmState == PM_RUN ||
 					 pmState == PM_WAIT_BACKUP ||
 					 pmState == PM_WAIT_READONLY ||
-					 pmState == PM_WAIT_REGULAR_BACKENDS ||
 					 pmState == PM_WAIT_BACKENDS ||
 					 pmState == PM_HOT_STANDBY)
 			{
@@ -3492,7 +3490,6 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		pmState == PM_RUN ||
 		pmState == PM_WAIT_BACKUP ||
 		pmState == PM_WAIT_READONLY ||
-		pmState == PM_WAIT_REGULAR_BACKENDS ||
 		pmState == PM_SHUTDOWN)
 		pmState = PM_WAIT_BACKENDS;
 }
@@ -3582,11 +3579,11 @@ PostmasterStateMachine(void)
 		 */
 		if (!BackupInProgress())
 		{
-			pmState = PM_WAIT_REGULAR_BACKENDS;
+			pmState = PM_WAIT_BACKENDS;
 		}
 	}
 
-	if (pmState == PM_WAIT_REGULAR_BACKENDS)
+	if (pmState == PM_WAIT_BACKENDS)
 	{
 		/*
 		 */
