@@ -1802,23 +1802,26 @@ cdb_sequence_nextval_proxy(Relation	seqrel,
 		elog(ERROR, "unable to parse nextval response from QD");
 	}
 
+	char *current = buf.data;
 	int *pint32 = (int32 *) plast;
-	*pint32 = ntohl(*((int32 *) buf.data + 1));
+	*pint32 = ntohl(*((int32 *) current + 1));
 	pint32++;
-	*pint32 = ntohl(*(int32 *) (buf.data));
+	*pint32 = ntohl(*(int32 *) (current));
+	current += sizeof(int64);
 
 	pint32 = (int32 *) pcached;
-	*pint32 = ntohl(*((int32 *) buf.data + 1));
+	*pint32 = ntohl(*((int32 *) current + 1));
 	pint32++;
-	*pint32 = ntohl(*((int32 *) buf.data));
+	*pint32 = ntohl(*((int32 *) current));
+	current += sizeof(int64);
 
 	pint32 = (int32 *) pincrement;
-	*pint32 = ntohl(*((int32 *) buf.data + 1));
+	*pint32 = ntohl(*((int32 *) current + 1));
 	pint32++;
-	*pint32 = ntohl(*((int32 *) buf.data));
+	*pint32 = ntohl(*((int32 *) current));
+	current += sizeof(int64);
 
-	pint32++;
-	*poverflow = *(char *)pint32;
+	*poverflow = *current;
 
 	if (*poverflow)
 	{
