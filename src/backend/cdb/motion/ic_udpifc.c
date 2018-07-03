@@ -1181,10 +1181,6 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort, int *txFami
 		hints.ai_family = AF_INET;
 #endif
 
-#ifdef __darwin__
-	hints.ai_family = AF_INET; /* Due to a bug in OSX Leopard, disable IPv6 for UDP interconnect on all OSX platforms */
-#endif
-
 	fun = "getaddrinfo";
 	s = getaddrinfo(NULL, service, &hints, &addrs);
 	if (s != 0)
