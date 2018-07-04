@@ -625,7 +625,7 @@ nextval_internal(Oid relid, bool throwable)
 	if (seqrel->rd_backend != TempRelBackendId)
 		PreventCommandIfReadOnly("nextval()");
 
-	if (elm->last != elm->cached)		/* some numbers were cached */
+	if (elm->last != elm->cached && throwable)		/* some numbers were cached */
 	{
 		Assert(elm->last_valid);
 		Assert(elm->increment != 0);
@@ -662,6 +662,7 @@ nextval_internal(Oid relid, bool throwable)
 		char	   *relname = pstrdup(RelationGetRelationName(seqrel));
 
 
+		elm->last_valid = false;
 		if (throwable)
 		{
 			relation_close(seqrel, NoLock);

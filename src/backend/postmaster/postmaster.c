@@ -324,7 +324,7 @@ typedef enum
 	PM_RUN,						/* normal "database is alive" state */
 	PM_WAIT_BACKUP,				/* waiting for online backup mode to end */
 	PM_WAIT_READONLY,			/* waiting for read only backends to exit */
-	PM_WAIT_BACKENDS,			/* waiting for live backends to exit (including seqserver) */
+	PM_WAIT_BACKENDS,			/* waiting for live backends to exit */
 	PM_SHUTDOWN,				/* waiting for bgwriter to do shutdown ckpt */
 	PM_SHUTDOWN_2,				/* waiting for archiver and walsenders to
 								 * finish */
@@ -688,7 +688,8 @@ PostmasterMain(int argc, char *argv[])
 			 * but we co-opted this letter for this... I'm afraid to change it,
 			 * because I don't know where this is used.
              * ... it's used only here in postmaster.c; it causes the postmaster to
-             * fork a seqserver process.
+			 * fork a QD specific process. For example, FTS, perfmon, global
+			 * deadlock detector.
 			 */
 			case 'E':
 				Gp_entry_postmaster = true;
