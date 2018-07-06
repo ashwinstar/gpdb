@@ -829,6 +829,21 @@ checkSegmentAlive(CdbDispatchCmdAsync *pParms)
 	}
 }
 
+static void
+send_sequence_response(PGconn *conn, int64 last, int64 cached, int64 increment, char overflow)
+{
+	pqPutMsgStart('?', false, conn);
+	pqPutInt(last >> 32, 4, conn);
+	pqPutInt(last, 4, conn);
+	pqPutInt(cached >> 32, 4, conn);
+	pqPutInt(cached, 4, conn);
+	pqPutInt(increment >> 32, 4, conn);
+	pqPutInt(increment, 4, conn);
+	pqPutc(overflow, conn);
+	pqPutMsgEnd(conn);
+	pqFlush(conn);
+}
+
 /*
  * Receive and process input from one QE.
  *
@@ -1006,37 +1021,16 @@ processResults(CdbDispatchResult *dispatchResult)
 		}
 		PG_CATCH();
 		{
-			//AbortOutOfAnyTransaction();
-			if (!elog_demote(LOG))
-			{
-				elog(LOG, "unable to demote error");
-				PG_RE_THROW();
-			}
-
-			/*
-			 * Report the error to the server log. It would be nice to deliver
-			 * it to the client somehow, but we have no mechanism for that.
-			 */
-			EmitErrorReport();
-
-			FlushErrorState();
-
 			overflow = 1;
+			send_sequence_response(segdbDesc->conn, last, cached, increment, overflow);
+
+			PG_RE_THROW();
 		}
 		PG_END_TRY();
 		/*
 		 * respond back on this libpq connection with the next value
 		 */
-		pqPutMsgStart('?', false, segdbDesc->conn);
-		pqPutInt(last >> 32, 4, segdbDesc->conn);
-		pqPutInt(last, 4, segdbDesc->conn);
-		pqPutInt(cached >> 32, 4, segdbDesc->conn);
-		pqPutInt(cached, 4, segdbDesc->conn);
-		pqPutInt(increment >> 32, 4, segdbDesc->conn);
-		pqPutInt(increment, 4, segdbDesc->conn);
-		pqPutc(overflow, segdbDesc->conn);
-		pqPutMsgEnd(segdbDesc->conn);
-		pqFlush(segdbDesc->conn);
+		send_sequence_response(segdbDesc->conn, last, cached, increment, overflow);
 	}
 	return false;				/* we must keep on monitoring this socket */
 }

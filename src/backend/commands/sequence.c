@@ -106,7 +106,7 @@ static SeqTable seqtab = NULL;	/* Head of list of SeqTable items */
 static SeqTableData *last_used_seq = NULL;
 
 static void fill_seq_with_data(Relation rel, HeapTuple tuple);
-static int64 nextval_internal(Oid relid, bool throwable);
+static int64 nextval_internal(Oid relid, bool is_direct_request);
 static Relation open_share_lock(SeqTable seq);
 static void init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel);
 static Form_pg_sequence read_seq_tuple(SeqTable elm, Relation rel,
@@ -612,7 +612,7 @@ nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, char *po
 }
 
 static int64
-nextval_internal(Oid relid, bool throwable)
+nextval_internal(Oid relid, bool is_direct_request)
 {
 	SeqTable	elm;
 	Relation	seqrel;
@@ -625,7 +625,8 @@ nextval_internal(Oid relid, bool throwable)
 	if (seqrel->rd_backend != TempRelBackendId)
 		PreventCommandIfReadOnly("nextval()");
 
-	if (elm->last != elm->cached && throwable)		/* some numbers were cached */
+	if (elm->last != elm->cached 		/* some numbers were cached */
+		&& is_direct_request && elm->last_valid)
 	{
 		Assert(elm->last_valid);
 		Assert(elm->increment != 0);
@@ -663,15 +664,12 @@ nextval_internal(Oid relid, bool throwable)
 
 
 		elm->last_valid = false;
-		if (throwable)
-		{
-			relation_close(seqrel, NoLock);
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					 errmsg("nextval: reached %s value of sequence \"%s\" (" INT64_FORMAT ")",
-					 elm->increment>0 ? "maximum":"minimum",
-					 relname, elm->last)));
-		}
+		relation_close(seqrel, NoLock);
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("nextval: reached %s value of sequence \"%s\" (" INT64_FORMAT ")",
+				 elm->increment>0 ? "maximum":"minimum",
+				 relname, elm->last)));
 	}
 	else
 		elm->last_valid = true;
