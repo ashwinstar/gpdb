@@ -1795,8 +1795,11 @@ cdb_sequence_nextval_proxy(Relation	seqrel,
 	 * Read nextval response from QD.
 	 */
 	initStringInfo(&buf);
-	char	qtype;
-	qtype = pq_getbyte();
+	unsigned char	qtype;
+	while (!pq_getbyte_if_available(&qtype))
+	{
+		CHECK_FOR_INTERRUPTS();
+	}
 	Assert(qtype == '?');
 	if (pq_getmessage(&buf, 0) != 0)
 	{

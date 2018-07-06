@@ -38,6 +38,7 @@
 #include "cdb/cdbpq.h"
 #include "miscadmin.h"
 #include "commands/sequence.h"
+#include "access/xact.h"
 
 #define DISPATCH_WAIT_TIMEOUT_MSEC 2000
 
@@ -999,7 +1000,30 @@ processResults(CdbDispatchResult *dispatchResult)
 		int64 cached;
 		int64 increment;
 		char overflow;
-		nextval_qd(seq_oid, &last, &cached, &increment, &overflow);
+		PG_TRY();
+		{
+			nextval_qd(seq_oid, &last, &cached, &increment, &overflow);
+		}
+		PG_CATCH();
+		{
+			//AbortOutOfAnyTransaction();
+			if (!elog_demote(LOG))
+			{
+				elog(LOG, "unable to demote error");
+				PG_RE_THROW();
+			}
+
+			/*
+			 * Report the error to the server log. It would be nice to deliver
+			 * it to the client somehow, but we have no mechanism for that.
+			 */
+			EmitErrorReport();
+
+			FlushErrorState();
+
+			overflow = 1;
+		}
+		PG_END_TRY();
 		/*
 		 * respond back on this libpq connection with the next value
 		 */
