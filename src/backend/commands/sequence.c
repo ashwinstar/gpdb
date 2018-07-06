@@ -601,14 +601,14 @@ nextval_oid(PG_FUNCTION_ARGS)
 }
 
 void
-nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, char *poverflow)
+nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, bool *poverflow)
 {
 	Assert(IS_QUERY_DISPATCHER());
 
 	*plast = nextval_internal(relid, false);
 	*pcached = last_used_seq->cached;
 	*pincrement = last_used_seq->increment;
-	*poverflow = !last_used_seq->last_valid ? 1 : 0;
+	*poverflow = !last_used_seq->last_valid;
 }
 
 static int64
@@ -1768,6 +1768,12 @@ cdb_sequence_nextval_proxy(Relation	seqrel,
                            bool    *poverflow)
 {
 
+    int64 last;
+    int64 cached;
+    int64 increment;
+    char overflow;
+	char error;
+
 	StringInfoData buf;
 	Oid dbid = seqrel->rd_node.dbNode;
 	Oid tablespaceid = seqrel->rd_node.spcNode;
@@ -1805,34 +1811,48 @@ cdb_sequence_nextval_proxy(Relation	seqrel,
 	}
 
 	char *current = buf.data;
-	int *pint32 = (int32 *) plast;
+	int *pint32 = (int32 *) &last;
 	*pint32 = ntohl(*((int32 *) current + 1));
 	pint32++;
 	*pint32 = ntohl(*(int32 *) (current));
 	current += sizeof(int64);
 
-	pint32 = (int32 *) pcached;
+	pint32 = (int32 *) &cached;
 	*pint32 = ntohl(*((int32 *) current + 1));
 	pint32++;
 	*pint32 = ntohl(*((int32 *) current));
 	current += sizeof(int64);
 
-	pint32 = (int32 *) pincrement;
+	pint32 = (int32 *) &increment;
 	*pint32 = ntohl(*((int32 *) current + 1));
 	pint32++;
 	*pint32 = ntohl(*((int32 *) current));
 	current += sizeof(int64);
 
-	*poverflow = *current;
+	overflow = *current;
+	current += sizeof(char);
+	error = *current;
 
-	if (*poverflow)
+	if (overflow == SEQ_COM_VALUE_TRUE)
 	{
+		char	   *relname = pstrdup(RelationGetRelationName(seqrel));
+
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-						errmsg("nextval: reached %s value of sequence \"%s\" (" INT64_FORMAT ")",
-								*pincrement>0 ? "maximum":"minimum",
-								RelationGetRelationName(seqrel), *plast)));
+				 errmsg("nextval: reached %s value of sequence \"%s\" (" INT64_FORMAT ")",
+				 increment>0 ? "maximum":"minimum",
+				 relname, last)));
 	}
+
+	if (error == SEQ_COM_VALUE_TRUE)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+						errmsg("nextval: QD encountered error")));
+
+	*poverflow = false;
+	*plast = last;
+	*pcached = cached;
+	*pincrement = increment;
 }
 
 

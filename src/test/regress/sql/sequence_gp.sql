@@ -31,3 +31,27 @@ SELECT nextval('tmp_seq'), a FROM tmp_table ORDER BY a;
 DROP SEQUENCE tmp_seq;
 
 DROP TABLE tmp_table;
+
+CREATE TABLE mytable (size INTEGER, gid bigserial NOT NULL);
+ALTER SEQUENCE mytable_gid_seq RESTART WITH 9223372036854775805;
+/* Consume rest of serial sequence column values */
+INSERT INTO mytable VALUES (1), (2), (3);
+SELECT * FROM mytable;
+INSERT INTO mytable VALUES(4);
+SELECT * FROM mytable;
+INSERT INTO mytable SELECT * FROM generate_series(1, 10)i;
+SELECT * FROM mytable ORDER BY gid;
+SELECT * FROM mytable_gid_seq;
+
+CREATE TABLE out_of_range_insert (size INTEGER, gid serial NOT NULL);
+ALTER SEQUENCE out_of_range_insert_gid_seq RESTART WITH 2147483646;
+INSERT INTO out_of_range_insert VALUES (1), (2), (3);
+SELECT * FROM out_of_range_insert ORDER BY gid;
+SELECT * FROM out_of_range_insert_gid_seq;
+
+CREATE SEQUENCE descending_sequence INCREMENT -1 MINVALUE 1 MAXVALUE 9223372036854775806 START 9223372036854775806;
+SELECT nextval('descending_sequence');
+CREATE TABLE descending_sequence_insert(a bigint, b bigint);
+INSERT INTO descending_sequence_insert SELECT i, nextval('descending_sequence') FROM generate_series(1, 10)i;
+SELECT * FROM descending_sequence_insert ORDER BY b DESC;
+SELECT * FROM descending_sequence;

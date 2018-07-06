@@ -830,7 +830,7 @@ checkSegmentAlive(CdbDispatchCmdAsync *pParms)
 }
 
 static void
-send_sequence_response(PGconn *conn, int64 last, int64 cached, int64 increment, char overflow)
+send_sequence_response(PGconn *conn, int64 last, int64 cached, int64 increment, bool overflow, bool error)
 {
 	pqPutMsgStart('?', false, conn);
 	pqPutInt(last >> 32, 4, conn);
@@ -839,7 +839,8 @@ send_sequence_response(PGconn *conn, int64 last, int64 cached, int64 increment, 
 	pqPutInt(cached, 4, conn);
 	pqPutInt(increment >> 32, 4, conn);
 	pqPutInt(increment, 4, conn);
-	pqPutc(overflow, conn);
+	pqPutc(overflow ? SEQ_COM_VALUE_TRUE : SEQ_COM_VALUE_FALSE, conn);
+	pqPutc(error ? SEQ_COM_VALUE_TRUE : SEQ_COM_VALUE_FALSE, conn);
 	pqPutMsgEnd(conn);
 	pqFlush(conn);
 }
@@ -1014,15 +1015,14 @@ processResults(CdbDispatchResult *dispatchResult)
 		int64 last;
 		int64 cached;
 		int64 increment;
-		char overflow;
+		bool overflow;
 		PG_TRY();
 		{
 			nextval_qd(seq_oid, &last, &cached, &increment, &overflow);
 		}
 		PG_CATCH();
 		{
-			overflow = 1;
-			send_sequence_response(segdbDesc->conn, last, cached, increment, overflow);
+			send_sequence_response(segdbDesc->conn, last, cached, increment, overflow, !overflow /* error */);
 
 			PG_RE_THROW();
 		}
@@ -1030,7 +1030,7 @@ processResults(CdbDispatchResult *dispatchResult)
 		/*
 		 * respond back on this libpq connection with the next value
 		 */
-		send_sequence_response(segdbDesc->conn, last, cached, increment, overflow);
+		send_sequence_response(segdbDesc->conn, last, cached, increment, overflow, false /* error */);
 	}
 	return false;				/* we must keep on monitoring this socket */
 }

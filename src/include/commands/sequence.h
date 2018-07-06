@@ -59,6 +59,9 @@ typedef FormData_pg_sequence *Form_pg_sequence;
 /* XLOG stuff */
 #define XLOG_SEQ_LOG			0x00
 
+#define SEQ_COM_VALUE_FALSE		'f'
+#define SEQ_COM_VALUE_TRUE		't'
+
 typedef struct xl_seq_rec
 {
 	RelFileNode 	node;
@@ -68,7 +71,7 @@ typedef struct xl_seq_rec
 
 extern Datum nextval(PG_FUNCTION_ARGS);
 extern Datum nextval_oid(PG_FUNCTION_ARGS);
-extern void nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, char *poverflow);
+extern void nextval_qd(Oid relid, int64 *plast, int64 *pcached, int64  *pincrement, bool *poverflow);
 extern Datum currval_oid(PG_FUNCTION_ARGS);
 extern Datum setval_oid(PG_FUNCTION_ARGS);
 extern Datum setval3_oid(PG_FUNCTION_ARGS);
