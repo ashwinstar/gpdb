@@ -61,6 +61,7 @@ typedef FormData_pg_sequence *Form_pg_sequence;
 
 #define SEQ_COM_VALUE_FALSE		'f'
 #define SEQ_COM_VALUE_TRUE		't'
+#define SEQ_NOTIFY_NEXTVAL_QUERY_RESPONSE	'?'
 
 typedef struct xl_seq_rec
 {

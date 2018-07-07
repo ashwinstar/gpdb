@@ -832,7 +832,7 @@ checkSegmentAlive(CdbDispatchCmdAsync *pParms)
 static void
 send_sequence_response(PGconn *conn, int64 last, int64 cached, int64 increment, bool overflow, bool error)
 {
-	pqPutMsgStart('?', false, conn);
+	pqPutMsgStart(SEQ_NOTIFY_NEXTVAL_QUERY_RESPONSE, false, conn);
 	pqPutInt(last >> 32, 4, conn);
 	pqPutInt(last, 4, conn);
 	pqPutInt(cached >> 32, 4, conn);

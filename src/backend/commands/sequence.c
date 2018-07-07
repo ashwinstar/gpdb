@@ -1804,7 +1804,7 @@ cdb_sequence_nextval_proxy(Relation	seqrel,
 	{
 		CHECK_FOR_INTERRUPTS();
 	}
-	Assert(qtype == '?');
+	Assert(qtype == SEQ_NOTIFY_NEXTVAL_QUERY_RESPONSE);
 	if (pq_getmessage(&buf, 0) != 0)
 	{
 		elog(ERROR, "unable to parse nextval response from QD");
