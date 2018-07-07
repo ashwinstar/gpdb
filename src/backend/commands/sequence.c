@@ -77,7 +77,7 @@ typedef struct sequence_magic
  * rely on the relcache, since it's only, well, a cache, and may decide to
  * discard entries.)
  *
- * XXX We use linear search to find pre-existing SeqTable entries.	This is
+ * XXX We use linear search to find pre-existing SeqTable entries.  This is
  * good when only a small number of sequences are touched in a session, but
  * would suck with many different sequences.  Perhaps use a hashtable someday.
  */
@@ -334,10 +334,10 @@ ResetSequence(Oid seq_relid)
 	seq = (Form_pg_sequence) GETSTRUCT(tuple);
 	seq->last_value = seq->start_value;
 	seq->is_called = false;
-	seq->log_cnt = 1;
+	seq->log_cnt = 0;
 
 	/*
-	 * Create a new storage file for the sequence.	We want to keep the
+	 * Create a new storage file for the sequence.  We want to keep the
 	 * sequence's relfrozenxid at 0, since it won't contain any unfrozen XIDs.
 	 */
 	RelationSetNewRelfilenode(seq_rel, InvalidTransactionId);
@@ -366,6 +366,7 @@ fill_seq_with_data(Relation rel, HeapTuple tuple)
 	OffsetNumber offnum;
 
 	/* Initialize first page of relation with special magic number */
+
 	buf = ReadBuffer(rel, P_NEW);
 	Assert(BufferGetBlockNumber(buf) == 0);
 
@@ -412,7 +413,6 @@ fill_seq_with_data(Relation rel, HeapTuple tuple)
 		XLogRecData rdata[2];
 
 		xlrec.node = rel->rd_node;
-
 		rdata[0].data = (char *) &xlrec;
 		rdata[0].len = sizeof(xl_seq_rec);
 		rdata[0].buffer = InvalidBuffer;
@@ -511,7 +511,6 @@ gp_alter_sequence_internal(Oid relid, List *options)
 		Page		page = BufferGetPage(buf);
 
 		xlrec.node = seqrel->rd_node;
-
 		rdata[0].data = (char *) &xlrec;
 		rdata[0].len = sizeof(xl_seq_rec);
 		rdata[0].buffer = InvalidBuffer;
@@ -701,8 +700,8 @@ cdb_sequence_nextval(SeqTable elm,
 	int64		result,
 				next,
 				rescnt = 0;
-	bool 		have_overflow = false;
 	bool		logit = false;
+	bool 		have_overflow = false;
 
 	/* lock page' buffer and read tuple */
 	seq = read_seq_tuple(elm, seqrel, &buf, &seqtuple);
@@ -722,7 +721,7 @@ cdb_sequence_nextval(SeqTable elm,
 	}
 
 	/*
-	 * Decide whether we should emit a WAL log record.	If so, force up the
+	 * Decide whether we should emit a WAL log record.  If so, force up the
 	 * fetch count to grab SEQ_LOG_VALS more values than we actually need to
 	 * cache.  (These will then be usable without logging.)
 	 *
@@ -1105,7 +1104,7 @@ setval3_oid(PG_FUNCTION_ARGS)
  * Open the sequence and acquire AccessShareLock if needed
  *
  * If we haven't touched the sequence already in this transaction,
- * we need to acquire AccessShareLock.	We arrange for the lock to
+ * we need to acquire AccessShareLock.  We arrange for the lock to
  * be owned by the top transaction, so that we don't need to do it
  * more than once per xact.
  */
@@ -1251,7 +1250,7 @@ read_seq_tuple(SeqTable elm, Relation rel, Buffer *buf, HeapTuple seqtuple)
 	Assert(ItemIdIsNormal(lp));
 
 	/* Note we currently only bother to set these two fields of *seqtuple */
-	seqtuple->t_data = (HeapTupleHeader) PageGetItem((Page) page, lp);
+	seqtuple->t_data = (HeapTupleHeader) PageGetItem(page, lp);
 	seqtuple->t_len = ItemIdGetLength(lp);
 
 	/*
@@ -1493,13 +1492,12 @@ init_params(List *options, bool isInit,
 		else
 			new->last_value = new->start_value;
 		new->is_called = false;
-		new->log_cnt = 1;
+		new->log_cnt = 0;
 	}
 	else if (isInit)
 	{
 		new->last_value = new->start_value;
 		new->is_called = false;
-		new->log_cnt = 1;
 	}
 
 	/* crosscheck RESTART (or current value, if changing MIN/MAX) */
