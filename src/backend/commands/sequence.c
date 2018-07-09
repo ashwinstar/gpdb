@@ -57,7 +57,7 @@
 /*
  * We don't want to log each fetching of a value from a sequence,
  * so we pre-log a few fetches in advance. In the event of
- * crash we can lose (skip over) as many values as we pre-logged.
+ * crash we can lose as much as we pre-logged.
  */
 #define SEQ_LOG_VALS	32
 
@@ -77,7 +77,7 @@ typedef struct sequence_magic
  * rely on the relcache, since it's only, well, a cache, and may decide to
  * discard entries.)
  *
- * XXX We use linear search to find pre-existing SeqTable entries.  This is
+ * XXX We use linear search to find pre-existing SeqTable entries.	This is
  * good when only a small number of sequences are touched in a session, but
  * would suck with many different sequences.  Perhaps use a hashtable someday.
  */
@@ -625,7 +625,7 @@ nextval_internal(Oid relid, bool is_direct_request)
 		PreventCommandIfReadOnly("nextval()");
 
 	if (elm->last != elm->cached 		/* some numbers were cached */
-		&& is_direct_request && elm->last_valid)
+		&& is_direct_request)
 	{
 		Assert(elm->last_valid);
 		Assert(elm->increment != 0);
@@ -721,7 +721,7 @@ cdb_sequence_nextval(SeqTable elm,
 	}
 
 	/*
-	 * Decide whether we should emit a WAL log record.  If so, force up the
+	 * Decide whether we should emit a WAL log record.	If so, force up the
 	 * fetch count to grab SEQ_LOG_VALS more values than we actually need to
 	 * cache.  (These will then be usable without logging.)
 	 *
@@ -1104,7 +1104,7 @@ setval3_oid(PG_FUNCTION_ARGS)
  * Open the sequence and acquire AccessShareLock if needed
  *
  * If we haven't touched the sequence already in this transaction,
- * we need to acquire AccessShareLock.  We arrange for the lock to
+ * we need to acquire AccessShareLock.	We arrange for the lock to
  * be owned by the top transaction, so that we don't need to do it
  * more than once per xact.
  */
@@ -1144,8 +1144,6 @@ open_share_lock(SeqTable seq)
 /*
  * Given a relation OID, open and lock the sequence.  p_elm and p_rel are
  * output parameters.
- *
- * GPDB: If p_rel is NULL, the sequence relation is not opened or locked.
  */
 static void
 init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel)
@@ -1190,32 +1188,28 @@ init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel)
 	/*
 	 * Open the sequence relation.
 	 */
-	if (p_rel)
+	seqrel = open_share_lock(elm);
+
+	if (seqrel->rd_rel->relkind != RELKIND_SEQUENCE)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is not a sequence",
+						RelationGetRelationName(seqrel))));
+
+	/*
+	 * If the sequence has been transactionally replaced since we last saw it,
+	 * discard any cached-but-unissued values.	We do not touch the currval()
+	 * state, however.
+	 */
+	if (seqrel->rd_rel->relfilenode != elm->filenode)
 	{
-		seqrel = open_share_lock(elm);
-
-		if (seqrel->rd_rel->relkind != RELKIND_SEQUENCE)
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("\"%s\" is not a sequence",
-							RelationGetRelationName(seqrel))));
-
-		*p_rel = seqrel;
-
-		/*
-		 * If the sequence has been transactionally replaced since we last saw it,
-		 * discard any cached-but-unissued values.	We do not touch the currval()
-		 * state, however.
-		 */
-		if (seqrel->rd_rel->relfilenode != elm->filenode)
-		{
-			elm->filenode = seqrel->rd_rel->relfilenode;
-			elm->cached = elm->last;
-		}
+		elm->filenode = seqrel->rd_rel->relfilenode;
+		elm->cached = elm->last;
 	}
 
 	/* Return results */
 	*p_elm = elm;
+	*p_rel = seqrel;
 }
 
 
