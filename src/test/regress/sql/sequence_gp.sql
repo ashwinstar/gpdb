@@ -26,7 +26,15 @@ SELECT nextval('tmp_seq');
 DROP SEQUENCE tmp_seq;
 
 -- Test execution of nextval on master (when optimizer = on) and segments (when optimizer=off) with CACHE > 1
-CREATE SEQUENCE tmp_seq INCREMENT 1 MINVALUE 1 MAXVALUE 4 START 1 CACHE 20 NO CYCLE;
+CREATE TABLE tmp_table_cache (a int, b int);
+-- forcing the values to go on one segment only, to predict the sequence values.
+INSERT INTO tmp_table_cache VALUES (1,0),(1,1),(1,2),(1,3);
+CREATE SEQUENCE tmp_seq INCREMENT 1 MINVALUE 1 MAXVALUE 4 START 1 CACHE 3 NO CYCLE;
+SELECT nextval('tmp_seq'), * FROM tmp_table_cache;
+SELECT * from tmp_seq;
+DROP SEQUENCE tmp_seq;
+
+CREATE SEQUENCE tmp_seq INCREMENT 1 MINVALUE 1 MAXVALUE 3 START 1 CACHE 3 NO CYCLE;
 SELECT nextval('tmp_seq'), a FROM tmp_table ORDER BY a;
 DROP SEQUENCE tmp_seq;
 
