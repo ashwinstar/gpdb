@@ -88,32 +88,32 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 ALTER SEQUENCE mytable_gid_seq RESTART WITH 9223372036854775805;
 /* Consume rest of serial sequence column values */
 INSERT INTO mytable VALUES (1), (2), (3);
-SELECT * FROM mytable;
- size |         gid         
-------+---------------------
-    1 | 9223372036854775805
-    2 | 9223372036854775806
-    3 | 9223372036854775807
+SELECT gid FROM mytable;
+         gid         
+---------------------
+ 9223372036854775805
+ 9223372036854775806
+ 9223372036854775807
 (3 rows)
 
 INSERT INTO mytable VALUES(4);
 ERROR:  nextval: reached maximum value of sequence "mytable_gid_seq" (9223372036854775807)
-SELECT * FROM mytable;
- size |         gid         
-------+---------------------
-    3 | 9223372036854775807
-    1 | 9223372036854775805
-    2 | 9223372036854775806
+SELECT gid FROM mytable;
+         gid         
+---------------------
+ 9223372036854775805
+ 9223372036854775806
+ 9223372036854775807
 (3 rows)
 
 INSERT INTO mytable SELECT * FROM generate_series(1, 10)i;
 ERROR:  nextval: reached maximum value of sequence "mytable_gid_seq" (9223372036854775807)
-SELECT * FROM mytable ORDER BY gid;
- size |         gid         
-------+---------------------
-    1 | 9223372036854775805
-    2 | 9223372036854775806
-    3 | 9223372036854775807
+SELECT gid FROM mytable;
+         gid         
+---------------------
+ 9223372036854775805
+ 9223372036854775806
+ 9223372036854775807
 (3 rows)
 
 SELECT * FROM mytable_gid_seq;

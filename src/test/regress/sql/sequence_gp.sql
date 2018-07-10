@@ -44,11 +44,11 @@ CREATE TABLE mytable (size INTEGER, gid bigserial NOT NULL);
 ALTER SEQUENCE mytable_gid_seq RESTART WITH 9223372036854775805;
 /* Consume rest of serial sequence column values */
 INSERT INTO mytable VALUES (1), (2), (3);
-SELECT * FROM mytable;
+SELECT gid FROM mytable;
 INSERT INTO mytable VALUES(4);
-SELECT * FROM mytable;
+SELECT gid FROM mytable;
 INSERT INTO mytable SELECT * FROM generate_series(1, 10)i;
-SELECT * FROM mytable ORDER BY gid;
+SELECT gid FROM mytable;
 SELECT * FROM mytable_gid_seq;
 
 CREATE TABLE out_of_range_insert (size INTEGER, gid serial NOT NULL);
