@@ -734,7 +734,8 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace,
 										  false,
 										  /* allowSystemTableModsDDL */ true,
 										  /* valid_opts */ true,
-										  /* is_part_child */ false);
+										  /* is_part_child */ false,
+										  /* is_part_parent */ false);
 	Assert(OIDNewHeap != InvalidOid);
 
 	ReleaseSysCache(tuple);

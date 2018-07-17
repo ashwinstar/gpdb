@@ -785,6 +785,9 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 
 	bool valid_opts = (relstorage == RELSTORAGE_EXTERNAL);
 
+	elog(LOG, "relation %s is partition parent = %d",
+		 relname, stmt->is_part_parent);
+
 	/*
 	 * Create the relation.  Inherited defaults and constraints are passed in
 	 * for immediate handling --- since they don't need parsing, they can be
@@ -813,7 +816,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 										  true,
 										  allowSystemTableModsDDL,
 										  valid_opts,
-										  stmt->is_part_child);
+										  stmt->is_part_child,
+										  stmt->is_part_parent);
 
 	/*
 	 * Give a warning if you use OIDS=TRUE on user tables. We do this after calling

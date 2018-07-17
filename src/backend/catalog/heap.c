@@ -119,7 +119,8 @@ static void AddNewRelationTuple(Relation pg_class_desc,
 					char relkind,
 					char relstorage,
 					Datum relacl,
-					Datum reloptions);
+								Datum reloptions,
+								bool is_part_parent);
 static Oid AddNewRelationType(const char *typeName,
 				   Oid typeNamespace,
 				   Oid new_rel_oid,
@@ -1150,7 +1151,8 @@ AddNewRelationTuple(Relation pg_class_desc,
 					char relkind,
 					char relstorage,
 					Datum relacl,
-					Datum reloptions)
+					Datum reloptions,
+					bool is_part_parent)
 {
 	Form_pg_class new_rel_reltup;
 
@@ -1193,7 +1195,7 @@ AddNewRelationTuple(Relation pg_class_desc,
 	}
 
 	/* Initialize relfrozenxid */
-	if (should_have_valid_relfrozenxid(relkind, relstorage))
+	if (!is_part_parent && should_have_valid_relfrozenxid(relkind, relstorage))
 	{
 		/*
 		 * Initialize to the minimum XID that could put tuples in the table.
@@ -1329,7 +1331,8 @@ heap_create_with_catalog(const char *relname,
 						 bool use_user_acl,
 						 bool allow_system_table_mods,
 						 bool valid_opts,
-						 bool is_part_child)
+						 bool is_part_child,
+						 bool is_part_parent)
 {
 	Relation	pg_class_desc;
 	Relation	new_rel_desc;
@@ -1612,7 +1615,8 @@ heap_create_with_catalog(const char *relname,
 						relkind,
 						relstorage,
 						PointerGetDatum(relacl),
-						reloptions);
+						reloptions,
+						is_part_parent);
 
 	/*
 	 * if this is an append-only relation, add an entry in pg_appendonly.

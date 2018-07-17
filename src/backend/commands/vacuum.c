@@ -1612,14 +1612,11 @@ vac_update_datfrozenxid(void)
 	{
 		Form_pg_class classForm = (Form_pg_class) GETSTRUCT(classTup);
 
-		if (!should_have_valid_relfrozenxid(classForm->relkind,
-											classForm->relstorage))
-		{
-			Assert(!TransactionIdIsValid(classForm->relfrozenxid));
+		if (!TransactionIdIsNormal(classForm->relfrozenxid))
 			continue;
-		}
 
-		Assert(TransactionIdIsNormal(classForm->relfrozenxid));
+		Assert(should_have_valid_relfrozenxid(classForm->relkind,
+											  classForm->relstorage));
 
 		if (TransactionIdPrecedes(classForm->relfrozenxid, newFrozenXid))
 			newFrozenXid = classForm->relfrozenxid;
