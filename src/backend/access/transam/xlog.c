@@ -12376,3 +12376,30 @@ wait_for_mirror()
 
     SyncRepWaitForLSN(tmpLogwrtResult.Flush);
 }
+
+/*
+ * Write a CLUSTER CONSISTENT REPLAY POINT record
+ */
+XLogRecPtr
+XLogClusterConsistentReplayPoint(const char *rpName)
+{
+	XLogRecPtr	RecPtr;
+	XLogRecData rdata;
+	xl_restore_point xlrec;
+
+	xlrec.rp_time = GetCurrentTimestamp();
+	strncpy(xlrec.rp_name, rpName, MAXFNAMELEN);
+
+	rdata.buffer = InvalidBuffer;
+	rdata.data = (char *) &xlrec;
+	rdata.len = sizeof(xl_restore_point);
+	rdata.next = NULL;
+
+	RecPtr = XLogInsert(RM_XLOG_ID, XLOG_CONSISTENCY_POINT, &rdata);
+
+	ereport(LOG,
+			(errmsg("replay point \"%s\" created at %X/%X",
+					rpName, RecPtr.xlogid, RecPtr.xrecoff)));
+
+	return RecPtr;
+}

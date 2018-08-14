@@ -29,7 +29,9 @@
 #include "utils/numeric.h"
 #include "utils/guc.h"
 #include "utils/timestamp.h"
-
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbdispatchresult.h"
+#include "cdb/cdbvars.h"
 
 static void validate_xlog_location(char *str);
 
@@ -567,4 +569,66 @@ pg_xlog_location_diff(PG_FUNCTION_ARGS)
 	DirectFunctionCall1(int8_numeric, Int64GetDatum((int64) loc2.xrecoff))));
 
 	PG_RETURN_NUMERIC(result);
+}
+
+/*
+ * gp_create_cluster_consistent_replay_point: a named point for replay
+ */
+Datum
+gp_create_cluster_consistent_replay_point(PG_FUNCTION_ARGS)
+{
+	text	   *replaypoint_name = PG_GETARG_TEXT_P(0);
+	char	   *replaypoint_name_str;
+	XLogRecPtr	replaypoint;
+	char		location[MAXFNAMELEN];
+
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 (errmsg("must be superuser to create a replay point"))));
+
+	if (RecoveryInProgress())
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 (errmsg("recovery is in progress"),
+				  errhint("WAL control functions cannot be executed during recovery."))));
+
+	if (!XLogIsNeeded())
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+			 errmsg("WAL level not sufficient for creating a replay point"),
+				 errhint("wal_level must be set to \"archive\" or \"hot_standby\" at server start.")));
+
+	replaypoint_name_str = text_to_cstring(replaypoint_name);
+
+	if (strlen(replaypoint_name_str) >= MAXFNAMELEN)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("value too long for replay point (maximum %d characters)", MAXFNAMELEN - 1)));
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbPgResults cdb_pgresults = {NULL, 0};
+
+		LWLockAcquire(TwophaseCommitLock, LW_EXCLUSIVE);
+		/* dispatch to the segment */
+		CdbDispatchCommand("SELECT pg_catalog.gp_create_cluster_consistent_replay_point('abcd')",
+						   DF_NONE, &cdb_pgresults);
+
+		if (cdb_pgresults.numResults == 0)
+			elog(ERROR, "pg_locks didn't get back any data from the segDBs");
+
+		replaypoint = XLogClusterConsistentReplayPoint(replaypoint_name_str);
+
+		LWLockRelease(TwophaseCommitLock);
+	}
+	else
+		replaypoint = XLogClusterConsistentReplayPoint(replaypoint_name_str);
+
+	/*
+	 * As a convenience, return the WAL location of the replay point record
+	 */
+	snprintf(location, sizeof(location), "%X/%X",
+			 replaypoint.xlogid, replaypoint.xrecoff);
+	PG_RETURN_TEXT_P(cstring_to_text(location));
 }

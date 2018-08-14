@@ -103,6 +103,7 @@ typedef enum LWLockId
 	FilespaceHashLock,
 	TablespaceHashLock,
 	GpReplicationConfigFileLock,
+	TwophaseCommitLock,
 	/* must be last except for MaxDynamicLWLock: */
 	NumFixedLWLocks,
 

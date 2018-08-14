@@ -71,7 +71,7 @@ typedef struct CheckPoint
 #define XLOG_FPW_CHANGE				0x80
 #define XLOG_NEXTRELFILENODE			0x90
 #define XLOG_HINT						0xA0
-
+#define XLOG_CONSISTENCY_POINT          0xB0
 
 /*
  * System status indicator.  Note this is stored in pg_control; if you change

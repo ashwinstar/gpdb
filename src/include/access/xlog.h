@@ -413,4 +413,5 @@ extern XLogRecPtr
 last_xlog_replay_location(void);
 
 extern void wait_for_mirror(void);
+extern XLogRecPtr XLogClusterConsistentReplayPoint(const char *rpName);
 #endif   /* XLOG_H */
