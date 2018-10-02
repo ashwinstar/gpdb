@@ -10483,7 +10483,7 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 	 *
 	 *-------
 	 */
-	if (!InArchiveRecovery && currentSource != XLOG_FROM_STREAM)
+	if (!InArchiveRecovery && (lastSourceFailed || currentSource != XLOG_FROM_STREAM))
 		currentSource = XLOG_FROM_PG_XLOG;
 	else if (currentSource == 0)
 		currentSource = XLOG_FROM_ARCHIVE;
