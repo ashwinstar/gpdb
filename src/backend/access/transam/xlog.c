@@ -10324,16 +10324,13 @@ XLogPageRead(XLogReaderState *xlogreader, XLogRecPtr targetPagePtr, int reqLen,
 
 	XLByteToSeg(targetPagePtr, readSegNo);
 
-retry:
 	elogif(debug_xlog_record_read, LOG,
 		   "xlog page read -- Requested record %X/%X has "
-		   "targetsegno " UINT64_FORMAT ", targetpageoff %u "
-		   "target page ptr %X/%X and reqLen %d",
+		   "targetsegno " UINT64_FORMAT ", targetpageoff %u",
 		   (uint32) (targetRecPtr >> 32), (uint32) targetRecPtr,
-		   readSegNo, targetPageOff,
-		   (uint32) (targetPagePtr >> 32), (uint32) targetPagePtr,
-		   reqLen);
+		   readSegNo, targetPageOff);
 
+retry:
 	/* See if we need to retrieve more data */
 	if (readFile < 0 ||
 		(readSource == XLOG_FROM_STREAM &&
@@ -10421,10 +10418,7 @@ next_record_is_invalid:
 
 	/* In standby-mode, keep trying */
 	if (StandbyMode)
-	{
-		elog(LOG, "XLogPageRead standby mode retrying....");
 		goto retry;
-	}
 	else
 		return -1;
 }
@@ -10501,9 +10495,8 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 	else if (currentSource == 0)
 		currentSource = XLOG_FROM_ARCHIVE;
 
-	elog(LOG, "In WaitForWALToBecomeAvailable, starting with currentSource=%d and RecPtr = %X/%X and tliRecPtr = %X/%X",
-		 currentSource, (uint32) (RecPtr >> 32), (uint32) RecPtr,
-		 (uint32) (tliRecPtr >> 32), (uint32) tliRecPtr);
+	elog(LOG, "In WaitForWALToBecomeAvailable, inside for loop currentSource=%d",
+		 currentSource);
 
 	for (;;)
 	{

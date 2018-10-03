@@ -1019,9 +1019,6 @@ XLogWalRcvFlush(bool dying)
 		if (walrcv->receivedUpto < LogstreamResult.Flush)
 		{
 			walrcv->latestChunkStart = walrcv->receivedUpto;
-			elog(LOG, "setting receivedUpto %X/%X",
-				 (uint32) (LogstreamResult.Flush >> 32),
-				 (uint32) LogstreamResult.Flush);
 			walrcv->receivedUpto = LogstreamResult.Flush;
 			walrcv->receivedTLI = ThisTimeLineID;
 		}
