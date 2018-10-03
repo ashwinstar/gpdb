@@ -293,6 +293,9 @@ RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr, const char *conninfo)
 	 */
 	if (walrcv->receiveStart == 0 || walrcv->receivedTLI != tli)
 	{
+		elog(LOG, "setting receivedUpto %X/%X",
+			 (uint32) (recptr >> 32),
+			 (uint32) recptr);
 		walrcv->receivedUpto = recptr;
 		walrcv->receivedTLI = tli;
 		walrcv->latestChunkStart = recptr;

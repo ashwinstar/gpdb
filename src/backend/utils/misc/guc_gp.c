@@ -1820,7 +1820,7 @@ struct config_bool ConfigureNamesBool_gp[] =
 			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&debug_walrepl_snd,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
