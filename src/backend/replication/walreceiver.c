@@ -734,7 +734,6 @@ WalRcvDie(int code, Datum arg)
 	walrcv->pid = 0;
 	SpinLockRelease(&walrcv->mutex);
 
-	elog(LOG, "In WalRcvDie, setting the state to WALRCV_STOPPED.");
 	/* Terminate the connection gracefully. */
 	walrcv_disconnect();
 

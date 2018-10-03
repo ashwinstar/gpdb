@@ -10573,9 +10573,6 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 
 				case XLOG_FROM_STREAM:
 
-					elogif(debug_xlog_record_read, LOG,
-						   "xlog page read -- Xlog from stream failed");
-
 					/*
 					 * Failure while streaming. Most likely, we got here
 					 * because streaming replication was terminated, or
@@ -10597,11 +10594,7 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 					 * WAL that we restore from archive.
 					 */
 					if (WalRcvStreaming())
-					{
-						elogif(debug_xlog_record_read, LOG,
-							   "Requesting shut down of wal receiver.");
 						ShutdownWalRcv();
-					}
 
 					/*
 					 * Before we sleep, re-scan for possible new timelines if

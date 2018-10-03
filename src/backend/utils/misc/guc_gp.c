@@ -1524,7 +1524,7 @@ struct config_bool ConfigureNamesBool_gp[] =
 			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&debug_xlog_record_read,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
