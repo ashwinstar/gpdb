@@ -5421,6 +5421,13 @@ StartupXLOG(void)
 						  &backupFromStandby))
 	{
 		/*
+		 * Archive recovery was requested, and thanks to the backup label
+		 * file, we know how far we need to replay to reach consistency. Enter
+		 * archive recovery directly.
+		 */
+		InArchiveRecovery = true;
+
+		/*
 		 * Currently, it is assumed that a backup file exists iff a base backup
 		 * has been performed and then the recovery.conf file is generated, thus
 		 * standby mode has to be requested
@@ -6359,7 +6366,7 @@ StartupXLOG(void)
 		writeTimeLineHistory(ThisTimeLineID, recoveryTargetTLI,
 							 EndRecPtr, "standby promoted");
 
-		XLogFileCopy(endLogSegNo, curFileTLI, endLogSegNo);
+		XLogFileCopy(endLogSegNo, xlogreader->readPageTLI, endLogSegNo);
 	}
 
 	/* Save the selected TimeLineID in shared memory, too */
@@ -10483,11 +10490,10 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 	 *
 	 *-------
 	 */
-//	if (!InArchiveRecovery) // && (lastSourceFailed || currentSource != XLOG_FROM_STREAM))
-//		currentSource = XLOG_FROM_PG_XLOG;
-//	else
-		if (currentSource == 0)
-			currentSource = XLOG_FROM_PG_XLOG;
+	if (!InArchiveRecovery)
+		currentSource = XLOG_FROM_PG_XLOG;
+	else if (currentSource == 0)
+		currentSource = XLOG_FROM_ARCHIVE;
 
 	elog(LOG, "In WaitForWALToBecomeAvailable, inside for loop currentSource=%d",
 		 currentSource);
