@@ -3425,8 +3425,6 @@ ReadRecord(XLogReaderState *xlogreader, XLogRecPtr RecPtr, int emode,
 		}
 		else
 		{
-			elog(LOG, "setting lastSourceFailed = true, current source is %d",
-				 currentSource);
 			/* No valid record available from this source */
 			lastSourceFailed = true;
 
@@ -10407,7 +10405,6 @@ retry:
 	return readLen;
 
 next_record_is_invalid:
-	elog(LOG, "setting lastSourceFailed = true, current source is %d", currentSource);
 	lastSourceFailed = true;
 
 	if (readFile >= 0)
@@ -10495,13 +10492,8 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 	else if (currentSource == 0)
 		currentSource = XLOG_FROM_ARCHIVE;
 
-	elog(LOG, "In WaitForWALToBecomeAvailable, inside for loop currentSource=%d",
-		 currentSource);
-
 	for (;;)
 	{
-		elog(LOG, "In WaitForWALToBecomeAvailable, inside for loop currentSource=%d",
-			currentSource);
 		int			oldSource = currentSource;
 
 		/*
@@ -10567,7 +10559,6 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 									 tli, curFileTLI);
 						}
 						curFileTLI = tli;
-						elog(LOG, "RequestXLogStreaming to start the wal receiver");
 						RequestXLogStreaming(tli, ptr, PrimaryConnInfo);
 						receivedUpto = 0;
 					}
