@@ -10483,10 +10483,11 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 	 *
 	 *-------
 	 */
-	if (!InArchiveRecovery && (lastSourceFailed || currentSource != XLOG_FROM_STREAM))
-		currentSource = XLOG_FROM_PG_XLOG;
-	else if (currentSource == 0)
-		currentSource = XLOG_FROM_ARCHIVE;
+//	if (!InArchiveRecovery) // && (lastSourceFailed || currentSource != XLOG_FROM_STREAM))
+//		currentSource = XLOG_FROM_PG_XLOG;
+//	else
+		if (currentSource == 0)
+			currentSource = XLOG_FROM_PG_XLOG;
 
 	elog(LOG, "In WaitForWALToBecomeAvailable, inside for loop currentSource=%d",
 		 currentSource);
@@ -10508,9 +10509,6 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 			switch (currentSource)
 			{
 				case XLOG_FROM_ARCHIVE:
-					currentSource = XLOG_FROM_PG_XLOG;
-					break;
-
 				case XLOG_FROM_PG_XLOG:
 
 					/*
