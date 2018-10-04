@@ -1017,6 +1017,13 @@ XLogWalRcvFlush(bool dying)
 		SpinLockAcquire(&walrcv->mutex);
 		if (walrcv->receivedUpto < LogstreamResult.Flush)
 		{
+			elog(LOG, "In XLogWalRcvFlush() updating receivedUpto %X/%X, Write %X/%X Flush %X/%X",
+				 (uint32) (walrcv->receivedUpto >> 32),
+				 (uint32) walrcv->receivedUpto,
+				 (uint32) (LogstreamResult.Write >> 32),
+				 (uint32) LogstreamResult.Write,
+				 (uint32) (LogstreamResult.Flush >> 32),
+				 (uint32) LogstreamResult.Flush);
 			walrcv->latestChunkStart = walrcv->receivedUpto;
 			walrcv->receivedUpto = LogstreamResult.Flush;
 			walrcv->receivedTLI = ThisTimeLineID;
