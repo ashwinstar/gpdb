@@ -715,11 +715,24 @@ WalRcvFetchTimeLineHistoryFiles(TimeLineID first, TimeLineID last)
 static void
 WalRcvDie(int code, Datum arg)
 {
+	elog(LOG, "In WalRcvDie, closing the file.");
+
 	/* use volatile pointer to prevent code rearrangement */
 	volatile WalRcvData *walrcv = WalRcv;
 
 	/* Ensure that all WAL records received are flushed to disk */
 	XLogWalRcvFlush(true);
+
+	/*
+	 * XLOG segment files will be re-read by recovery in startup
+	 * process soon, so we don't advise the OS to release cache
+	 * pages associated with the file like XLogFileClose() does.
+	 */
+	if (close(recvFile) != 0)
+		ereport(WARNING,
+				(errcode_for_file_access(),
+				 errmsg("could not close log segment %s: %m",
+						XLogFileNameP(recvFileTLI, recvSegNo))));
 
 	DisownLatch(&walrcv->latch);
 
