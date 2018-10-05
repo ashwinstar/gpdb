@@ -139,7 +139,6 @@ static void WalRcvSigHupHandler(SIGNAL_ARGS);
 static void WalRcvSigUsr1Handler(SIGNAL_ARGS);
 static void WalRcvShutdownHandler(SIGNAL_ARGS);
 static void WalRcvQuickDieHandler(SIGNAL_ARGS);
-static void WalRcvCrashHandler(SIGNAL_ARGS);
 
 
 static void
@@ -189,7 +188,6 @@ WalReceiverMain(void)
 	volatile WalRcvData *walrcv = WalRcv;
 	TimestampTz last_recv_timestamp;
 	bool		ping_sent;
-	sigjmp_buf	local_sigjmp_buf;
 
 	/*
 	 * WalRcv should be set up already (if we are a backend, we inherit this
@@ -281,16 +279,6 @@ WalReceiverMain(void)
 	pqsignal(SIGCONT, SIG_DFL);
 	pqsignal(SIGWINCH, SIG_DFL);
 
-#ifdef SIGILL
-	pqsignal(SIGILL, WalRcvCrashHandler);
-#endif
-#ifdef SIGSEGV
-	pqsignal(SIGSEGV, WalRcvCrashHandler);
-#endif
-#ifdef SIGBUS
-	pqsignal(SIGBUS, WalRcvCrashHandler);
-#endif
-
 	/* We allow SIGQUIT (quickdie) at all times */
 	sigdelset(&BlockSig, SIGQUIT);
 
@@ -300,20 +288,6 @@ WalReceiverMain(void)
 	 */
 	CurrentResourceOwner = ResourceOwnerCreate(NULL, "Wal Receiver");
 
-	/*
-	 * In case of ERROR, walreceiver just dies cleanly. Startup process
-	 * will invoke another one if necessary.
-	 */
-	if (sigsetjmp(local_sigjmp_buf, 1) != 0)
-	{
-		EmitErrorReport();
-
-		proc_exit(0);
-	}
-
-	/* We can now handle ereport(ERROR) */
-	PG_exception_stack = &local_sigjmp_buf;
-
 	/* Unblock signals (they were blocked when the postmaster forked us) */
 	PG_SETMASK(&UnBlockSig);
 
@@ -322,9 +296,6 @@ WalReceiverMain(void)
 	walrcv_connect(conninfo);
 	DisableWalRcvImmediateExit();
 
-	/* Initialize LogstreamResult, reply_message */
-	LogstreamResult.Write = LogstreamResult.Flush = GetXLogReplayRecPtr(NULL);
-	MemSet(&reply_message, 0, sizeof(reply_message));
 
 	first_stream = true;
 	for (;;)
@@ -782,34 +753,21 @@ WalRcvShutdownHandler(SIGNAL_ARGS)
 static void
 WalRcvQuickDieHandler(SIGNAL_ARGS)
 {
-	PG_SETMASK(&BlockSig);
-
 	/*
-	 * We DO NOT want to run proc_exit() callbacks -- we're here because
-	 * shared memory may be corrupted, so we don't want to try to clean up our
-	 * transaction.  Just nail the windows shut and get out of town.  Now that
-	 * there's an atexit callback to prevent third-party code from breaking
-	 * things by calling exit() directly, we have to reset the callbacks
-	 * explicitly to make this work as intended.
+	 * We DO NOT want to run proc_exit() or atexit() callbacks -- we're here
+	 * because shared memory may be corrupted, so we don't want to try to
+	 * clean up our transaction.  Just nail the windows shut and get out of
+	 * town.  The callbacks wouldn't be safe to run from a signal handler,
+	 * anyway.
+	 *
+	 * Note we use _exit(2) not _exit(0).  This is to force the postmaster
+	 * into a system reset cycle if someone sends a manual SIGQUIT to a
+	 * random backend.  This is necessary precisely because we don't clean up
+	 * our shared memory state.  (The "dead man switch" mechanism in
+	 * pmsignal.c should ensure the postmaster sees this as a crash, too, but
+	 * no harm in being doubly sure.)
 	 */
-	on_exit_reset();
-
-	/*
-	 * Note we do exit(2) not exit(0).	This is to force the postmaster into a
-	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
-	 * backend.  This is necessary precisely because we don't clean up our
-	 * shared memory state.  (The "dead man switch" mechanism in pmsignal.c
-	 * should ensure the postmaster sees this as a crash, too, but no harm in
-	 * being doubly sure.)
-	 */
-	exit(2);
-}
-
-static void
-WalRcvCrashHandler(SIGNAL_ARGS)
-{
-	StandardHandlerForSigillSigsegvSigbus_OnMainThread("walreceiver",
-														PASS_SIGNAL_ARGS);
+	_exit(2);
 }
 
 /*
