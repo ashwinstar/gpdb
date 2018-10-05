@@ -2372,7 +2372,7 @@ XLogFileInit(XLogSegNo logsegno, bool *use_existent, bool use_lock)
 	 * pre-creating an extra log segment.  That seems OK, and better than
 	 * holding the lock throughout this lengthy process.
 	 */
-	elog(DEBUG2, "creating and filling new WAL file");
+	elog(LOG, "creating and filling new WAL file %s", path);
 
 	snprintf(tmppath, MAXPGPATH, XLOGDIR "/xlogtemp.%d", (int) getpid());
 

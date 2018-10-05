@@ -362,7 +362,7 @@ pg_fsync_writethrough(int fd)
 int
 pg_fdatasync(int fd)
 {
-	if (enableFsync)
+//	if (enableFsync)
 	{
 #ifdef HAVE_FDATASYNC
 		return fdatasync(fd);
@@ -370,8 +370,8 @@ pg_fdatasync(int fd)
 		return fsync(fd);
 #endif
 	}
-	else
-		return 0;
+//	else
+//		return 0;
 }
 
 /*
