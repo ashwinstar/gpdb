@@ -99,7 +99,7 @@ function build_gppkg() {
 
 function unittest_check_gpdb() {
   pushd ${GPDB_SRC_PATH}
-    make GPROOT=/usr/local -s unittest-check
+    make unittest-check -s
   popd
 }
 
@@ -180,10 +180,11 @@ function _main() {
   # the source tree and hence needs to be copied over.
   rsync -au gpaddon_src/ ${GPDB_SRC_PATH}/gpAux/${ADDON_DIR}
 
+  time configure
   if [ "${TARGET_OS}" != "win32" ] ; then
       # Don't unit test when cross compiling. Tests don't build because they
       # require `./configure --with-zlib`.
-      unittest_check_gpdb
+      time unittest_check_gpdb
   fi
 }
 
