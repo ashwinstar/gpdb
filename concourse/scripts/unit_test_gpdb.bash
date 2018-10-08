@@ -5,6 +5,7 @@ GREENPLUM_INSTALL_DIR=/usr/local/greenplum-db-devel
 export GPDB_ARTIFACTS_DIR=$(pwd)/${OUTPUT_ARTIFACT_DIR}
 
 CWDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source "${CWDIR}/common.bash"
 
 GPDB_SRC_PATH=${GPDB_SRC_PATH:=gpdb_src}
 GPDB_BIN_FILENAME=${GPDB_BIN_FILENAME:="bin_gpdb.tar.gz"}
