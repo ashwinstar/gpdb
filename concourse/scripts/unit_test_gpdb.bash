@@ -181,19 +181,11 @@ function _main() {
   # the source tree and hence needs to be copied over.
   rsync -au gpaddon_src/ ${GPDB_SRC_PATH}/gpAux/${ADDON_DIR}
 
-  build_gpdb "${BLD_TARGET_OPTION[@]}"
   if [ "${TARGET_OS}" != "win32" ] ; then
-      # Do not build quicklz support for windows
-      build_quicklz
+      # Don't unit test when cross compiling. Tests don't build because they
+      # require `./configure --with-zlib`.
+      unittest_check_gpdb
   fi
-  build_gppkg
-  if [ "${EXTRACT_PXF}" == "true" ] ; then
-      # Bundle PXF server
-      tar -xzf pxf_tarball/pxf.tar.gz -C ${GREENPLUM_INSTALL_DIR}
-  fi
-  export_gpdb
-  export_gpdb_extensions
-  export_gpdb_win32_ccl
 }
 
 _main "$@"

@@ -27,6 +27,7 @@ groups:
 {% endif %}
 {% if "centos7" in os_types %}
   - compile_gpdb_centos7
+  - unit_test_gpdb_centos7
 {% endif %}
 {% if "sles" in os_types %}
   - compile_gpdb_sles11
@@ -914,6 +915,38 @@ jobs:
     - put: bin_gpdb_centos7
       params:
         file: gpdb_artifacts/bin_gpdb.tar.gz
+
+{% endif %}
+{% if "centos7" in os_types %}
+- name: unit_test_gpdb_centos7
+  plan:
+  - aggregate:
+    - get: reduced-frequency-trigger
+      trigger: ((reduced-frequency-trigger-flag))
+    - get: gpdb_src
+      trigger: ((gpdb_src-trigger-flag))
+    - get: gpaddon_src
+    - get: centos-gpdb-build-7
+  - task: sync_tools
+    file: gpdb_src/concourse/tasks/sync_tools.yml
+    image: centos-gpdb-build-7
+    params:
+      IVYREPO_HOST: {{ivyrepo_host}}
+      IVYREPO_REALM: {{ivyrepo_realm}}
+      IVYREPO_USER: {{ivyrepo_user}}
+      IVYREPO_PASSWD: {{ivyrepo_passwd}}
+      TARGET_OS: centos
+      TARGET_OS_VERSION: 7
+      TASK_OS: centos
+      TASK_OS_VERSION: 7
+  - task: unit_test_gpdb
+    image: centos-gpdb-build-7
+    file: gpdb_src/concourse/tasks/unit_test_gpdb.yml
+    params:
+      CONFIGURE_FLAGS: {{configure_flags}}
+      TARGET_OS: centos
+      TARGET_OS_VERSION: 7
+      BLD_TARGETS: "clients loaders"
 
 {% endif %}
 {% if "sles" in os_types %}
