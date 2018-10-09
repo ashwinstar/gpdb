@@ -100,7 +100,7 @@ function build_gppkg() {
 
 function unittest_check_gpdb() {
   pushd ${GPDB_SRC_PATH}
-    make unittest-check -s -j4
+    make unittest-check -s
   popd
 }
 
