@@ -3555,6 +3555,10 @@ readNodeBinary(void)
 				return_value = _readAlterRoleSetStmt();
 				break;
 
+			case T_AlterSystemStmt:
+				return_value = _readAlterSystemStmt();
+				break;
+
 			case T_AlterObjectSchemaStmt:
 				return_value = _readAlterObjectSchemaStmt();
 				break;
