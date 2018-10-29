@@ -346,6 +346,8 @@ WalReceiverMain(void)
 
 	/* Initialize LogstreamResult, reply_message */
 	LogstreamResult.Write = LogstreamResult.Flush = GetXLogReplayRecPtr(NULL);
+	elog(LOG, "Initializing LogstreamResult.Flush = %X/%X",
+		 (uint32) (LogstreamResult.Flush >> 32), (uint32) LogstreamResult.Flush);
 	MemSet(&reply_message, 0, sizeof(reply_message));
 
 	first_stream = true;
@@ -412,6 +414,8 @@ WalReceiverMain(void)
 
 			/* Initialize LogstreamResult and buffers for processing messages */
 			LogstreamResult.Write = LogstreamResult.Flush = GetXLogReplayRecPtr(NULL);
+ 			elog(LOG, "Start streaming LogstreamResult.Flush = %X/%X",
+				 (uint32) (LogstreamResult.Flush >> 32), (uint32) LogstreamResult.Flush);
 			initStringInfo(&reply_message);
 			initStringInfo(&incoming_message);
 
@@ -740,6 +744,7 @@ WalRcvDie(int code, Datum arg)
 {
 	/* use volatile pointer to prevent code rearrangement */
 	volatile WalRcvData *walrcv = WalRcv;
+	elog(LOG, "WalRcvDie()");
 
 	/* Ensure that all WAL records received are flushed to disk */
 	XLogWalRcvFlush(true);
@@ -1039,11 +1044,15 @@ XLogWalRcvFlush(bool dying)
 		issue_xlog_fsync(recvFile, recvSegNo);
 
 		LogstreamResult.Flush = LogstreamResult.Write;
+		elog(LOG, "XLogWalRcvFlush LogstreamResult.Flush = %X/%X",
+			 (uint32) (LogstreamResult.Flush >> 32), (uint32) LogstreamResult.Flush);
 
 		/* Update shared-memory status */
 		SpinLockAcquire(&walrcv->mutex);
 		if (walrcv->receivedUpto < LogstreamResult.Flush)
 		{
+			elog(LOG, "updating receivedUpto %X/%X",
+				(uint32) (LogstreamResult.Flush >> 32), (uint32) LogstreamResult.Flush);
 			walrcv->latestChunkStart = walrcv->receivedUpto;
 			walrcv->receivedUpto = LogstreamResult.Flush;
 			walrcv->receivedTLI = ThisTimeLineID;

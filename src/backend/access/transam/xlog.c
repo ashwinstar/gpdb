@@ -1320,6 +1320,8 @@ begin:;
 	if (isLogSwitch)
 	{
 		TRACE_POSTGRESQL_XLOG_SWITCH();
+		elog(LOG, "XLOG_SWITCH calling flush for %X/%X",
+			(uint32) (EndPos >> 32), (uint32) EndPos);
 		XLogFlush(EndPos);
 
 		/*
@@ -2553,6 +2555,8 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 				WalSndWakeupRequest();
 
 				LogwrtResult.Flush = LogwrtResult.Write;		/* end of page */
+				elog(LOG, "Updating LogwrtResult.Flush to %X/%X",
+					 (uint32) (LogwrtResult.Flush >> 32), (uint32) LogwrtResult.Flush);
 
 				if (XLogArchivingActive())
 					XLogArchiveNotifySeg(openLogSegNo);
@@ -2616,12 +2620,15 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 			}
 
 			issue_xlog_fsync(openLogFile, openLogSegNo);
+			elog(LOG, "Flushing xlog.....");
 		}
 
 		/* signal that we need to wakeup walsenders later */
 		WalSndWakeupRequest();
 
 		LogwrtResult.Flush = LogwrtResult.Write;
+		elog(LOG, "Updating LogwrtResult.Flush to %X/%X",
+			 (uint32) (LogwrtResult.Flush >> 32), (uint32) LogwrtResult.Flush);
 	}
 
 	/*
@@ -2640,7 +2647,11 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 		if (xlogctl->LogwrtRqst.Write < LogwrtResult.Write)
 			xlogctl->LogwrtRqst.Write = LogwrtResult.Write;
 		if (xlogctl->LogwrtRqst.Flush < LogwrtResult.Flush)
+		{
 			xlogctl->LogwrtRqst.Flush = LogwrtResult.Flush;
+			elog(LOG, "Updating LogwrtResult.Flush to %X/%X",
+				 (uint32) (LogwrtResult.Flush >> 32), (uint32) LogwrtResult.Flush);
+		}
 		SpinLockRelease(&xlogctl->info_lck);
 	}
 }
@@ -2936,6 +2947,8 @@ XLogFlush(XLogRecPtr record)
 		/* try to write/flush later additions to XLOG as well */
 		WriteRqst.Write = insertpos;
 		WriteRqst.Flush = insertpos;
+		elog(LOG, "XLogFlush WriteRqst.Write to %X/%X",
+			 (uint32) (WriteRqst.Write >> 32), (uint32) WriteRqst.Write);
 
 		XLogWrite(WriteRqst, false);
 
@@ -3068,6 +3081,8 @@ XLogBackgroundFlush(void)
 
 		WriteRqst.Write = WriteRqstPtr;
 		WriteRqst.Flush = WriteRqstPtr;
+		elog(LOG, "XLogBackgroundFlush WriteRqst.Write to %X/%X",
+			 (uint32) (WriteRqst.Write >> 32), (uint32) WriteRqst.Write);
 		XLogWrite(WriteRqst, flexible);
 		wrote_something = true;
 	}
@@ -7126,6 +7141,8 @@ StartupXLOG(void)
 					RecordKnownAssignedTransactionIds(record->xl_xid);
 
 				ApplyStartupRedo(&ReadRecPtr, &EndRecPtr, record);
+				if (StandbyModeRequested)
+					pg_usleep(100000L);
 
 				/* Pop the error context stack */
 				error_context_stack = errcallback.previous;
@@ -7444,6 +7461,8 @@ StartupXLOG(void)
 	}
 
 	LogwrtResult.Write = LogwrtResult.Flush = EndOfLog;
+	elog(LOG, "Updating LogwrtResult.Flush to %X/%X",
+		 (uint32) (LogwrtResult.Flush >> 32), (uint32) LogwrtResult.Flush);
 
 	XLogCtl->LogwrtResult = LogwrtResult;
 
@@ -11757,7 +11776,7 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 					}
 					if (havedata)
 					{
-						elogif(debug_xlog_record_read, LOG,
+						elog(LOG,
 							   "xlog page read -- There is enough xlog data to be "
 							   "read (receivedupto %X/%X, requestedrec %X/%X)",
 							   (uint32) (receivedUpto >> 32), (uint32) receivedUpto,

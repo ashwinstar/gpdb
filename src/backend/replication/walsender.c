@@ -2383,7 +2383,7 @@ XLogSendPhysical(void)
 		WalSndCaughtUp = true;
 		WalSndCaughtUpWithinRange = true;
 
-		elogif(debug_walrepl_snd, LOG,
+		elog(LOG,
 				"walsnd xlogSend -- "
 				"SendRqstPtr equals sentPtr (%X/%X). Nothing to read from "
 				"xlog. Setting caughtup and caughtup_within_range before return.",
@@ -2480,7 +2480,7 @@ XLogSendPhysical(void)
 		set_ps_display(activitymsg, false);
 	}
 
-	elogif(debug_walrepl_snd, LOG,
+	elog(LOG,
 			"walsnd xlogsend -- "
 			"Latest xlog flush location on master (SendRqstPtr) = %X/%X, "
 			"Start xLog read location(startptr) = %X/%X, "
