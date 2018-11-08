@@ -1253,7 +1253,11 @@ begin:;
 	 * pointer.
 	 */
 	if (isLogSwitch)
+	{
 		inserted = ReserveXLogSwitch(&StartPos, &EndPos, &rechdr->xl_prev);
+		elog(LOG, "Updating ReserveXLogSwitch LogwrtRqst.Write to %X/%X",
+			 (uint32) (EndPos >> 32), (uint32) EndPos);
+	}
 	else
 	{
 		ReserveXLogInsertLocation(write_len, &StartPos, &EndPos,
@@ -2226,6 +2230,8 @@ AdvanceXLInsertBuffer(XLogRecPtr upto, bool opportunistic)
 					xlogctl->LogwrtRqst.Write = OldPageRqstPtr;
 				LogwrtResult = xlogctl->LogwrtResult;
 				SpinLockRelease(&xlogctl->info_lck);
+				elog(LOG, "Updating AdvanceXLInsertBuffer local LogwrtResult.Flush to %X/%X",
+					 (uint32) (OldPageRqstPtr >> 32), (uint32) OldPageRqstPtr);
 			}
 
 			/*
@@ -2530,6 +2536,10 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 				from += written;
 			} while (nleft > 0);
 
+			if (flexible)
+				elog(LOG, "Wrote to log file %s at offset %u, length %zu:",
+					 XLogFileNameP(ThisTimeLineID, openLogSegNo), openLogOff, nbytes);
+
 			/* Update state for write */
 			openLogOff += nbytes;
 			npages = 0;
@@ -2555,7 +2565,7 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 				WalSndWakeupRequest();
 
 				LogwrtResult.Flush = LogwrtResult.Write;		/* end of page */
-				elog(LOG, "Updating LogwrtResult.Flush to %X/%X",
+				elog(LOG, "Updating finishing_seg local LogwrtResult.Flush to %X/%X",
 					 (uint32) (LogwrtResult.Flush >> 32), (uint32) LogwrtResult.Flush);
 
 				if (XLogArchivingActive())
@@ -2589,7 +2599,10 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 
 		/* If flexible, break out of loop as soon as we wrote something */
 		if (flexible && npages == 0)
+		{
+			elog(LOG, "XLogWrite since flexible breaking......");
 			break;
+		}
 	}
 
 	Assert(npages == 0);
@@ -2599,7 +2612,6 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 	 */
 	if (LogwrtResult.Flush < WriteRqst.Flush &&
 		LogwrtResult.Flush < LogwrtResult.Write)
-
 	{
 		/*
 		 * Could get here without iterating above loop, in which case we might
@@ -2627,7 +2639,7 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 		WalSndWakeupRequest();
 
 		LogwrtResult.Flush = LogwrtResult.Write;
-		elog(LOG, "Updating LogwrtResult.Flush to %X/%X",
+		elog(LOG, "Updating local LogwrtResult.Flush to %X/%X",
 			 (uint32) (LogwrtResult.Flush >> 32), (uint32) LogwrtResult.Flush);
 	}
 
@@ -2644,14 +2656,13 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 
 		SpinLockAcquire(&xlogctl->info_lck);
 		xlogctl->LogwrtResult = LogwrtResult;
+		elog(LOG, "Updating shared memory xlogctl->LogwrtResult.Flush to %X/%X",
+			 (uint32) (LogwrtResult.Flush >> 32), (uint32) LogwrtResult.Flush);
+
 		if (xlogctl->LogwrtRqst.Write < LogwrtResult.Write)
 			xlogctl->LogwrtRqst.Write = LogwrtResult.Write;
 		if (xlogctl->LogwrtRqst.Flush < LogwrtResult.Flush)
-		{
 			xlogctl->LogwrtRqst.Flush = LogwrtResult.Flush;
-			elog(LOG, "Updating LogwrtResult.Flush to %X/%X",
-				 (uint32) (LogwrtResult.Flush >> 32), (uint32) LogwrtResult.Flush);
-		}
 		SpinLockRelease(&xlogctl->info_lck);
 	}
 }
@@ -3028,9 +3039,14 @@ XLogBackgroundFlush(void)
 		WriteRqstPtr = xlogctl->LogwrtRqst.Write;
 		SpinLockRelease(&xlogctl->info_lck);
 	}
+	elog(LOG, "XLogBackgroundFlush from xlogctl WriteRqstPtr is %X/%X",
+		 (uint32) (WriteRqstPtr >> 32), (uint32) WriteRqstPtr);
 
 	/* back off to last completed page boundary */
 	WriteRqstPtr -= WriteRqstPtr % XLOG_BLCKSZ;
+
+	elog(LOG, "XLogBackgroundFlush WriteRqstPtr is %X/%X",
+		 (uint32) (WriteRqstPtr >> 32), (uint32) WriteRqstPtr);
 
 	/* if we have already flushed that far, consider async commit records */
 	if (WriteRqstPtr <= LogwrtResult.Flush)
@@ -3081,8 +3097,8 @@ XLogBackgroundFlush(void)
 
 		WriteRqst.Write = WriteRqstPtr;
 		WriteRqst.Flush = WriteRqstPtr;
-		elog(LOG, "XLogBackgroundFlush WriteRqst.Write to %X/%X",
-			 (uint32) (WriteRqst.Write >> 32), (uint32) WriteRqst.Write);
+		elog(LOG, "XLogBackgroundFlush WriteRqst.Write to %X/%X flexible = %d",
+			 (uint32) (WriteRqst.Write >> 32), (uint32) WriteRqst.Write, flexible);
 		XLogWrite(WriteRqst, flexible);
 		wrote_something = true;
 	}
