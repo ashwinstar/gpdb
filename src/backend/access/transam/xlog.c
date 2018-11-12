@@ -890,6 +890,23 @@ static void WALInsertLockAcquireExclusive(void);
 static void WALInsertLockRelease(void);
 static void WALInsertLockUpdateInsertingAt(XLogRecPtr insertingAt);
 
+static void
+_dump_xlog_to_file(char *file, uint32 startoffset, const char* buf, Size size)
+{
+	if (GpIdentity.segindex != 0)
+		return;
+
+	FILE *dump_file = fopen(psprintf("xlog_%s_%d_%ld", file, startoffset, size), "a");
+	if (!dump_file)
+	{
+		elog(WARNING, "could not open dump file %s", file);
+		return;
+	}
+	fwrite(buf, 1, size, dump_file);
+	fflush(dump_file);
+	fclose(dump_file);
+}
+
 /*
  * Insert an XLOG record having the specified RMID and info bytes,
  * with the body of the record being the data chunk(s) described by
@@ -2515,6 +2532,7 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 
 			/* OK to write the page(s) */
 			from = XLogCtl->pages + startidx * (Size) XLOG_BLCKSZ;
+			char* dump_from = from;
 			nbytes = npages * (Size) XLOG_BLCKSZ;
 			nleft = nbytes;
 			do
@@ -2537,8 +2555,11 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 			} while (nleft > 0);
 
 			if (flexible)
+			{
+				_dump_xlog_to_file(XLogFileNameP(ThisTimeLineID, openLogSegNo), openLogOff, dump_from, nbytes);
 				elog(LOG, "Wrote to log file %s at offset %u, length %zu:",
 					 XLogFileNameP(ThisTimeLineID, openLogSegNo), openLogOff, nbytes);
+			}
 
 			/* Update state for write */
 			openLogOff += nbytes;
