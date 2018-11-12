@@ -110,10 +110,8 @@ out_delete(StringInfo buf, XLogRecord *record)
 }
 
 void
-btree_desc(StringInfo buf, XLogRecord *record)
+btree_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
-	char	   *rec = XLogRecGetData(record);
-	uint8		xl_info = record->xl_info;
 	uint8		info = xl_info & ~XLR_INFO_MASK;
 
 	switch (info)
@@ -124,7 +122,7 @@ btree_desc(StringInfo buf, XLogRecord *record)
 
 				appendStringInfoString(buf, "insert: ");
 				out_target(buf, &(xlrec->target));
-				out_insert(buf, /* isleaf */ true, /* ismeta */ false, record);
+//				out_insert(buf, /* isleaf */ true, /* ismeta */ false, record);
 				break;
 			}
 		case XLOG_BTREE_INSERT_UPPER:
@@ -133,7 +131,7 @@ btree_desc(StringInfo buf, XLogRecord *record)
 
 				appendStringInfoString(buf, "insert_upper: ");
 				out_target(buf, &(xlrec->target));
-				out_insert(buf, /* isleaf */ false, /* ismeta */ false, record);
+//				out_insert(buf, /* isleaf */ false, /* ismeta */ false, record);
 				break;
 			}
 		case XLOG_BTREE_INSERT_META:
@@ -142,7 +140,7 @@ btree_desc(StringInfo buf, XLogRecord *record)
 
 				appendStringInfoString(buf, "insert_meta: ");
 				out_target(buf, &(xlrec->target));
-				out_insert(buf, /* isleaf */ false, /* ismeta */ true, record);
+//				out_insert(buf, /* isleaf */ false, /* ismeta */ true, record);
 				break;
 			}
 		case XLOG_BTREE_SPLIT_L:
@@ -211,7 +209,7 @@ btree_desc(StringInfo buf, XLogRecord *record)
 				xlrec->node.spcNode, xlrec->node.dbNode, xlrec->node.relNode,
 								 xlrec->block,
 								 xlrec->hnode.spcNode, xlrec->hnode.dbNode, xlrec->hnode.relNode);
-				out_delete(buf, record);
+//				out_delete(buf, record);
 				break;
 			}
 		case XLOG_BTREE_MARK_PAGE_HALFDEAD:

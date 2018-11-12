@@ -725,7 +725,7 @@ extern void _bt_leafbuild(BTSpool *btspool, BTSpool *spool2);
  * prototypes for functions in nbtxlog.c
  */
 extern void btree_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
-extern void btree_desc(StringInfo buf, XLogRecord *record);
+extern void btree_desc(StringInfo buf, uint8 xl_info, char *rec);
 extern void btree_mask(char *pagedata, BlockNumber blkno);
 
 #endif   /* NBTREE_H */

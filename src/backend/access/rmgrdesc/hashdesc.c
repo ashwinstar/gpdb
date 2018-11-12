@@ -17,6 +17,6 @@
 #include "access/hash.h"
 
 void
-hash_desc(StringInfo buf __attribute__((unused)), XLogRecord *record __attribute__((unused)))
+hash_desc(StringInfo buf __attribute__((unused)), uint8 xl_info __attribute__((unused)), char *rec __attribute__((unused)))
 {
 }

@@ -7044,7 +7044,9 @@ StartupXLOG(void)
 							 (uint32) (EndRecPtr >> 32), (uint32) EndRecPtr);
 					xlog_outrec(&buf, record);
 					appendStringInfoString(&buf, " - ");
-					RmgrTable[record->xl_rmid].rm_desc(&buf, record);
+					RmgrTable[record->xl_rmid].rm_desc(&buf,
+													   record->xl_info,
+													   XLogRecGetData(record));
 					elog(LOG, "%s", buf.data);
 					pfree(buf.data);
 				}
@@ -11203,7 +11205,7 @@ rm_redo_error_callback(void *arg)
 	StringInfoData buf;
 
 	initStringInfo(&buf);
-	RmgrTable[record->xl_rmid].rm_desc(&buf, record);
+	RmgrTable[record->xl_rmid].rm_desc(&buf, record->xl_info, XLogRecGetData(record));
 
 	/* don't bother emitting empty description */
 	if (buf.len > 0)

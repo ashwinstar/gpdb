@@ -57,6 +57,6 @@ extern void xlog_ao_truncate(RelFileNode relFileNode, int32 segmentFileNum, int6
 extern void appendonly_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
 
 /* in appendonlydesc.c */
-extern void appendonly_desc(StringInfo buf, XLogRecord *record);
+extern void appendonly_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 #endif   /* CDBAPPENDONLYXLOG_H */

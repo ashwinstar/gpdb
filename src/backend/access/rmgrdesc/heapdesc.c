@@ -41,10 +41,8 @@ out_infobits(StringInfo buf, uint8 infobits)
 }
 
 void
-heap_desc(StringInfo buf, XLogRecord *record)
+heap_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
-	char	   *rec = XLogRecGetData(record);
-	uint8		xl_info = record->xl_info;
 	uint8		info = xl_info & ~XLR_INFO_MASK;
 
 	info &= XLOG_HEAP_OPMASK;
@@ -129,10 +127,8 @@ heap_desc(StringInfo buf, XLogRecord *record)
 }
 
 void
-heap2_desc(StringInfo buf, XLogRecord *record)
+heap2_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
-	char	   *rec = XLogRecGetData(record);
-	uint8		xl_info = record->xl_info;
 	uint8		info = xl_info & ~XLR_INFO_MASK;
 
 	info &= XLOG_HEAP_OPMASK;

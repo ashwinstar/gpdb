@@ -85,7 +85,7 @@ extern void ResetSequence(Oid seq_relid);
 extern void ResetSequenceCaches(void);
 
 extern void seq_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *rptr);
-extern void seq_desc(StringInfo buf, XLogRecord *record);
+extern void seq_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 extern void seq_mask(char *pagedata, BlockNumber blkno);
 

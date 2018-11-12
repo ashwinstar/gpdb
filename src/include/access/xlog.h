@@ -326,7 +326,7 @@ extern Buffer RestoreBackupBlock(XLogRecPtr lsn, XLogRecord *record,
 				   bool get_cleanup_lock, bool keep_buffer);
 
 extern void xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribute__((unused)), XLogRecord *record);
-extern void xlog_desc(StringInfo buf, XLogRecord *record);
+extern void xlog_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 extern void UnpackCheckPointRecord(struct XLogRecord *record, CheckpointExtendedRecord *ckptExtended);
 

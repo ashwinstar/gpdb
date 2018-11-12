@@ -65,7 +65,7 @@ extern char *get_database_name(Oid dbid);
 extern int get_database_hash_method(Oid dbid);
 
 extern void dbase_redo(XLogRecPtr beginLoc  __attribute__((unused)), XLogRecPtr lsn  __attribute__((unused)), XLogRecord *rptr);
-extern void dbase_desc(StringInfo buf, XLogRecord *record);
+extern void dbase_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 extern void check_encoding_locale_matches(int encoding, const char *collate, const char *ctype);
 

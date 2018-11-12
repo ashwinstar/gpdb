@@ -835,7 +835,7 @@ extern bool _bitmap_findvalue(Relation lovHeap, Relation lovIndex,
  * prototypes for functions in bitmapxlog.c
  */
 extern void bitmap_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
-extern void bitmap_desc(StringInfo buf, XLogRecord *record);
+extern void bitmap_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 /* reloptions.c */
 #define BITMAP_MIN_FILLFACTOR		10

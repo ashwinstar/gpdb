@@ -19,28 +19,27 @@
 #include "cdb/cdbappendonlyxlog.h"
 
 void
-appendonly_desc(StringInfo buf, XLogRecord *record)
+appendonly_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
-	uint8		  xl_info = record->xl_info;
 	uint8		  info = xl_info & ~XLR_INFO_MASK;
 
 	switch (info)
 	{
 		case XLOG_APPENDONLY_INSERT:
 			{
-				xl_ao_insert *xlrec = (xl_ao_insert *)XLogRecGetData(record);
+				xl_ao_insert *xlrec = (xl_ao_insert *)rec;
 
 				appendStringInfo(
 					buf,
 					"insert: rel %u/%u/%u seg/offset:%u/" INT64_FORMAT " len:%lu",
 					xlrec->target.node.spcNode, xlrec->target.node.dbNode,
 					xlrec->target.node.relNode, xlrec->target.segment_filenum,
-					xlrec->target.offset, record->xl_len - SizeOfAOInsert);
+					xlrec->target.offset, 0);
 			}
 			break;
 		case XLOG_APPENDONLY_TRUNCATE:
 			{
-				xl_ao_truncate *xlrec = (xl_ao_truncate *)XLogRecGetData(record);
+				xl_ao_truncate *xlrec = (xl_ao_truncate*)rec;
 
 				appendStringInfo(
 					buf,

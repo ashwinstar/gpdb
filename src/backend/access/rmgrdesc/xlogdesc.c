@@ -86,10 +86,9 @@ UnpackCheckPointRecord(XLogRecord *record, CheckpointExtendedRecord *ckptExtende
 }
 
 void
-xlog_desc(StringInfo buf, XLogRecord *record)
+xlog_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
-	uint8		info = record->xl_info & ~XLR_INFO_MASK;
-	char		*rec = XLogRecGetData(record);
+	uint8		info = xl_info & ~XLR_INFO_MASK;
 
 	if (info == XLOG_CHECKPOINT_SHUTDOWN ||
 		info == XLOG_CHECKPOINT_ONLINE)
@@ -118,6 +117,7 @@ xlog_desc(StringInfo buf, XLogRecord *record)
 						 checkpoint->oldestActiveXid,
 				 (info == XLOG_CHECKPOINT_SHUTDOWN) ? "shutdown" : "online");
 
+#if 0		
 		UnpackCheckPointRecord(record, &ckptExtended);
 
 		if (ckptExtended.dtxCheckpointLen > 0)
@@ -132,6 +132,7 @@ xlog_desc(StringInfo buf, XLogRecord *record)
 								 ", prepared transaction agg state count = %d",
 								 ckptExtended.ptas->count);
 		}
+#endif
 	}
 	else if (info == XLOG_NOOP)
 	{

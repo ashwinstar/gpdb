@@ -44,6 +44,6 @@ typedef struct xl_smgr_truncate
 extern void log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum);
 
 extern void smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
-extern void smgr_desc(StringInfo buf, XLogRecord *record);
+extern void smgr_desc(StringInfo buf, uint8 xl_info, char *rec);
 
 #endif   /* STORAGE_XLOG_H */
