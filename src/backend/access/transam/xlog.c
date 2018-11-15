@@ -1369,7 +1369,8 @@ begin:;
 		StringInfoData buf;
 
 		initStringInfo(&buf);
-		appendStringInfo(&buf, "INSERT @ %X/%X: ",
+		appendStringInfo(&buf, "INSERT @ %X/%X: END %X/%X: ",
+						 (uint32) (StartPos >> 32), (uint32) StartPos,
 						 (uint32) (EndPos >> 32), (uint32) EndPos);
 		xlog_outrec(&buf, rechdr);
 		if (rdata->data != NULL)

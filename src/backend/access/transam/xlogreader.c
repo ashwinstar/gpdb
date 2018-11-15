@@ -294,8 +294,8 @@ XLogReadRecord(XLogReaderState *state, XLogRecPtr RecPtr, char **errormsg)
 		/* XXX: more validation should be done here */
 		if (total_len < SizeOfXLogRecord)
 		{
-			report_invalid_record(state, "invalid record length at %X/%X",
-								  (uint32) (RecPtr >> 32), (uint32) RecPtr);
+			report_invalid_record(state, "XLogReadRecord invalid record length at %X/%X size %u",
+								  (uint32) (RecPtr >> 32), (uint32) RecPtr, total_len);
 			goto err;
 		}
 		gotheader = false;
@@ -605,8 +605,8 @@ ValidXLogRecordHeader(XLogReaderState *state, XLogRecPtr RecPtr,
 		XLR_MAX_BKP_BLOCKS * (sizeof(BkpBlock) + BLCKSZ))
 	{
 		report_invalid_record(state,
-							  "invalid record length at %X/%X",
-							  (uint32) (RecPtr >> 32), (uint32) RecPtr);
+							  "ValidXLogRecordHeader invalid record length at %X/%X size is %u",
+							  (uint32) (RecPtr >> 32), (uint32) RecPtr, record->xl_tot_len);
 		return false;
 	}
 	if (record->xl_rmid > RM_MAX_ID)
@@ -679,8 +679,8 @@ ValidXLogRecord(XLogReaderState *state, XLogRecord *record, XLogRecPtr recptr)
 	if (remaining < SizeOfXLogRecord + len)
 	{
 		/* ValidXLogRecordHeader() should've caught this already... */
-		report_invalid_record(state, "invalid record length at %X/%X",
-							  (uint32) (recptr >> 32), (uint32) recptr);
+		report_invalid_record(state, "ValidXLogRecord invalid record length at %X/%X size of %lu is less than %lu",
+							  (uint32) (recptr >> 32), (uint32) recptr, remaining, SizeOfXLogRecord + len);
 		return false;
 	}
 	remaining -= SizeOfXLogRecord + len;
