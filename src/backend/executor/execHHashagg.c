@@ -32,6 +32,7 @@
 #include "cdb/memquota.h"
 #include "utils/workfile_mgr.h"
 #include "utils/resource_manager.h"
+#include "utils/memaccounting_private.h"
 
 #include "access/hash.h"
 
@@ -327,6 +328,19 @@ makeHashAggEntryForInput(AggState *aggstate, TupleTableSlot *inputslot, uint32 h
 		}
 		else
 		{
+			uint64 used_size_hashtable =  GET_TOTAL_USED_SIZE(hashtable);
+			uintptr_t aggs_tup_len = (unsigned) MAXALIGN(MAXALIGN(tup_len) + aggs_len);
+			elog(NOTICE, "Total used size of hashtable is %d. Aggs len is %d. Combined len is %d. Hashtable->max_mem is %d. Current mem account peak is %d. currmemused %d. Mpool_total = %d",
+				 (unsigned) used_size_hashtable,
+				 (unsigned) aggs_tup_len,
+				 (unsigned) used_size_hashtable + aggs_tup_len,
+				 (unsigned) hashtable->max_mem,
+				 shortLivingMemoryAccountArray->allAccounts[ActiveMemoryAccountId - liveAccountStartId]->peak,
+				 shortLivingMemoryAccountArray->allAccounts[ActiveMemoryAccountId - liveAccountStartId]->allocated - shortLivingMemoryAccountArray->allAccounts[ActiveMemoryAccountId - liveAccountStartId]->freed,
+				 hashtable->group_buf->total_bytes_allocated
+				 /*ActiveMemoryAccountId,
+				   liveAccountStartId,
+				   shortLivingMemoryAccountArray->accountCount*/);
 			return NULL;
 		}
 	}
