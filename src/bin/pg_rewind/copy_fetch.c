@@ -109,8 +109,12 @@ recurse_dir(const char *datadir, const char *parentpath,
 		else if (S_ISDIR(fst.st_mode))
 		{
 			callback(path, FILE_TYPE_DIRECTORY, 0, NULL);
-			/* recurse to handle subdirectories */
-			recurse_dir(datadir, path, callback);
+			/* if not pg_log, then recurse */
+			if (strstr(path, "pg_log") == NULL)
+			{
+				/* recurse to handle subdirectories */
+				recurse_dir(datadir, path, callback);
+			}
 		}
 #ifndef WIN32
 		else if (S_ISLNK(fst.st_mode))

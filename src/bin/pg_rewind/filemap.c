@@ -108,6 +108,9 @@ process_source_file(const char *path, file_type_t type, size_t newsize,
 	if (strstr(path, "/" PG_TEMP_FILES_DIR "/") != NULL)
 		return;
 
+	if (strstr(path, "pg_log""/") != NULL)
+		return;
+
 	/*
 	 * sanity check: a filename that looks like a data file better be a
 	 * regular file
