@@ -169,7 +169,7 @@ DATA(insert ( 2110	n 0 float4pl			-					float4pl			-						-						-				-					-			
 DATA(insert ( 2111	n 0 float8pl			-					float8pl			-						-						-				-					-					f f 0	701		0		0		0	_null_ _null_ ));
 DATA(insert ( 2112	n 0 cash_pl				-					cash_pl				-						-						cash_pl			cash_mi				-					f f 0	790		0		790		0	_null_ _null_ ));
 DATA(insert ( 2113	n 0 interval_pl			-					interval_pl			-						-						interval_pl		interval_mi			-					f f 0	1186	0		1186	0	_null_ _null_ ));
-DATA(insert ( 2114	n 0 numeric_avg_accum	numeric_sum			numeric_avg_combine	numeric_avg_serialize	numeric_avg_deserialize	numeric_avg_accum numeric_accum_inv	numeric_sum			f f 0	2281	128		2281	128	_null_ _null_ ));
+DATA(insert ( 2114	n 0 numeric_add	-		numeric_avg_combine	numeric_avg_serialize	numeric_avg_deserialize	numeric_avg_accum numeric_accum_inv	numeric_sum			f f 0	1700	128		2281	128	_null_ _null_ ));
 
 /* max */
 DATA(insert ( 2115	n 0 int8larger		-				int8larger			-	-	-				-				-				f f 413		20		0	0		0	_null_ _null_ ));
