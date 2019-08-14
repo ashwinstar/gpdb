@@ -452,7 +452,7 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		/*
 		 * Okay to fetch the tuple
 		 */
-		targoffset = scan->rs_vistuples[scan->rs_cindex];
+		targoffset = scan->rs_vistuples[scan->rs_cindex] & 0x7FFF;
 		dp = (Page) BufferGetPage(scan->rs_cbuf);
 		lp = PageGetItemId(dp, targoffset);
 		Assert(ItemIdIsNormal(lp));
@@ -559,7 +559,7 @@ bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres)
 
 		for (curslot = 0; curslot < tbmres->ntuples; curslot++)
 		{
-			OffsetNumber offnum = tbmres->offsets[curslot];
+			OffsetNumber offnum = tbmres->offsets[curslot] & 0x7FFF;
 			ItemPointerData tid;
 			HeapTupleData heapTuple;
 
@@ -752,6 +752,7 @@ BitmapAppendOnlyNext(BitmapHeapScanState *node)
 			psuedoHeapOffset = tbmres->offsets[node->baos_cindex];
 		}
 
+		psuedoHeapOffset = psuedoHeapOffset & 0x7FFF;
 		/*
 		 * Okay to fetch the tuple
 		 */

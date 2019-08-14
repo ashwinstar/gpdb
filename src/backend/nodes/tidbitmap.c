@@ -298,7 +298,7 @@ tbm_add_tuples(TIDBitmap *tbm, const ItemPointer tids, int ntids,
 	for (i = 0; i < ntids; i++)
 	{
 		BlockNumber blk = ItemPointerGetBlockNumber(tids + i);
-		OffsetNumber off = ItemPointerGetOffsetNumber(tids + i);
+		OffsetNumber off = ItemPointerGetOffsetNumber(tids + i) | 0x8000;
 		PagetableEntry *page;
 		int			wordnum,
 					bitnum;

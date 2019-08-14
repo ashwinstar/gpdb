@@ -340,13 +340,13 @@ typedef struct BMTidBuildBuf
  */
 #define BM_IPTR_TO_INT(iptr) \
 	((uint64)ItemPointerGetBlockNumber(iptr) * BM_MAX_TUPLES_PER_PAGE + \
-		(uint64)(ItemPointerGetOffsetNumber(iptr) & 0x7FFF))
+	 (uint64)(ItemPointerGetOffsetNumber(iptr) | 0x8000))
 
 #define BM_INT_GET_BLOCKNO(i) \
 	((i - 1)/BM_MAX_TUPLES_PER_PAGE)
 
 #define BM_INT_GET_OFFSET(i) \
-	(((i - 1) % BM_MAX_TUPLES_PER_PAGE) + 1)
+	((((i - 1) % BM_MAX_TUPLES_PER_PAGE) + 1) & 0x7FFF)
 
 
 /*
