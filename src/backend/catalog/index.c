@@ -2982,18 +2982,13 @@ IndexBuildAppendOnlyRowScan(Relation parentRelation,
 		 * some index AMs want to do further processing on the data first.	So
 		 * pass the values[] and isnull[] arrays, instead.
 		 */
-		{
-			ItemPointer orig_tid = slot_get_ctid(slot);
-			ItemPointerData bitmap_tid;
-			Assert(ItemPointerIsValid(orig_tid));
-			ItemPointerSet(&bitmap_tid, ItemPointerGetBlockNumber(orig_tid),
-						   (ItemPointerGetOffsetNumber(orig_tid) | 0x8000));
-
-			/* Call the AM's callback routine to process the tuple */
-			callback(indexRelation, &bitmap_tid,
-					 values, isnull, true, callback_state);
-		}
+		Assert(ItemPointerIsValid(slot_get_ctid(slot)));
+		
+		/* Call the AM's callback routine to process the tuple */
+		callback(indexRelation, slot_get_ctid(slot),
+				 values, isnull, true, callback_state);
 	}
+	
 	appendonly_endscan(aoscan);
 	
 	if (blockDirectory != NULL)
