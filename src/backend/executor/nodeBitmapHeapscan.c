@@ -744,7 +744,7 @@ BitmapAppendOnlyNext(BitmapHeapScanState *node)
 		 */
 		if (node->baos_lossy)
 		{
-			psuedoHeapOffset = node->baos_cindex;	// We are iterating through all items.
+			psuedoHeapOffset = node->baos_cindex + 1;	// We are iterating through all items.
 		}
 		else
 		{
