@@ -52,6 +52,7 @@ typedef struct BrinBuildState
 	BrinRevmap *bs_rmAccess;
 	BrinDesc   *bs_bdesc;
 	BrinMemTuple *bs_dtuple;
+	bool isRelAppendOptimized;
 } BrinBuildState;
 
 /*
@@ -65,7 +66,8 @@ typedef struct BrinOpaque
 } BrinOpaque;
 
 static BrinBuildState *initialize_brin_buildstate(Relation idxRel,
-						   BrinRevmap *revmap, BlockNumber pagesPerRange);
+												  BrinRevmap *revmap, BlockNumber pagesPerRange,
+												  bool IsRelAppendOptimized);
 static void terminate_brin_buildstate(BrinBuildState *state);
 static void brinsummarize(Relation index, Relation heapRel,
 			  double *numSummarized, double *numExisting);
@@ -313,7 +315,14 @@ bringetbitmap(PG_FUNCTION_ARGS)
 	 */
 	heapOid = IndexGetRelation(RelationGetRelid(idxRel), false);
 	heapRel = heap_open(heapOid, AccessShareLock);
-	nblocks = RelationGetNumberOfBlocks(heapRel);
+	if (RelationIsAppendOptimized(heapRel))
+	{
+		nblocks = 33554433;
+	}
+	else
+	{
+		nblocks = RelationGetNumberOfBlocks(heapRel);
+	}
 	heap_close(heapRel, AccessShareLock);
 
 	/*
@@ -339,7 +348,11 @@ bringetbitmap(PG_FUNCTION_ARGS)
 	 * incrementing by the number of pages per range; this gives us a full
 	 * view of the table.
 	 */
-	for (heapBlk = 0; heapBlk < nblocks; heapBlk += opaque->bo_pagesPerRange)
+	if (RelationIsAppendOptimized(heapRel))
+		heapBlk = 33554432;
+	else
+		heapBlk = 0;
+	for (; heapBlk < nblocks; heapBlk += opaque->bo_pagesPerRange)
 	{
 		bool		addrange;
 		BrinTuple  *tup;
@@ -546,8 +559,12 @@ brinbuildCallback(Relation index,
 	 * we've got and start afresh.  Note the scan might have skipped many
 	 * pages, if they were devoid of live tuples; make sure to insert index
 	 * tuples for those too.
+	 *
+	 * For AO tuples only create entries corresponding to current tuples in
+	 * the relation.
 	 */
-	while (thisblock > state->bs_currRangeStart + state->bs_pagesPerRange - 1)
+	while (!state->isRelAppendOptimized &&
+		   (thisblock > state->bs_currRangeStart + state->bs_pagesPerRange - 1))
 	{
 
 		BRIN_elog((DEBUG2,
@@ -648,7 +665,8 @@ brinbuild(PG_FUNCTION_ARGS)
 	 * Initialize our state, including the deformed tuple state.
 	 */
 	revmap = brinRevmapInitialize(index, &pagesPerRange);
-	state = initialize_brin_buildstate(index, revmap, pagesPerRange);
+	state = initialize_brin_buildstate(index, revmap, pagesPerRange,
+									   RelationIsAppendOptimized(heap));
 
 	/*
 	 * Now scan the relation.  No syncscan allowed here because we want the
@@ -885,7 +903,7 @@ brin_free_desc(BrinDesc *bdesc)
  */
 static BrinBuildState *
 initialize_brin_buildstate(Relation idxRel, BrinRevmap *revmap,
-						   BlockNumber pagesPerRange)
+						   BlockNumber pagesPerRange, bool IsRelAppendOptimized)
 {
 	BrinBuildState *state;
 
@@ -899,6 +917,7 @@ initialize_brin_buildstate(Relation idxRel, BrinRevmap *revmap,
 	state->bs_rmAccess = revmap;
 	state->bs_bdesc = brin_build_desc(idxRel);
 	state->bs_dtuple = brin_new_memtuple(state->bs_bdesc);
+	state->isRelAppendOptimized = IsRelAppendOptimized;
 
 	brin_memtuple_initialize(state->bs_dtuple, state->bs_bdesc);
 
@@ -1108,7 +1127,8 @@ brinsummarize(Relation index, Relation heapRel, double *numSummarized,
 				/* first time through */
 				Assert(!indexInfo);
 				state = initialize_brin_buildstate(index, revmap,
-												   pagesPerRange);
+												   pagesPerRange,
+												   RelationIsAppendOptimized(heapRel));
 				indexInfo = BuildIndexInfo(index);
 
 				/*
