@@ -834,6 +834,11 @@ AllocSetContextCreate(MemoryContext parent,
 										 parent,
 										 name);
 
+	/* if (strcmp(name, "pg_type_oid_index") == 0) */
+	/* { */
+	/* 	debug_backtrace(); */
+	/* } */
+
 	/*
 	 * Make sure alloc parameters are reasonable, and save them.
 	 *
@@ -1018,6 +1023,18 @@ AllocSetReset(MemoryContext context)
 
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Check for corruption and leaks before freeing */
+	uint64 nBlocks = 0;
+	uint64 nChunks = 0;
+	uint64 currentAvailable = 0;
+	uint64 allAllocated = 0;
+	uint64 allFreed = 0;
+	uint64 maxHeld = 0;
+
+	/* Get the root context's stat and pass it to the MemoryContextStats_recur for printing */
+//	AllocSet_GetStats(context, &nBlocks, &nChunks, &currentAvailable, &allAllocated, &allFreed, &maxHeld);
+	/* elog(NOTICE, "AllocSetReset: nBlocks:" UINT64_FORMAT " nChunks:" UINT64_FORMAT " currentAvailable:" UINT64_FORMAT " allAllocated:" UINT64_FORMAT " allFreed:" UINT64_FORMAT "maxHeld:" UINT64_FORMAT, */
+	/* 	nBlocks, nChunks, currentAvailable, allAllocated, allFreed, maxHeld); */
+
 	AllocSetCheck(context);
 #endif
 
@@ -1092,7 +1109,19 @@ AllocSetDelete(MemoryContext context)
 	AssertArg(AllocSetIsValid(set));
 
 #ifdef MEMORY_CONTEXT_CHECKING
-	/* Check for corruption and leaks before freeing */
+	/* /\* Check for corruption and leaks before freeing *\/ */
+	uint64 nBlocks = 0;
+	uint64 nChunks = 0;
+	uint64 currentAvailable = 0;
+	uint64 allAllocated = 0;
+	uint64 allFreed = 0;
+	uint64 maxHeld = 0;
+
+	/* Get the root context's stat and pass it to the MemoryContextStats_recur for printing */
+//	AllocSet_GetStats(context, &nBlocks, &nChunks, &currentAvailable, &allAllocated, &allFreed, &maxHeld);
+	/* elog(NOTICE, "AllocSetReset: nBlocks:" UINT64_FORMAT " nChunks:" UINT64_FORMAT " currentAvailable:" UINT64_FORMAT " allAllocated:" UINT64_FORMAT " allFreed:" UINT64_FORMAT "maxHeld:" UINT64_FORMAT, */
+	/* 	nBlocks, nChunks, currentAvailable, allAllocated, allFreed, maxHeld); */
+
 	AllocSetCheck(context);
 #endif
 
@@ -1147,6 +1176,8 @@ AllocSetAllocImpl(MemoryContext context, Size size, bool isHeader)
 	Size		blksize;
 
 	AssertArg(AllocSetIsValid(set));
+//	if (IsUnderPostmaster && (strcmp("SPI Exec", set->header.name) == 0))
+//		elog(NOTICE, "AllocSetAllocImpl %s: size: %d", set->header.name, size);
 #ifdef USE_ASSERT_CHECKING
 	if (IsUnderPostmaster && context != ErrorContext && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
 	{
@@ -1907,6 +1938,14 @@ AllocSet_GetStats(MemoryContext context, uint64 *nBlocks, uint64 *nChunks,
 			*currentAvailable += chunk->size;
 		}
 	}
+
+	/* elog(NOTICE, "AllocSetReset: nBlocks:" UINT64_FORMAT " nChunks:" UINT64_FORMAT " currentAvailable:" UINT64_FORMAT " allAllocated:" UINT64_FORMAT " allFreed:" UINT64_FORMAT "maxHeld:" UINT64_FORMAT, */
+	/* 	 *nBlocks, *nChunks, *currentAvailable, *allAllocated, *allFreed, *maxHeld); */
+
+	elog(NOTICE,
+		 "%s: %zu total in %zd blocks; %zu free (%zd chunks); %zu used\n",
+		 set->header.name, *allAllocated, *nBlocks, *currentAvailable, *nChunks,
+		 *allAllocated-*currentAvailable);
 }
 
 #ifdef MEMORY_CONTEXT_CHECKING
