@@ -70,8 +70,15 @@ reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo,
 	Datum *partvalues;
 	bool *partisnull;
 
-	if (!map)
-		return slot;		/* no mapping needed */
+	map = resultRelInfo->ri_partInsertMap;
+
+	TupleDesc inputTupDesc = slot->tts_tupleDescriptor;
+	TupleDesc resultTupDesc = resultRelInfo->ri_RelationDesc->rd_att;
+	bool tupleDescMatch = equalTupleDescs(inputTupDesc, resultTupDesc, false);
+
+	/* No map and matching tuple descriptor means no restructuring needed. */
+	if (map == NULL && tupleDescMatch)
+		return slot;
 
 	/* Put the given tuple into attribute arrays. */
 	natts = slot->tts_tupleDescriptor->natts;
