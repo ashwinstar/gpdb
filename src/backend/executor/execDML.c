@@ -30,7 +30,7 @@
  * reconstructTupleValues
  *   Re-construct tuple values based on the pre-defined mapping.
  */
-static void
+void
 reconstructTupleValues(AttrMap *map,
 					Datum *oldValues, bool *oldIsnull, int oldNumAttrs,
 					Datum *newValues, bool *newIsnull, int newNumAttrs)
@@ -61,11 +61,12 @@ reconstructTupleValues(AttrMap *map,
  * restructured tuple.
  */
 TupleTableSlot *
-reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo, AttrMap *map)
+reconstructMatchingTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 {
 	int natts;
 	Datum *values;
 	bool *isnull;
+	AttrMap *map;
 	TupleTableSlot *partslot;
 	Datum *partvalues;
 	bool *partisnull;

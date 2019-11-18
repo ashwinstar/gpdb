@@ -17236,7 +17236,7 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 		 * Map attributes from origin to target.  We should consider dropped
 		 * columns in the origin.
 		 */
-		targetSlot = reconstructMatchingTupleSlot(slotT, targetRelInfo, targetRelInfo->ri_partInsertMap);
+		targetSlot = reconstructMatchingTupleSlot(slotT, targetRelInfo);
 
 		/* insert into the target table */
 		if (RelationIsHeap(targetRelation))

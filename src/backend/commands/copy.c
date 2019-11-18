@@ -3880,7 +3880,7 @@ CopyFrom(CopyState cstate)
 			 *
 			 * The resulting tuple is stored in 'slot'
 			 */
-			slot = reconstructMatchingTupleSlot(baseSlot, resultRelInfo, resultRelInfo->ri_partInsertMap);
+			slot = reconstructMatchingTupleSlot(baseSlot, resultRelInfo);
 
 			if (cstate->dispatch_mode == COPY_DISPATCH)
 			{
@@ -5441,7 +5441,7 @@ retry:
 
 		MemoryContextSwitchTo(oldcontext);
 
-		slot = reconstructMatchingTupleSlot(baseSlot, resultRelInfo, resultRelInfo->ri_partInsertMap);
+		slot = reconstructMatchingTupleSlot(baseSlot, resultRelInfo);
 	}
 	else
 		slot = baseSlot;
