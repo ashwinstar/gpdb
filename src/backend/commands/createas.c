@@ -737,6 +737,8 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 
 		/* We know this is a newly created relation, so there are no indexes */
 	}
+
+	wait_for_mirror();
 }
 
 /*
