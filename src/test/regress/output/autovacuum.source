@@ -2,16 +2,27 @@ create or replace function test_consume_xids(int4) returns void
 as '@abs_srcdir@/regress.so', 'test_consume_xids'
 language C;
 set debug_burn_xids=on;
--- Autovacuum should take care of anti-XID wraparounds of 'template0'. Because
--- of that, the age of template0 should not go much above
+-- Autovacuum will pick the oldest database for vacuum. Let's check the
+-- relfrozenxid of a catalog tables in the oldest database.
+-- start_ignore
+\! psql -t -c "SELECT datname FROM pg_database ORDER BY age(datfrozenxid) DESC LIMIT 1" postgres | tee oldest_database.txt
+ postgres
+
+-- end_ignore
+-- Beause oldest database may be template0, we allow connections so that we can
+-- query catalog tables' age.
+SET allow_system_table_mods=on;
+UPDATE pg_database SET datallowconn = 't' WHERE datname='template0';
+-- Autovacuum should take care of anti-XID wraparounds of catalog tables.
+-- Because of that, the age of pg_class should not go much above
 -- autovacuum_freeze_max_age (we assume the default of 200 million here).
-select age(datfrozenxid) < 200 * 1000000 from pg_database where datname='template0';
+\! cat oldest_database.txt | xargs psql -c "SELECT age(relfrozenxid) < 200 * 1000000 FROM pg_class WHERE relname='pg_class'"
  ?column? 
 ----------
  t
 (1 row)
 
--- track that we've updated the row in pg_database for template0
+-- track that we've updated the row in pg_database for oldest database
 SELECT gp_inject_fault_infinite('vacuum_update_dat_frozen_xid', 'skip', 1);
  gp_inject_fault_infinite 
 --------------------------
@@ -70,18 +81,12 @@ SELECT gp_inject_fault('vacuum_update_dat_frozen_xid', 'reset', 1);
  Success:
 (1 row)
 
--- template0 should be young
-select age(datfrozenxid) < 200 * 1000000 from pg_database where datname='template0';
+-- catalog table should be young
+\! cat oldest_database.txt | xargs psql -c "SELECT age(relfrozenxid) < 200 * 1000000 FROM pg_class WHERE relname='pg_class'"
  ?column? 
 ----------
  t
 (1 row)
 
--- But autovacuum should not touch other databases. Hence, our database
--- should be well above the 200 million mark.
-select age(datfrozenxid) > 200 * 1000000 from pg_database where datname=current_database();
- ?column? 
-----------
- t
-(1 row)
-
+UPDATE pg_database SET datallowconn = 'f' WHERE datname='template0';
+SET allow_system_table_mods=off;
