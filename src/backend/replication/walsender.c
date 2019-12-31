@@ -93,6 +93,13 @@
 #include "utils/faultinjector.h"
 #include "cdb/cdbvars.h"
 
+#ifdef HAVE_LIBZSTD
+/* Zstandard library is provided */
+#include <zstd.h>
+/* zstandard compression level to use. */
+#define COMPRESS_LEVEL 3
+#endif			/* HAVE_LIBZSTD */
+
 /*
  * Maximum data payload in a WAL data message.  Must be >= XLOG_BLCKSZ.
  *
@@ -2536,6 +2543,30 @@ XLogSendPhysical(void)
 	XLogRead(&output_message.data[output_message.len], startptr, nbytes);
 	output_message.len += nbytes;
 	output_message.data[output_message.len] = '\0';
+
+	static ZSTD_CCtx  *cxt = NULL;      /* ZSTD compression context */
+	static char *dest = NULL;
+	if (!cxt)
+	{
+		cxt = ZSTD_createCCtx();
+		if (!cxt)
+			elog(ERROR, "out of memory");
+	}
+
+	if (!dest)
+		dest = MemoryContextAlloc(TopMemoryContext, MAX_SEND_SIZE);
+
+	Size len = ZSTD_compressCCtx(cxt,
+								 dest, MAX_SEND_SIZE,
+								 &output_message.data[output_message.len - nbytes], nbytes,
+								 3 /* COMPRESS_LEVEL */);
+
+	if (ZSTD_isError(len))
+		elog(ERROR, "compression failed: %s uncompressed len %d",
+			 ZSTD_getErrorName(len), (int)nbytes);
+
+	elog(LOG, "walsender compressed saving %d (orig: %d, compress: %d",
+		 (int)(nbytes - len), (int)nbytes, (int)len);
 
 	/*
 	 * Fill the send timestamp last, so that it is taken as late as possible.
