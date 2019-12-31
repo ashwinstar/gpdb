@@ -72,6 +72,7 @@
 #include "access/tableam.h"
 #include "access/transam.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_database.h"
@@ -1966,19 +1967,6 @@ get_database_list(void)
 		 */
 		oldcxt = MemoryContextSwitchTo(resultcxt);
 
-		/*
-		 * In GPDB, autovacuum is currently disabled, except for the
-		 * anti-wraparound vacuum of template0 (and any other databases
-		 * with !datallowconn). The administrator is expected to do all
-		 * VACUUMing manually, except for template0, which you cannot
-		 * VACUUM manually because you cannot connect to it.
-		 * 
-		 * If autovacuum on the master is enabled, it means that we also want to do 
-		 * autoanalyze work for databases whose datallowconn is true.
-		 */
-		if (!(IS_QUERY_DISPATCHER() && AutoVacuumingActive()) && pgdatabase->datallowconn)
-			continue;
-
 		avdb = (avw_dbase *) palloc(sizeof(avw_dbase));
 
 		avdb->adw_datid = pgdatabase->oid;
@@ -3140,6 +3128,18 @@ relation_needs_vacanalyze(Oid relid,
 
 	/* User disabled it in pg_class.reloptions?  (But ignore if at risk) */
 	if (!av_enabled && !force_vacuum)
+	{
+		*doanalyze = false;
+		*dovacuum = false;
+		return;
+	}
+
+	/*
+	 * GPDB: Autovacuum is only enabled for catalog tables. In this case we
+	 * include tables in information_schema namespace.
+	 */
+	if (!IsCatalogClass(relid, classForm) &&
+		strcmp(get_namespace_name(classForm->relnamespace), "information_schema") != 0)
 	{
 		*doanalyze = false;
 		*dovacuum = false;
