@@ -2367,6 +2367,8 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	int			perseg_targrows;
 	CdbPgResults cdb_pgresults = {NULL, 0};
 	int			i;
+	Oid save_userid;
+	int save_sec_context;
 
 	Assert(targrows > 0.0);
 
@@ -2436,10 +2438,24 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	appendStringInfoString(&str, ")");
 
 	/*
+	 * Switch to the session userid, so that on segment parsing of types for
+	 * table can succeed. do_analyze_rel() changes the CurrentUserId to table
+	 * owner's userid for executing index functions. Though dispatching
+	 * current user as table owner is problematic on segments as table owner
+	 * may not have USAGE privileges on schema for column types. Hence, will
+	 * fail with permission denied error on analyze.
+	 */
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(GetSessionUserId(),
+						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+	/*
 	 * Execute it.
 	 */
 	elog(elevel, "Executing SQL: %s", str.data);
 	CdbDispatchCommand(str.data, DF_WITH_SNAPSHOT, &cdb_pgresults);
+
+	/* Restore userid and security context */
+	SetUserIdAndSecContext(save_userid, save_sec_context);
 
 	/*
 	 * Build a modified tuple descriptor for the table.
