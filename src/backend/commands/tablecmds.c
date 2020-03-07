@@ -1780,9 +1780,17 @@ ExecuteTruncate(TruncateStmt *stmt)
 		 * a new relfilenode in the current (sub)transaction, then we can just
 		 * truncate it in-place, because a rollback would cause the whole
 		 * table or the current physical file to be thrown away anyway.
+		 *
+		 * Using GUC dev_opt_unsafe_truncate_in_subtransaction can force
+		 * unsafe truncation only if
+		 *   - inside sub-transaction and not in top transaction
+		 *   - table was created somewhere within this transaction scope
 		 */
 		if (rel->rd_createSubid == mySubid ||
-			rel->rd_newRelfilenodeSubid == mySubid)
+			rel->rd_newRelfilenodeSubid == mySubid ||
+			(dev_opt_unsafe_truncate_in_subtransaction &&
+			 mySubid != TopSubTransactionId &&
+			 rel->rd_createSubid != InvalidSubTransactionId))
 		{
 			/* Immediate, non-rollbackable truncation is OK */
 			heap_truncate_one_rel(rel);
