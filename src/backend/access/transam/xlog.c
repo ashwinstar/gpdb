@@ -5970,7 +5970,11 @@ XLogProcessCheckpointRecord(XLogReaderState *rec)
 		/* Handle the DTX information. */
 		UtilityModeFindOrCreateDtmRedoFile();
 		redoDtxCheckPoint(ckptExtended.dtxCheckpoint);
-		UtilityModeCloseDtmRedoFile();
+		/*
+		 * Avoid closing the file here as possibly the file was already open
+		 * and above call didn't really open it.  Hence closing the same here
+		 * is incorrect.
+		 */
 	}
 }
 
