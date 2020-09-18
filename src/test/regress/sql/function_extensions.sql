@@ -244,7 +244,7 @@ $$
 import os
 fileNum = len([name for name in os.listdir(os.environ['MASTER_DATA_DIRECTORY'] + '/base/pgsql_tmp') if name.startswith('FUNCTION_SCAN')])
 return fileNum
-$$ language plpythonu;
+$$ language plpython3u;
 
 CREATE OR REPLACE FUNCTION get_country()
  RETURNS TABLE (
