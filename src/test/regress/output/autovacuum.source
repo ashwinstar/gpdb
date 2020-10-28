@@ -2,38 +2,27 @@ create or replace function test_consume_xids(int4) returns void
 as '@abs_srcdir@/regress.so', 'test_consume_xids'
 language C;
 set debug_burn_xids=on;
--- Autovacuum will pick the oldest database for vacuum. Let's check the
--- relfrozenxid of a catalog tables in the oldest database.
--- start_ignore
-\! psql -t -c "SELECT datname FROM pg_database ORDER BY age(datfrozenxid) DESC LIMIT 1" postgres | tee oldest_database.txt
- postgres
-
--- end_ignore
--- Beause oldest database may be template0, we allow connections so that we can
--- query catalog tables' age.
-SET allow_system_table_mods=on;
-UPDATE pg_database SET datallowconn = 't' WHERE datname='template0';
 -- Autovacuum should take care of anti-XID wraparounds of catalog tables.
 -- Because of that, the age of pg_class should not go much above
 -- autovacuum_freeze_max_age (we assume the default of 200 million here).
-\! cat oldest_database.txt | xargs psql -c "SELECT age(relfrozenxid) < 200 * 1000000 FROM pg_class WHERE relname='pg_class'"
+SELECT age(relfrozenxid) < 200 * 1000000 FROM pg_class WHERE relname='pg_class';
  ?column? 
 ----------
  t
 (1 row)
 
 -- track that we've updated the row in pg_database for oldest database
-SELECT gp_inject_fault_infinite('vacuum_update_dat_frozen_xid', 'skip', 1);
- gp_inject_fault_infinite 
---------------------------
+SELECT gp_inject_fault('vacuum_update_dat_frozen_xid', 'skip', '', 'regression', '', 1, -1, 0, 1);
+ gp_inject_fault 
+-----------------
  Success:
 (1 row)
 
 -- Suspend the autovacuum worker from vacuuming before
 -- ShmemVariableCache->latestCompletedXid is expected to be updated
-SELECT gp_inject_fault_infinite('auto_vac_worker_before_do_autovacuum', 'suspend', 1);
- gp_inject_fault_infinite 
---------------------------
+SELECT gp_inject_fault('auto_vac_worker_before_do_autovacuum', 'suspend', '', 'regression', '', 1, -1, 0, 1);
+ gp_inject_fault 
+-----------------
  Success:
 (1 row)
 
@@ -53,6 +42,12 @@ select test_consume_xids(10 * 1000000);
  test_consume_xids 
 -------------------
  
+(1 row)
+
+SELECT age(relfrozenxid) < 200 * 1000000 FROM pg_class WHERE relname='pg_class';
+ ?column? 
+----------
+ f
 (1 row)
 
 -- Wait until autovacuum is triggered
@@ -82,11 +77,9 @@ SELECT gp_inject_fault('vacuum_update_dat_frozen_xid', 'reset', 1);
 (1 row)
 
 -- catalog table should be young
-\! cat oldest_database.txt | xargs psql -c "SELECT age(relfrozenxid) < 200 * 1000000 FROM pg_class WHERE relname='pg_class'"
+SELECT age(relfrozenxid) < 200 * 1000000 FROM pg_class WHERE relname='pg_class';
  ?column? 
 ----------
  t
 (1 row)
 
-UPDATE pg_database SET datallowconn = 'f' WHERE datname='template0';
-SET allow_system_table_mods=off;
