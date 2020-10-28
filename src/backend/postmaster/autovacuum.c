@@ -1229,11 +1229,9 @@ do_start_worker(void)
 		 * need to deal with the xid wrap around. So ignore other dbs for
 		 * the wraparound check.
 		 */
-		if (!tmp->adw_allowconn &&
-			TransactionIdPrecedes(tmp->adw_frozenxid, xidForceLimit))
+		if (TransactionIdPrecedes(tmp->adw_frozenxid, xidForceLimit))
 		{
 			if (avdb == NULL ||
-				avdb->adw_allowconn ||  /* GPDB: only do anti-wraparound for !datallowconn databases */
 				TransactionIdPrecedes(tmp->adw_frozenxid,
 									  avdb->adw_frozenxid))
 				avdb = tmp;
@@ -1242,11 +1240,9 @@ do_start_worker(void)
 		}
 		else if (for_xid_wrap)
 			continue;			/* ignore not-at-risk DBs */
-		else if (!tmp->adw_allowconn &&
-				 MultiXactIdPrecedes(tmp->adw_minmulti, multiForceLimit))
+		else if (MultiXactIdPrecedes(tmp->adw_minmulti, multiForceLimit))
 		{
 			if (avdb == NULL ||
-				avdb->adw_allowconn ||  /* GPDB: only do anti-wraparound for !datallowconn databases */
 				MultiXactIdPrecedes(tmp->adw_minmulti, avdb->adw_minmulti))
 				avdb = tmp;
 			for_multi_wrap = true;
@@ -3137,9 +3133,11 @@ relation_needs_vacanalyze(Oid relid,
 	/*
 	 * GPDB: Autovacuum is only enabled for catalog tables. In this case we
 	 * include tables in information_schema namespace.
+	 * (But ignore if at risk of wrap around and proceed to vacuum)
 	 */
-	if (!IsCatalogClass(relid, classForm) &&
-		strcmp(get_namespace_name(classForm->relnamespace), "information_schema") != 0)
+	if (!IsSystemClass(relid, classForm) &&
+		strcmp(get_namespace_name(classForm->relnamespace), "information_schema") != 0 &&
+		!force_vacuum)
 	{
 		*doanalyze = false;
 		*dovacuum = false;
@@ -3196,11 +3194,6 @@ relation_needs_vacanalyze(Oid relid,
 	 */
 	if (!for_analyze)
 		*doanalyze = false;
-	else
-	{
-		*dovacuum = false;
-		*wraparound = false;
-	}
 
 	/*
 	 * There are a lot of things to do to enable auto-ANALYZE for partition tables,
