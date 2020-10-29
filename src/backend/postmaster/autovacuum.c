@@ -1318,7 +1318,7 @@ do_start_worker(void)
 
 		worker = dlist_container(WorkerInfoData, wi_links, wptr);
 		worker->wi_dboid = avdb->adw_datid;
-		worker->wi_for_analyze = avdb->adw_allowconn;
+		worker->wi_for_analyze = IS_QUERY_DISPATCHER() && avdb->adw_allowconn;
 		worker->wi_proc = NULL;
 		worker->wi_launchtime = GetCurrentTimestamp();
 
