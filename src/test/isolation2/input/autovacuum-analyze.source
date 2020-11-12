@@ -2,8 +2,7 @@
 -- true on Master, the launcher will take care of databases' analyze job on Master.
 -- VACUUM anti-XID wraparounds of 'template0' is not changed.
 
--- Start AUTOVACUUM launcher.
-ALTER SYSTEM SET autovacuum = on;
+-- Speed up test.
 ALTER SYSTEM SET autovacuum_naptime = 5;
 select * from pg_reload_conf();
 
@@ -147,9 +146,8 @@ select relpages, reltuples from pg_class where oid = 'anaabort'::regclass;
 
 1: END;
 
--- Disable AUTOVACUUM launcher.
-ALTER SYSTEM SET autovacuum_naptime = 60;
-ALTER SYSTEM SET autovacuum = off;
+-- Reset GUCs.
+ALTER SYSTEM RESET autovacuum_naptime;
 select * from pg_reload_conf();
 
 
