@@ -61,6 +61,7 @@ PORT_TXT="#port"
 LOG_STATEMENT_TXT="#log_statement ="
 LISTEN_ADR_TXT="listen_addresses"
 CONTENT_ID_TXT="gp_contentid"
+AUTOVACUUM_TXT="#autovacuum ="
 DBID_TXT="gp_dbid"
 INIT_STANDBY_PROG=$GPINITSTANDBY
 QE_MIRROR_ARRAY=""
@@ -1216,6 +1217,12 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Setting Master instance db id"
 		SED_PG_CONF ${GP_DIR}/$PG_INTERNAL_CONF "$DBID_TXT" "gp_dbid=$GP_DBID" 0
 		ERROR_CHK $? "set gp_dbid=$GP_DBID in ${GP_DIR}/$PG_INTERNAL_CONF" 1
+
+		# Enable auto-ANALYZE for the cluster, more details please refer to
+		# src/backend/postmaster/README.auto-ANALYZE.
+		LOG_MSG "[INFO]:-Enable auto-ANALYZE for the cluster"
+		SED_PG_CONF ${GP_DIR}/$PG_CONF "$AUTOVACUUM_TXT" "autovacuum=on" 0
+		ERROR_CHK $? "set autovacuum=on in ${GP_DIR}/$PG_CONF" 1
 
 		if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
 				LOG_MSG "[INFO]:-Processing additional configuration parameters"

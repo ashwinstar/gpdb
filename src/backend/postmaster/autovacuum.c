@@ -1741,7 +1741,9 @@ AutoVacWorkerMain(int argc, char *argv[])
 		ereport(LOG,
 				(errmsg("autovacuum: processing database \"%s\"", dbname)));
 
-		SIMPLE_FAULT_INJECTOR("auto_vac_worker_before_do_autovacuum");
+		FaultInjector_InjectFaultIfSet(
+			"auto_vac_worker_before_do_autovacuum", DDLNotSpecified,
+			dbname, "");
 
 		if (PostAuthDelay)
 			pg_usleep(PostAuthDelay * 1000000L);
@@ -2149,13 +2151,16 @@ do_autovacuum(void)
 		/*
 		 * Check if it is a temp table (presumably, of some other backend's).
 		 * We cannot safely process other backends' temp tables.
-		 *
-		 * GPDB: Currently we enable autovacuum ANALYZE on QD(Master), so the below
-		 * code only process temp tables on Master. Segments' temp tables still
-		 * need to be considered in future.
 		 */
 		if (classForm->relpersistence == RELPERSISTENCE_TEMP)
 		{
+			/*
+			 * GPDB: Skip process temp tables since the temp namespace for QD and QE
+			 * is using gp_session_id as suffix instead of backendID.
+			 * And performDeletion() only execute delete on current node.
+			 */
+			continue;
+
 			/*
 			 * We just ignore it if the owning backend is still active and
 			 * using the temporary schema.
