@@ -1,0 +1,4 @@
+-- start_ignore
+alter system set autovacuum = on;
+select * from pg_reload_conf();
+-- end_ignore
