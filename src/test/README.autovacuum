@@ -1,0 +1,41 @@
+Since we enable auto-ANALYZE as defaule, so when adding new test, please
+consider whether the case will be affected by the autovacuum worker process,
+it may become flaky.
+
+There are 3 classes of cases that need to deal with autovacuum auto-ANALYZE
+enabled.
+
+1. ADD ANALYZE for tables.
+For this kind of case, we used to have autostats enabled, and our
+default gp_autostats_mode setting is on_no_stats.
+This means ANALYZE is executed when first-time insert/copy data into
+the empty table. So our plan is base on this.
+When we enable auto-ANALYZE, autostats is skipped. So the table will
+not have any stats until the auto-ANALYZE triggered or explicit
+ANALYZE issued.
+The failure could be caused by the explain output. The planner or ORCA
+will generate a plan base on empty stats.
+NOTE: some times we need execute `select pg_sleep()` to force
+`pgstat_report_stat()` to send tabstat before `pgstat_report_analyze()`.
+If analyze msg recevied first, n_mod_since_analyze will not be 0 once it
+get table stats. And since we create index for some tables later, the
+triggered auto-ANALYZE will cause table's index statstics change and ORCA
+may generate different plans for some queries.
+
+2. Disable autovacuum for specific tests.
+There are some cases we need to turn off the autovacuum.
+- Test cases related to autostats. These tests are testing the
+  autostats, so we have to disable autovacuum.
+- Test cases are sensitive to backend transactions. The vacuum
+  related tests. The auto-ANALYZE worker keeps the recently dead
+  tuples and ao segfiles.
+
+3. Rewrite queries to have consistent output.
+Which also cause by the backend transactions from auto-ANALYZE workers.
+Some of the tests query the segfile status. For example:
+```
+VACUUM ao;
+SELECT segno, tupcount, state FROM gp_ao_or_aocs_seg('ao');
+```
+If a backend transaction is running before the VACUUM, the output of
+the query will show segfile with state 2(AOSEG_STATE_AWAITING_DROP).
