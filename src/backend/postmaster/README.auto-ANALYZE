@@ -110,11 +110,6 @@ SELECT count(*) FROM pg_statistic where starelid = 'anaabort'::regclass;
 (1 row)
 ```
 
-### Enable auto-ANALYZE as default for GPDB cluster.
-Since set the `autovacuum=on` in guc.c will take effect for all segments.
-And we only need to set it on Coordinator. So, set the `autovacuum=on` for Coordinator
-in gpinitsystem.
-
 Limitations
 ==================================================
 
