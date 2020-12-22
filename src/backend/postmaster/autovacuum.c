@@ -3308,14 +3308,6 @@ AutoVacuumingActive(void)
 {
 	if (!autovacuum_start_daemon || !pgstat_track_counts)
 		return false;
-
-	/*
-	 * GPDB: only wish to spawn autovacuum launcher process on
-	 * Co-ordinator. Hence, return false for segments. This code is present to
-	 * make "autovacuum" GUC no-op for segments.
-	 */
-	if (!IS_QUERY_DISPATCHER())
-		return false;
 	return true;
 }
 
