@@ -2,7 +2,6 @@ create or replace function test_consume_xids(int4) returns void
 as '@abs_srcdir@/regress.so', 'test_consume_xids'
 language C;
 set debug_burn_xids=on;
-
 -- Speed up test.
 ALTER SYSTEM SET autovacuum_naptime = 5;
 select * from pg_reload_conf();
