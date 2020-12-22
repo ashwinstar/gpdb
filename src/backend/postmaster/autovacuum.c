@@ -3118,20 +3118,6 @@ relation_needs_vacanalyze(Oid relid,
 	}
 
 	/*
-	 * GPDB: Autovacuum is only enabled for catalog tables. In this case we
-	 * include tables in information_schema namespace.
-	 * (But ignore if at risk of wrap around and proceed to vacuum)
-	 */
-	if (!IsSystemClass(relid, classForm) &&
-		strcmp(get_namespace_name(classForm->relnamespace), "information_schema") != 0 &&
-		!force_vacuum)
-	{
-		*doanalyze = false;
-		*dovacuum = false;
-		return;
-	}
-
-	/*
 	 * If we found the table in the stats hash, and autovacuum is currently
 	 * enabled, make a threshold-based decision whether to vacuum and/or
 	 * analyze.  If autovacuum is currently disabled, we must be here for
@@ -3188,6 +3174,18 @@ relation_needs_vacanalyze(Oid relid,
 	{
 		if (get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE)
 			*doanalyze = false;
+	}
+
+	/*
+	 * GPDB: Autovacuum VACUUM is only enabled for catalog tables. In this
+	 * case we include tables in information_schema namespace.  (But ignore if
+	 * at risk of wrap around and proceed to vacuum)
+	 */
+	if (*dovacuum && !IsSystemClass(relid, classForm) &&
+		strcmp(get_namespace_name(classForm->relnamespace), "information_schema") != 0 &&
+		!force_vacuum)
+	{
+		*dovacuum = false;
 	}
 }
 
