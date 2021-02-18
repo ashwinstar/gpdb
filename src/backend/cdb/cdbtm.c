@@ -1141,7 +1141,7 @@ mppTxnOptions(bool needDtx)
 	if (XactReadOnly)
 		options |= GP_OPT_READ_ONLY;
 
-	if (isCurrentDtxActivated() && MyTmGxactLocal->explicitBeginRemembered)
+	if (MyTmGxactLocal->explicitBeginRemembered)
 		options |= GP_OPT_EXPLICT_BEGIN;
 
 	elog(DTM_DEBUG5,
@@ -1961,33 +1961,12 @@ finishDistributedTransactionContext(char *debugCaller, bool aborted)
 	setDistributedTransactionContext(DTX_CONTEXT_LOCAL_ONLY);
 
 	DtxContextInfo_Reset(&QEDtxContextInfo);
-
-}
-
-static void
-rememberDtxExplicitBegin(void)
-{
-	Assert (isCurrentDtxActivated());
-
-	if (!MyTmGxactLocal->explicitBeginRemembered)
-	{
-		ereport(DTM_DEBUG5,
-				(errmsg("rememberDtxExplicitBegin explicit BEGIN"),
-				TM_ERRDETAIL));
-		MyTmGxactLocal->explicitBeginRemembered = true;
-	}
-	else
-	{
-		ereport(DTM_DEBUG5,
-				(errmsg("rememberDtxExplicitBegin already an explicit BEGIN"),
-				TM_ERRDETAIL));
-	}
 }
 
 bool
 isDtxExplicitBegin(void)
 {
-	return (isCurrentDtxActivated() && MyTmGxactLocal->explicitBeginRemembered);
+	return MyTmGxactLocal->explicitBeginRemembered;
 }
 
 /*
@@ -2000,8 +1979,19 @@ sendDtxExplicitBegin(void)
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	setupDtxTransaction();
-	rememberDtxExplicitBegin();
+	if (!MyTmGxactLocal->explicitBeginRemembered)
+	{
+		MyTmGxactLocal->explicitBeginRemembered = true;
+		ereport(DTM_DEBUG5,
+				(errmsg("rememberDtxExplicitBegin explicit BEGIN"),
+				TM_ERRDETAIL));
+	}
+	else
+	{
+		ereport(DTM_DEBUG5,
+				(errmsg("rememberDtxExplicitBegin already an explicit BEGIN"),
+				TM_ERRDETAIL));
+	}
 }
 
 /**
@@ -2063,6 +2053,9 @@ performDtxProtocolCommitOnePhase(const char *gid)
 		 "performDtxProtocolCommitOnePhase going to call CommitTransaction for distributed transaction %s", gid);
 
 	dtxDeformGid(gid, &gxid);
+	if (gxid != getDistributedTransactionId())
+		elog(NOTICE, "gxid " UINT64_FORMAT " getDistributedTransactionId() " UINT64_FORMAT, gxid, getDistributedTransactionId());
+
 	Assert(gxid == getDistributedTransactionId());
 	MyTmGxactLocal->isOnePhaseCommit = true;
 

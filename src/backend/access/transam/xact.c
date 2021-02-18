@@ -2488,9 +2488,9 @@ StartTransaction(void)
 			if (DistributedTransactionContext != DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT &&
 				QEDtxContextInfo.distributedXid == InvalidDistributedTransactionId)
 			{
-				elog(ERROR,
-					 "distributed transaction id is invalid in context %s",
-					 DtxContextToString(DistributedTransactionContext));
+				/* elog(ERROR, */
+				/* 	 "distributed transaction id is invalid in context %s", */
+				/* 	 DtxContextToString(DistributedTransactionContext)); */
 			}
 
 			/*
@@ -2515,8 +2515,8 @@ StartTransaction(void)
 				DistributedTransactionContext ==
 				DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER)
 			{
-				Assert(QEDtxContextInfo.distributedXid !=
-					   InvalidDistributedTransactionId);
+				/* Assert(QEDtxContextInfo.distributedXid != */
+				/* 	   InvalidDistributedTransactionId); */
 
 				/*
 				 * Update distributed XID info, this is only used for
