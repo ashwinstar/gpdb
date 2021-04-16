@@ -127,7 +127,7 @@ static void currentDtxActivate(void);
 static void setCurrentDtxState(DtxState state);
 
 static bool isDtxQueryDispatcher(void);
-static void performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound);
+static void performDtxProtocolCommitPrepared(const char *gid, DistributedTransactionId dcsn, bool raiseErrorIfNotFound);
 static void performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound);
 static void sendWaitGxidsToQD(List *waitGxids);
 
@@ -436,6 +436,7 @@ doDispatchSubtransactionInternalCmd(DtxProtocolCommand cmdType)
 	dtxFormGid(gid, getDistributedTransactionId());
 	succeeded = doDispatchDtxProtocolCommand(cmdType,
 											 gid,
+											 InvalidDistributedTransactionId,
 											 /* raiseError */ true,
 											 cdbcomponent_getCdbComponentsList(),
 											 serializedDtxContextInfo, serializedDtxContextInfoLen);
@@ -1208,15 +1209,25 @@ bool
 currentDtxDispatchProtocolCommand(DtxProtocolCommand dtxProtocolCommand, bool raiseError)
 {
 	char gid[TMGIDSIZE];
-
+	DistributedTransactionId tmp_dcsn = InvalidDistributedTransactionId;
 	dtxFormGid(gid, getDistributedTransactionId());
-	return doDispatchDtxProtocolCommand(dtxProtocolCommand, gid, raiseError,
+
+	if (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_COMMIT_ONEPHASE ||
+		dtxProtocolCommand == DTX_PROTOCOL_COMMAND_COMMIT_PREPARED)
+	{
+		/* Get our CSN and increment */
+		tmp_dcsn = pg_atomic_fetch_add_u64(&ShmemVariableCache->dcsn, 1);
+		elog(LOG, "new dcsn = " INT64_FORMAT "for gid %s" , tmp_dcsn, gid);
+	}
+
+	return doDispatchDtxProtocolCommand(dtxProtocolCommand, gid, tmp_dcsn, raiseError,
 										MyTmGxactLocal->dtxSegments, NULL, 0);
 }
 
 bool
 doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 							 char *gid,
+							 DistributedTransactionId dcsn,
 							 bool raiseError,
 							 List *dtxSegments,
 							 char *serializedDtxContextInfo,
@@ -1252,6 +1263,7 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	results = CdbDispatchDtxProtocolCommand(dtxProtocolCommand,
 											dtxProtocolCommandStr,
 											gid,
+											dcsn,
 											&qeError, &resultCount, dtxSegments,
 											serializedDtxContextInfo, serializedDtxContextInfoLen);
 
@@ -2087,7 +2099,7 @@ performDtxProtocolCommitOnePhase(const char *gid)
  * On the QE, run the Commit Prepared operation.
  */
 static void
-performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
+performDtxProtocolCommitPrepared(const char *gid, DistributedTransactionId dcsn, bool raiseErrorIfNotFound)
 {
 	Assert(Gp_role == GP_ROLE_EXECUTE);
 
@@ -2103,7 +2115,7 @@ performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
 	 */
 	PG_TRY();
 	{
-		FinishPreparedTransaction((char *) gid, /* isCommit */ true, raiseErrorIfNotFound);
+		FinishPreparedTransaction((char *) gid, dcsn, /* isCommit */ true, raiseErrorIfNotFound);
 	}
 	PG_CATCH();
 	{
@@ -2140,7 +2152,7 @@ performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound)
 	 */
 	PG_TRY();
 	{
-		FinishPreparedTransaction((char *) gid, /* isCommit */ false, raiseErrorIfNotFound);
+		FinishPreparedTransaction((char *) gid, InvalidDistributedTransactionId, /* isCommit */ false, raiseErrorIfNotFound);
 	}
 	PG_CATCH();
 	{
@@ -2164,6 +2176,7 @@ performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound)
 void
 performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 						  const char *gid,
+						  DistributedTransactionId dcsn,
 						  DtxContextInfo *contextInfo)
 {
 	elog(DTM_DEBUG5,
@@ -2264,7 +2277,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		case DTX_PROTOCOL_COMMAND_COMMIT_PREPARED:
 			requireDistributedTransactionContext(DTX_CONTEXT_QE_PREPARED);
 			setDistributedTransactionContext(DTX_CONTEXT_QE_FINISH_PREPARED);
-			performDtxProtocolCommitPrepared(gid, /* raiseErrorIfNotFound */ true);
+			performDtxProtocolCommitPrepared(gid, dcsn, /* raiseErrorIfNotFound */ true);
 			break;
 
 		case DTX_PROTOCOL_COMMAND_ABORT_PREPARED:
@@ -2275,7 +2288,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 
 		case DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED:
 			requireDistributedTransactionContext(DTX_CONTEXT_LOCAL_ONLY);
-			performDtxProtocolCommitPrepared(gid, /* raiseErrorIfNotFound */ false);
+			performDtxProtocolCommitPrepared(gid, dcsn, /* raiseErrorIfNotFound */ false);
 			break;
 
 		case DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED:
@@ -2285,7 +2298,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 
 		case DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED:
 			requireDistributedTransactionContext(DTX_CONTEXT_LOCAL_ONLY);
-			performDtxProtocolCommitPrepared(gid, /* raiseErrorIfNotFound */ false);
+			performDtxProtocolCommitPrepared(gid, dcsn, /* raiseErrorIfNotFound */ false);
 			break;
 
 		case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:

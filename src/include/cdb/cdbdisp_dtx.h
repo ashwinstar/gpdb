@@ -34,6 +34,7 @@ struct pg_result **
 CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 							  char	*dtxProtocolCommandLoggingStr,
 							  char	*gid,
+							  DistributedTransactionId dcsn,
 							  ErrorData **qeError,
 							  int *resultCount,
 							  List *dtxSegments,

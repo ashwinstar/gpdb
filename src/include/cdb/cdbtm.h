@@ -331,11 +331,12 @@ extern void setupQEDtxContext (DtxContextInfo *dtxContextInfo);
 extern void finishDistributedTransactionContext (char *debugCaller, bool aborted);
 extern void performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 									  const char *gid,
+									  DistributedTransactionId dcsn,
 									  DtxContextInfo *contextInfo);
 
 extern bool currentDtxDispatchProtocolCommand(DtxProtocolCommand dtxProtocolCommand, bool raiseError);
 extern bool doDispatchSubtransactionInternalCmd(DtxProtocolCommand cmdType);
-extern bool doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, char *gid,
+extern bool doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, char *gid, DistributedTransactionId dcsn,
 							 bool raiseError, List *dtxSegments,
 							 char *serializedDtxContextInfo, int serializedDtxContextInfoLen);
 

@@ -75,6 +75,7 @@ doNotifyCommittedInDoubt(char *gid)
 	/* UNDONE: Pass real gxid instead of InvalidDistributedTransactionId. */
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED,
 											 gid,
+											 InvalidDistributedTransactionId, // FIXME
 											 /* raiseError */ false,
 											 cdbcomponent_getCdbComponentsList(), NULL, 0);
 	if (!succeeded)
@@ -95,6 +96,7 @@ doAbortInDoubt(char *gid)
 	/* UNDONE: Pass real gxid instead of InvalidDistributedTransactionId. */
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED,
 											 gid,
+											 InvalidDistributedTransactionId, // FIXME
 											 /* raiseError */ false,
 											 cdbcomponent_getCdbComponentsList(), NULL, 0);
 	if (!succeeded)

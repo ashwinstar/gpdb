@@ -58,7 +58,7 @@ extern void RecoverPreparedTransactions(void);
 
 extern void CheckPointTwoPhase(XLogRecPtr redo_horizon);
 
-extern bool FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound);
+extern bool FinishPreparedTransaction(const char *gid, DistributedTransactionId dcsn, bool isCommit, bool raiseErrorIfNotFound);
 
 extern void PrepareRedoAdd(char *buf, XLogRecPtr start_lsn,
 						   XLogRecPtr end_lsn, RepOriginId origin_id);

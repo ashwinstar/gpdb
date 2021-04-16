@@ -133,6 +133,11 @@ DistributedSnapshotWithLocalMapping_CommittedTest(
 
 	Assert(ds->xminAllDistributedSnapshots != InvalidDistributedTransactionId);
 
+	if (distribXid < ds->currentDCSN)
+		return DISTRIBUTEDSNAPSHOT_COMMITTED_VISIBLE;
+
+	return DISTRIBUTEDSNAPSHOT_COMMITTED_INPROGRESS;
+
 	/*
 	 * If this distributed transaction is older than all the distributed
 	 * snapshots, then we can ignore it from now on.
@@ -259,6 +264,7 @@ DistributedSnapshot_Copy(DistributedSnapshot *target,
 		 source->inProgressXidArray);
 
 	target->xminAllDistributedSnapshots = source->xminAllDistributedSnapshots;
+	target->currentDCSN = source->currentDCSN;
 	target->distribSnapshotId = source->distribSnapshotId;
 	target->xmin = source->xmin;
 	target->xmax = source->xmax;
@@ -287,8 +293,8 @@ int
 DistributedSnapshot_SerializeSize(DistributedSnapshot *ds)
 {
 	return sizeof(DistributedSnapshotId) +
-	/* xminAllDistributedSnapshots, xmin, xmax */
-		3 * sizeof(DistributedTransactionId) +
+	/* xminAllDistributedSnapshots, xmin, xmax, DCSN */
+		4 * sizeof(DistributedTransactionId) +
 	/* count */
 		sizeof(int32) +
 	/* Size of inProgressXidArray */
@@ -301,6 +307,8 @@ DistributedSnapshot_Serialize(DistributedSnapshot *ds, char *buf)
 	char	   *p = buf;
 
 	memcpy(p, &ds->xminAllDistributedSnapshots, sizeof(DistributedTransactionId));
+	p += sizeof(DistributedTransactionId);
+	memcpy(p, &ds->currentDCSN, sizeof(DistributedTransactionId));
 	p += sizeof(DistributedTransactionId);
 	memcpy(p, &ds->distribSnapshotId, sizeof(DistributedSnapshotId));
 	p += sizeof(DistributedSnapshotId);
@@ -325,6 +333,8 @@ DistributedSnapshot_Deserialize(const char *buf, DistributedSnapshot *ds)
 	const char *p = buf;
 
 	memcpy(&ds->xminAllDistributedSnapshots, p, sizeof(DistributedTransactionId));
+	p += sizeof(DistributedTransactionId);
+	memcpy(&ds->currentDCSN, p, sizeof(DistributedTransactionId));
 	p += sizeof(DistributedTransactionId);
 	memcpy(&ds->distribSnapshotId, p, sizeof(DistributedSnapshotId));
 	p += sizeof(DistributedSnapshotId);

@@ -165,6 +165,11 @@ typedef struct VariableCacheData
 	uint32		GxidCount;		/* Gxids available before must do XLOG work */
 
 	/*
+	 * Distributed Commit Sequence Number
+	 */
+	DistributedTransactionId dcsn;	/* next full XID to assign */
+
+	/*
 	 * These fields are protected by CLogTruncationLock
 	 */
 	TransactionId oldestClogXid;	/* oldest it's safe to look up in clog */

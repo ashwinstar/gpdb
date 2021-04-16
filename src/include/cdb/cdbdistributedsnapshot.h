@@ -25,6 +25,7 @@ typedef struct DistributedSnapshot
 	 * The lowest distributed transaction being used for distributed snapshots.
 	 */
 	DistributedTransactionId xminAllDistributedSnapshots;
+	DistributedTransactionId currentDCSN;
 
 	/*
 	 * Unique number identifying this particular distributed snapshot.

@@ -2056,6 +2056,8 @@ CreateDistributedSnapshot(DistributedSnapshot *ds)
 	if (MyTmGxact->xminDistributedSnapshot == InvalidDistributedTransactionId)
 		MyTmGxact->xminDistributedSnapshot = xmin;
 
+	ds->currentDCSN = pg_atomic_read_u64(&ShmemVariableCache->dcsn);
+
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 		 "CreateDistributedSnapshot distributed snapshot has xmin = "UINT64_FORMAT", count = %u, xmax = "UINT64_FORMAT".",
 		 xmin, count, xmax);

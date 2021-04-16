@@ -498,7 +498,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 						}
 						PreventInTransactionBlock(isTopLevel, "COMMIT PREPARED");
 						PreventCommandDuringRecovery("COMMIT PREPARED");
-						FinishPreparedTransaction(stmt->gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
+						FinishPreparedTransaction(stmt->gid, InvalidDistributedTransactionId, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
 						break;
 
 					case TRANS_STMT_ROLLBACK_PREPARED:
@@ -509,7 +509,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 						}
 						PreventInTransactionBlock(isTopLevel, "ROLLBACK PREPARED");
 						PreventCommandDuringRecovery("ROLLBACK PREPARED");
-						FinishPreparedTransaction(stmt->gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
+						FinishPreparedTransaction(stmt->gid, InvalidDistributedTransactionId, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
 						break;
 
 					case TRANS_STMT_ROLLBACK:

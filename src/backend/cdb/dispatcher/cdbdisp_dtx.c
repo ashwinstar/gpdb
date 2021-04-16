@@ -40,6 +40,7 @@ typedef struct DispatchCommandDtxProtocolParms
 	char		gid[TMGIDSIZE];
 	char	   *serializedDtxContextInfo;
 	int			serializedDtxContextInfoLen;
+	DistributedTransactionId dcsn;
 } DispatchCommandDtxProtocolParms;
 
 /*
@@ -68,6 +69,7 @@ struct pg_result **
 CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 							  char *dtxProtocolCommandLoggingStr,
 							  char *gid,
+							  DistributedTransactionId dcsn,
 							  ErrorData **qeError,
 							  int *numresults,
 							  List *dtxSegments,
@@ -93,6 +95,7 @@ CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	memcpy(dtxProtocolParms.gid, gid, TMGIDSIZE);
 	dtxProtocolParms.serializedDtxContextInfo = serializedDtxContextInfo;
 	dtxProtocolParms.serializedDtxContextInfoLen = serializedDtxContextInfoLen;
+	dtxProtocolParms.dcsn = dcsn;
 
 	/*
 	 * Dispatch the command.
@@ -219,20 +222,22 @@ buildGpDtxProtocolCommand(DispatchCommandDtxProtocolParms *pDtxProtocolParms,
 	char	   *gid = pDtxProtocolParms->gid;
 	char	   *serializedDtxContextInfo = pDtxProtocolParms->serializedDtxContextInfo;
 	int			serializedDtxContextInfoLen = pDtxProtocolParms->serializedDtxContextInfoLen;
+	DistributedTransactionId dcsn = pDtxProtocolParms->dcsn;
 	int			tmp = 0;
 	int			len = 0;
 
 	int			loggingStrLen = strlen(dtxProtocolCommandLoggingStr) + 1;
 	int			gidLen = strlen(gid) + 1;
 	int			total_query_len = 1 /* 'T' */ +
-	sizeof(len) +
-	sizeof(dtxProtocolCommand) +
-	sizeof(loggingStrLen) +
-	loggingStrLen +
-	sizeof(gidLen) +
-	gidLen +
-	sizeof(serializedDtxContextInfoLen) +
-	serializedDtxContextInfoLen;
+ 		sizeof(len) +
+		sizeof(dtxProtocolCommand) +
+		sizeof(loggingStrLen) +
+		loggingStrLen +
+		sizeof(gidLen) +
+		gidLen +
+		sizeof(serializedDtxContextInfoLen) +
+		serializedDtxContextInfoLen +
+		sizeof(DistributedTransactionId);
 
 	char	   *shared_query = NULL;
 	char	   *pos = NULL;
@@ -274,6 +279,17 @@ buildGpDtxProtocolCommand(DispatchCommandDtxProtocolParms *pDtxProtocolParms,
 		memcpy(pos, serializedDtxContextInfo, serializedDtxContextInfoLen);
 		pos += serializedDtxContextInfoLen;
 	}
+
+	uint64 tmp64 = dcsn;
+
+#if BYTE_ORDER == LITTLE_ENDIAN
+#define local_htonll(n)  ((((uint64) htonl(n)) << 32LL) | htonl((n) >> 32LL))
+#define local_ntohll(n)  ((((uint64) ntohl(n)) << 32LL) | (uint32) ntohl(((uint64)n) >> 32LL))
+	tmp64 = local_htonll(dcsn);
+#endif
+
+	memcpy(pos, &tmp64, sizeof(DistributedTransactionId));
+	pos += sizeof(DistributedTransactionId);
 
 	len = pos - shared_query - 1;
 

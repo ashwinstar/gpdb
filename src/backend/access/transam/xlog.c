@@ -5194,6 +5194,7 @@ BootStrapXLOG(void)
 	ShmemVariableCache->nextFullXid = checkPoint.nextFullXid;
 	ShmemVariableCache->nextGxid = checkPoint.nextGxid;
 	ShmemVariableCache->GxidCount = 0;
+	pg_atomic_write_u64(&ShmemVariableCache->dcsn, FirstDistributedTransactionId);
 	ShmemVariableCache->nextOid = checkPoint.nextOid;
 	ShmemVariableCache->oidCount = 0;
 	ShmemVariableCache->nextRelfilenode = checkPoint.nextRelfilenode;
@@ -6832,6 +6833,7 @@ StartupXLOG(void)
 	ShmemVariableCache->nextFullXid = checkPoint.nextFullXid;
 	ShmemVariableCache->nextGxid = checkPoint.nextGxid;
 	ShmemVariableCache->GxidCount = 0;
+	pg_atomic_write_u64(&ShmemVariableCache->dcsn, FirstDistributedTransactionId);
 	ShmemVariableCache->nextOid = checkPoint.nextOid;
 	ShmemVariableCache->oidCount = 0;
 	ShmemVariableCache->nextRelfilenode = checkPoint.nextRelfilenode;

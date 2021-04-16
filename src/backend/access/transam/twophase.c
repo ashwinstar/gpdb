@@ -219,7 +219,7 @@ static void RecordTransactionCommitPrepared(TransactionId xid,
 											int ninvalmsgs,
 											SharedInvalidationMessage *invalmsgs,
 											bool initfileinval,
-											const char *gid);
+											DistributedTransactionId dcsn);
 static void RecordTransactionAbortPrepared(TransactionId xid,
 										   int nchildren,
 										   TransactionId *children,
@@ -1515,7 +1515,7 @@ finish_prepared_transaction_tablespace_storage(bool isCommit) {
  * FinishPreparedTransaction: execute COMMIT PREPARED or ROLLBACK PREPARED
  */
 bool
-FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound)
+FinishPreparedTransaction(const char *gid, DistributedTransactionId dcsn, bool isCommit, bool raiseErrorIfNotFound)
 {
 	GlobalTransaction gxact;
 	PGPROC	   *proc;
@@ -1629,7 +1629,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 										hdr->ncommitrels, commitrels,
 										hdr->ncommitdbs, commitdbs,
 										hdr->ninvalmsgs, invalmsgs,
-										hdr->initfileinval, gid);
+										hdr->initfileinval, dcsn);
 	else
 		RecordTransactionAbortPrepared(xid,
 									   hdr->nsubxacts, children,
@@ -2377,12 +2377,14 @@ RecordTransactionCommitPrepared(TransactionId xid,
 								int ninvalmsgs,
 								SharedInvalidationMessage *invalmsgs,
 								bool initfileinval,
-								const char *gid)
+								DistributedTransactionId distribXid)
 {
 	XLogRecPtr	recptr;
 	TimestampTz committs = GetCurrentTimestamp();
 	bool		replorigin;
-	DistributedTransactionId distribXid;
+	char        gid[TMGIDSIZE];
+
+	dtxFormGid(gid, distribXid);
 
 	/*
 	 * Are we using the replication origins feature?  Or, in other words, are
@@ -2395,12 +2397,6 @@ RecordTransactionCommitPrepared(TransactionId xid,
 
 	/* See notes in RecordTransactionCommit */
 	MyPgXact->delayChkpt = true;
-
-	/*
-	 * Crack open the gid to get the DTM start time and distributed
-	 * transaction id.
-	 */
-	dtxDeformGid(gid, &distribXid);
 
 	SIMPLE_FAULT_INJECTOR("before_xlog_xact_commit_prepared");
 

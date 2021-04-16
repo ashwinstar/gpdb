@@ -1519,6 +1519,7 @@ static void
 exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 							  const char *loggingStr,
 							  const char *gid,
+							  DistributedTransactionId dcsn,
 							  DtxContextInfo *contextInfo)
 {
 	CommandDest dest = whereToSendOutput;
@@ -1554,7 +1555,7 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 
 	BeginCommand(commandTag, dest);
 
-	performDtxProtocolCommand(dtxProtocolCommand, gid, contextInfo);
+	performDtxProtocolCommand(dtxProtocolCommand, gid, dcsn, contextInfo);
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command calling EndCommand for dtxProtocolCommand = %d (%s) gid = %s",
 		 dtxProtocolCommand, loggingStr, gid);
@@ -5429,6 +5430,7 @@ PostgresMain(int argc, char *argv[],
 					const char *gid;
 					int serializedDtxContextInfolen;
 					const char *serializedDtxContextInfo;
+					DistributedTransactionId dcsn;
 
 					if (Gp_role != GP_ROLE_EXECUTE)
 						ereport(ERROR,
@@ -5462,9 +5464,12 @@ PostgresMain(int argc, char *argv[],
 
 					DtxContextInfo_Deserialize(serializedDtxContextInfo, serializedDtxContextInfolen, &TempDtxContextInfo);
 
+					dcsn = pq_getmsgint64(&input_message);
+					elog(LOG, "using dcsn = " INT64_FORMAT, dcsn);
+
 					pq_getmsgend(&input_message);
 
-					exec_mpp_dtx_protocol_command(dtxProtocolCommand, loggingStr, gid, &TempDtxContextInfo);
+					exec_mpp_dtx_protocol_command(dtxProtocolCommand, loggingStr, gid, dcsn, &TempDtxContextInfo);
 
 					send_ready_for_query = true;
             	}
