@@ -207,6 +207,7 @@ typedef struct TMGXACT
 	 * transaction ends, with ProcArrayLock held.
 	 */
 	DistributedTransactionId	gxid;
+	DistributedTransactionId    dcsn;
 
 	/*
 	 * This is similar to xmin of PROC, stores lowest dxid on first snapshot
@@ -287,6 +288,7 @@ extern void dtxDeformGid(const char	*gid,
 							DistributedTransactionId		*distribXid);
 extern void dtxFormGid(char *gid, DistributedTransactionId gxid);
 extern DistributedTransactionId getDistributedTransactionId(void);
+extern DistributedTransactionId getDistributedCSN(void);
 extern bool getDistributedTransactionIdentifier(char *id);
 
 extern void resetTmGxact(void);

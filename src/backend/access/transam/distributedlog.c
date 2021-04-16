@@ -473,16 +473,16 @@ DistributedLog_CommittedCheck(
 	DistributedLogEntry *ptr;
 	TransactionId oldestXmin;
 
+	/* FIXME: How to calculate the oldestXmin to truncate the Distributed Log */
+	/* oldestXmin = (TransactionId)pg_atomic_read_u32((pg_atomic_uint32 *)&DistributedLogShared->oldestXmin); */
+	/* if (oldestXmin == InvalidTransactionId) */
+	/* 	elog(PANIC, "DistributedLog's OldestXmin not initialized yet"); */
 
-	oldestXmin = (TransactionId)pg_atomic_read_u32((pg_atomic_uint32 *)&DistributedLogShared->oldestXmin);
-	if (oldestXmin == InvalidTransactionId)
-		elog(PANIC, "DistributedLog's OldestXmin not initialized yet");
-
-	if (TransactionIdPrecedes(localXid, oldestXmin))
-	{
-		*distribXid = 0;
-		return false;
-	}
+	/* if (TransactionIdPrecedes(localXid, oldestXmin)) */
+	/* { */
+	/* 	*distribXid = 0; */
+	/* 	return false; */
+	/* } */
 
 	LWLockAcquire(DistributedLogTruncateLock, LW_SHARED);
 	slotno = SimpleLruReadPage_ReadOnly(DistributedLogCtl, page, localXid);
@@ -931,6 +931,9 @@ static void
 DistributedLog_Truncate(TransactionId oldestXmin)
 {
 	int			cutoffPage;
+
+	/* FIXME: determine how to truncate distributed log when using CSN */
+	return;
 
 	Assert(!IS_QUERY_DISPATCHER());
 

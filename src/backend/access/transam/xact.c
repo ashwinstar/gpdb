@@ -1707,7 +1707,7 @@ RecordTransactionCommit(void)
 			/* UNDONE: What are the locking issues here? */
 			if (isDtxPrepared || isOnePhaseQE)
 				DistributedLog_SetCommittedTree(xid, nchildren, children,
-												getDistributedTransactionId(),
+												getDistributedCSN(),
 												/* isRedo */ false);
 
 			TransactionIdCommitTree(xid, nchildren, children);

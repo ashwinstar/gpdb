@@ -179,6 +179,15 @@ getDistributedTransactionId(void)
 		return InvalidDistributedTransactionId;
 }
 
+DistributedTransactionId
+getDistributedCSN(void)
+{
+	if (isDtxContext())
+		return MyTmGxact->dcsn;
+	else
+		return InvalidDistributedTransactionId;
+}
+
 bool
 getDistributedTransactionIdentifier(char *id)
 {
@@ -2064,7 +2073,7 @@ sendWaitGxidsToQD(List *waitGxids)
  * On the QE, run the Commit one-phase operation.
  */
 static void
-performDtxProtocolCommitOnePhase(const char *gid)
+performDtxProtocolCommitOnePhase(const char *gid, DistributedTransactionId dcsn)
 {
 	DistributedTransactionId gxid;
 	List *waitGxids = list_copy(MyTmGxactLocal->waitGxids);
@@ -2077,6 +2086,8 @@ performDtxProtocolCommitOnePhase(const char *gid)
 	dtxDeformGid(gid, &gxid);
 	Assert(gxid == getDistributedTransactionId());
 	MyTmGxactLocal->isOnePhaseCommit = true;
+
+	MyTmGxact->dcsn = dcsn;
 
 	StartTransactionCommand();
 
@@ -2211,7 +2222,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 				case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
 				case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
 					if (dtxProtocolCommand == DTX_PROTOCOL_COMMAND_COMMIT_ONEPHASE)
-						performDtxProtocolCommitOnePhase(gid);
+						performDtxProtocolCommitOnePhase(gid, dcsn);
 					else
 						performDtxProtocolPrepare(gid);
 					break;
