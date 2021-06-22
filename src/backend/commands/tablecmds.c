@@ -5353,6 +5353,12 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
 
 		/* Relations without storage may be ignored here */
+
+		/*
+		 * Check for tables not having storage on QD needs to be performed
+		 * later in ATRewriteTable() as still need to create the temp tble to
+		 * allocate OID.
+		 */
 		if (!RELKIND_HAS_STORAGE(tab->relkind))
 			continue;
 
@@ -5658,7 +5664,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 		ListCell   *lcon;
 
 		/* Relations without storage may be ignored here too */
-		if (!RELKIND_HAS_STORAGE(tab->relkind))
+		if (!RELKIND_HAS_STORAGE(tab->relkind) || !RELAM_HAS_STORAGE(tab->relam))
 			continue;
 
 		foreach(lcon, tab->constraints)
@@ -6028,6 +6034,10 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 	BulkInsertState bistate;
 	int			ti_options;
 	ExprState  *partqualstate = NULL;
+
+	/* Relations on QD without storage may be ignored here */
+	if (!RELAM_HAS_STORAGE(tab->relam))
+		return;
 
 	/*
 	 * Open the relation(s).  We have surely already locked the existing
@@ -6407,6 +6417,7 @@ ATGetQueueEntry(List **wqueue, Relation rel)
 	tab = (AlteredTableInfo *) palloc0(sizeof(AlteredTableInfo));
 	tab->relid = relid;
 	tab->relkind = rel->rd_rel->relkind;
+	tab->relam = rel->rd_rel->relam;
 	tab->oldDesc = CreateTupleDescCopyConstr(RelationGetDescr(rel));
 	tab->newrelpersistence = RELPERSISTENCE_PERMANENT;
 	tab->chgPersistence = false;

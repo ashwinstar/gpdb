@@ -21,6 +21,7 @@
 
 #include "access/xlogdefs.h"  /*XLogRecPtr*/
 #include "catalog/gp_segment_configuration.h" /* MASTER_CONTENT_ID */
+#include "catalog/pg_am_d.h"
 
 /*
  * ----- Declarations of Greenplum-specific global variables ------
@@ -715,6 +716,11 @@ extern GpId GpIdentity;
 #define IS_QUERY_DISPATCHER() (GpIdentity.segindex == MASTER_CONTENT_ID)
 
 #define IS_QUERY_EXECUTOR_BACKEND() (Gp_role == GP_ROLE_EXECUTE && gp_session_id > 0)
+
+#define RELAM_HAS_STORAGE(accessmtd) \
+	(!(IS_QUERY_DISPATCHER() && \
+	   (accessmtd == AO_ROW_TABLE_AM_OID || \
+		accessmtd == AO_COLUMN_TABLE_AM_OID)))
 
 /* Stores the listener port that this process uses to listen for incoming
  * Interconnect connections from other Motion nodes.

@@ -84,6 +84,9 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, SMgrImpl smgr_whic
 	BackendId	backend;
 	bool		needs_wal;
 
+	if (rnode.relNode == 0)
+		elog(NOTICE, "adding relfileNode 0 to pending deletes");
+
 	switch (relpersistence)
 	{
 		case RELPERSISTENCE_TEMP:

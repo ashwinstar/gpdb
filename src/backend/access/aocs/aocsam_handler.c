@@ -1074,6 +1074,9 @@ aoco_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 	AOCSScanDesc			scan = NULL;
 	TupleTableSlot		   *slot;
 
+	if (IS_QUERY_DISPATCHER())
+		return;
+	
 	pg_rusage_init(&ru0);
 
 	/*

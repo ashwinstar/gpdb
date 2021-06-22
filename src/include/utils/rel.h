@@ -31,7 +31,7 @@
 #include "utils/reltrigger.h"
 
 #include "catalog/pg_proc.h"
-
+#include "cdb/cdbvars.h"
 
 /*
  * LockRelId and LockInfo really belong to lmgr.h, but it's more convenient
@@ -525,6 +525,7 @@ typedef struct ViewOptions
  */
 #define RelationIsMapped(relation) \
 	(RELKIND_HAS_STORAGE((relation)->rd_rel->relkind) && \
+	 RELAM_HAS_STORAGE((relation)->rd_rel->relam) && \
 	 ((relation)->rd_rel->relfilenode == InvalidOid))
 
 /*

@@ -1154,7 +1154,7 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 	relfilenode1 = relform1->relfilenode;
 	relfilenode2 = relform2->relfilenode;
 
-	if (OidIsValid(relfilenode1) && OidIsValid(relfilenode2))
+	if (!(RELKIND_HAS_STORAGE(relform1->relkind) && RELAM_HAS_STORAGE(relform1->relam) && !OidIsValid(relfilenode1)))
 	{
 		/*
 		 * Normal non-mapped relations: swap relfilenodes, reltablespaces,

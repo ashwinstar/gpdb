@@ -887,6 +887,9 @@ appendonly_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 	TupleTableSlot		   *slot;
 	TableScanDesc			aoscandesc;
 
+	if (IS_QUERY_DISPATCHER())
+		return;
+
 	pg_rusage_init(&ru0);
 
 	/*

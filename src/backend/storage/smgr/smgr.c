@@ -178,6 +178,9 @@ smgropen(RelFileNode rnode, BackendId backend, SMgrImpl which)
 	SMgrRelation reln;
 	bool		found;
 
+	if (rnode.relNode == 0)
+		elog(NOTICE, "smgropen relfilenode is called with zero");
+
 	/* GPDB: don't support MyBackendId as a possible backend. */
 	Assert(backend == InvalidBackendId || backend == TempRelBackendId);
 

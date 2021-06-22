@@ -1315,7 +1315,7 @@ static void
 RelationInitPhysicalAddr(Relation relation)
 {
 	/* these relations kinds never have storage */
-	if (!RELKIND_HAS_STORAGE(relation->rd_rel->relkind))
+	if (!RELKIND_HAS_STORAGE(relation->rd_rel->relkind) || !RELAM_HAS_STORAGE(relation->rd_rel->relam))
 		return;
 
 	if (relation->rd_rel->reltablespace)
@@ -3486,8 +3486,6 @@ RelationBuildLocalRelation(const char *relname,
 
 	RelationInitLockInfo(rel);	/* see lmgr.c */
 
-	RelationInitPhysicalAddr(rel);
-
 	rel->rd_rel->relam = accessmtd;
 
 	if (relkind == RELKIND_RELATION ||
@@ -3500,6 +3498,8 @@ RelationBuildLocalRelation(const char *relname,
 		relkind == RELKIND_AOVISIMAP ||
 		relkind == RELKIND_AOBLOCKDIR)
 		RelationInitTableAccessMethod(rel);
+
+	RelationInitPhysicalAddr(rel);
 
 	/*
 	 * Okay to insert into the relcache hash table.

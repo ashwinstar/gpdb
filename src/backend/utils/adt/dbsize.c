@@ -1115,7 +1115,7 @@ pg_relation_filenode(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	relform = (Form_pg_class) GETSTRUCT(tuple);
 
-	if (RELKIND_HAS_STORAGE(relform->relkind))
+	if (RELKIND_HAS_STORAGE(relform->relkind) && RELAM_HAS_STORAGE(relform->relam))
 	{
 		if (relform->relfilenode)
 			result = relform->relfilenode;
@@ -1185,7 +1185,7 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	relform = (Form_pg_class) GETSTRUCT(tuple);
 
-	if (RELKIND_HAS_STORAGE(relform->relkind))
+	if (RELKIND_HAS_STORAGE(relform->relkind) && RELAM_HAS_STORAGE(relform->relam))
 	{
 		/* This logic should match RelationInitPhysicalAddr */
 		if (relform->reltablespace)

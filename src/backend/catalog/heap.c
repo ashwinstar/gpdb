@@ -413,7 +413,7 @@ heap_create(const char *relname,
 	 * storage is already created, so don't do it here.  Also don't create it
 	 * for relkinds without physical storage.
 	 */
-	if (!RELKIND_HAS_STORAGE(relkind) || OidIsValid(relfilenode))
+	if (!RELKIND_HAS_STORAGE(relkind) || OidIsValid(relfilenode) || !RELAM_HAS_STORAGE(accessmtd))
 		create_storage = false;
 	else
 	{
@@ -2367,7 +2367,7 @@ heap_drop_with_catalog(Oid relid)
 	/*
 	 * Schedule unlinking of the relation's physical files at commit.
 	 */
-	if (RELKIND_HAS_STORAGE(rel->rd_rel->relkind))
+	if (RELKIND_HAS_STORAGE(rel->rd_rel->relkind) && RELAM_HAS_STORAGE(rel->rd_rel->relam))
 		RelationDropStorage(rel);
 
 	/*

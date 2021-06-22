@@ -3850,7 +3850,7 @@ CopyFrom(CopyState cstate)
 	 *----------
 	 */
 	/* createSubid is creation check, newRelfilenodeSubid is truncation check */
-	if (RELKIND_HAS_STORAGE(cstate->rel->rd_rel->relkind) &&
+	if (RELKIND_HAS_STORAGE(cstate->rel->rd_rel->relkind) && RELAM_HAS_STORAGE(cstate->rel->rd_rel->relam) &&
 		(cstate->rel->rd_createSubid != InvalidSubTransactionId ||
 		 cstate->rel->rd_newRelfilenodeSubid != InvalidSubTransactionId))
 	{

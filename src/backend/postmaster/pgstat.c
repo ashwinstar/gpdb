@@ -1788,7 +1788,7 @@ pgstat_initstats(Relation rel)
 	char		relkind = rel->rd_rel->relkind;
 
 	/* We only count stats for things that have storage */
-	if (!RELKIND_HAS_STORAGE(relkind))
+	if (!RELKIND_HAS_STORAGE(relkind) || !RELAM_HAS_STORAGE(rel->rd_rel->relam))
 	{
 		rel->pgstat_info = NULL;
 		return;
