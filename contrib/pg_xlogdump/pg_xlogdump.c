@@ -400,6 +400,24 @@ XLogDumpDisplayRecord(XLogDumpConfig *config, XLogRecPtr ReadRecPtr, XLogRecord 
 				   bkpb.node.spcNode, bkpb.node.dbNode, bkpb.node.relNode,
 				   forkNames[bkpb.fork],
 				   bkpb.block, bkpb.hole_offset, bkpb.hole_length);
+
+			char page[BLCKSZ];
+
+			memcpy((char *) page, blk, bkpb.hole_offset);
+			/* must zero-fill the hole */
+			MemSet((char *) page + bkpb.hole_offset, 0, bkpb.hole_length);
+			memcpy((char *) page + (bkpb.hole_offset + bkpb.hole_length),
+				   blk + bkpb.hole_offset,
+				   BLCKSZ - (bkpb.hole_offset + bkpb.hole_length));
+
+			if (bkpb.node.relNode == 6386524 && bkpb.block == 1)
+			{
+				int fd;
+				fd = open("/tmp/dump_block", O_CREAT | O_WRONLY,S_IRUSR);
+				write(fd, page, BLCKSZ);
+				fsync(fd);
+				close(fd);
+			}
 		}
 	}
 }

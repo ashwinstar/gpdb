@@ -148,8 +148,6 @@ select count(*) from bm_test3 where i = 2;
 select count(*) from bm_test3 where i = 17;
 select count(*) from bm_test3 where i = 18;
 drop table bm_test;
-drop table bm_test2;
-drop table bm_test3;
 
 create table bm_test (i int, j int);
 insert into bm_test values (0, 0), (0, 0), (0, 1), (1,0), (1,0), (1,1);
@@ -208,7 +206,6 @@ create unique index ijk_ij on ijk(i,j);
 create unique index ijk_ijk on ijk(i,j,k);
 
 set gp_enable_mk_sort=off;
-drop table ijk;
 
 --
 -- test bitmaps with NULL and non-NULL values (MPP-8461)
@@ -291,9 +288,6 @@ SET enable_seqscan=off;
 SET enable_indexscan=off;
 SELECT * FROM bm_test_insert WHERE a=1;
 SELECT * FROM bm_test_update WHERE b=1;
-DROP TABLE trigger_recovery_on_primaries;
-DROP TABLE bm_test_insert;
-DROP TABLE bm_test_update;
 
 -- If the table is AO table, it need generate some fake tuple pointer,
 -- this pointer is a little different from the heap tables pointer,
@@ -330,7 +324,6 @@ SET enable_seqscan = OFF;
 SET enable_bitmapscan = OFF;
 -- we can see the bitmap index scan is much more slower
 explain (analyze, verbose) select * from test_bmselec where type < 500;
-DROP TABLE test_bmselec;
 
 SET enable_seqscan = ON;
 SET enable_bitmapscan = ON;
@@ -358,5 +351,3 @@ explain (analyze, verbose) select * from test_bmsparse where type > 500;
 SET enable_seqscan = OFF;
 SET enable_bitmapscan = OFF;
 explain (analyze, verbose) select * from test_bmsparse where type > 500;
-
-DROP TABLE test_bmsparse;

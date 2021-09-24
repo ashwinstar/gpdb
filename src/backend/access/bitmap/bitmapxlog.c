@@ -510,10 +510,15 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 			BMBitmapOpaque	secondOpaque = NULL;
 			BMBitmap		secondBitmap = NULL;
 
+			elog(LOG, "reading the second page block number %d", xlrec->bm_second_blkno);
+
 			secondBuffer = XLogReadBuffer(xlrec->bm_node, xlrec->bm_second_blkno, true);
 			secondPage = BufferGetPage(secondBuffer);
 			if (PageIsNew(secondPage))
+			{
+				elog(LOG, "initing the second page block number %d", xlrec->bm_second_blkno);
 				_bitmap_init_bitmappage(secondPage);
+			}
 
 			secondOpaque = (BMBitmapOpaque)PageGetSpecialPointer(secondPage);
 			secondBitmap = (BMBitmap) PageGetContentsMaxAligned(secondPage);
@@ -524,6 +529,9 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 						BM_NUM_OF_HRL_WORDS_PER_PAGE * sizeof(BM_HRL_WORD));
 				memcpy(secondBitmap->hwords, xlrec->bm_second_hwords,
 						BM_NUM_OF_HEADER_WORDS *	sizeof(BM_HRL_WORD));
+				elog(LOG, "updating page size %lu %lu",
+					 BM_NUM_OF_HRL_WORDS_PER_PAGE * sizeof(BM_HRL_WORD),
+					 BM_NUM_OF_HEADER_WORDS *    sizeof(BM_HRL_WORD));
 				secondOpaque->bm_hrl_words_used = xlrec->bm_second_num_cwords;
 				secondOpaque->bm_last_tid_location = xlrec->bm_second_last_tid;
 				secondOpaque->bm_bitmap_next = xlrec->bm_next_blkno;

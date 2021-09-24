@@ -35,7 +35,7 @@ bitmap_desc(StringInfo buf, XLogRecord *record)
 		{
 			xl_bm_lovitem *xlrec = (xl_bm_lovitem *)rec;
 
-			appendStringInfo(buf, "insert a new LOV item: ");
+			appendStringInfo(buf, "insert a new LOV item: bm_lov_blkno %d", xlrec->bm_lov_blkno);
 			out_target(buf, &(xlrec->bm_node));
 			break;
 		}
@@ -52,7 +52,8 @@ bitmap_desc(StringInfo buf, XLogRecord *record)
 		{
 			xl_bm_bitmap_lastwords *xlrec = (xl_bm_bitmap_lastwords *)rec;
 
-			appendStringInfo(buf, "update the last two words in a bitmap: ");
+			appendStringInfo(buf, "update the last two words in a bitmap: bm_lov_blkno %d bm_lov_offset %d ",
+				xlrec->bm_lov_blkno, xlrec->bm_lov_offset);
 			out_target(buf, &(xlrec->bm_node));
 			break;
 		}
@@ -61,7 +62,7 @@ bitmap_desc(StringInfo buf, XLogRecord *record)
 		{
 			xl_bm_bitmapwords *xlrec = (xl_bm_bitmapwords *)rec;
 
-			appendStringInfo(buf, "insert words in a not-last bitmap page: ");
+			appendStringInfo(buf, "insert words in a not-last bitmap page: bm_lov_blkno: %d", xlrec->bm_lov_blkno);
 			out_target(buf, &(xlrec->bm_node));
 			break;
 		}
@@ -70,7 +71,7 @@ bitmap_desc(StringInfo buf, XLogRecord *record)
 		{
 			xl_bm_updateword *xlrec = (xl_bm_updateword *)rec;
 
-			appendStringInfo(buf, "update a word in a bitmap page: ");
+			appendStringInfo(buf, "update a word in a bitmap page: bm_blkno %d ", xlrec->bm_blkno);
 			out_target(buf, &(xlrec->bm_node));
 			break;
 		}
@@ -78,7 +79,8 @@ bitmap_desc(StringInfo buf, XLogRecord *record)
 		{
 			xl_bm_updatewords *xlrec = (xl_bm_updatewords*)rec;
 
-			appendStringInfo(buf, "update words in bitmap pages: ");
+			appendStringInfo(buf, "update words in bitmap pages: bm_lov_blkno %d bm_lov_offset %d bm_new_lastpage %d bm_two_pages %d bm_first_blkno %d bm_second_blkno %d ",
+							 xlrec->bm_lov_blkno, xlrec->bm_lov_offset, xlrec->bm_new_lastpage, xlrec->bm_two_pages, xlrec->bm_first_blkno, xlrec->bm_second_blkno);
 			out_target(buf, &(xlrec->bm_node));
 			break;
 		}

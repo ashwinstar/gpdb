@@ -1164,7 +1164,7 @@ _bitmap_log_updateword(Relation rel, Buffer bitmapBuffer, int word_no)
 	rdata[1].buffer = bitmapBuffer;
 	rdata[1].data = NULL;
 	rdata[1].len = 0;
-	rdata[1].buffer_std = true;
+	rdata[1].buffer_std = false;
 	rdata[1].next = NULL;
 
 	recptr = XLogInsert(RM_BITMAP_ID, XLOG_BITMAP_UPDATEWORD, rdata);
@@ -1248,18 +1248,19 @@ _bitmap_log_updatewords(Relation rel,
 	rdata[1].buffer = firstBuffer;
 	rdata[1].data = NULL;
 	rdata[1].len = 0;
-	rdata[1].buffer_std = true;
+	rdata[1].buffer_std = false;
 	if (!BufferIsValid(secondBuffer))
 	{
 		rdata[1].next = NULL;
 	}
 	else
 	{
+		elog(LOG, "bitmap has second page in WAL record....");
 		rdata[1].next =  &(rdata[2]);
 		rdata[2].buffer = secondBuffer;
 		rdata[2].data = NULL;
 		rdata[2].len = 0;
-		rdata[2].buffer_std = true;
+		rdata[2].buffer_std = false;
 		rdata[2].next = NULL;
 	}
 
