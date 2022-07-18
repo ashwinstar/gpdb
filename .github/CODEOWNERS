@@ -1,0 +1,8 @@
+# Team to review and approve PRs for STABLE Greenlum branches
+#* @octo-org/octocats
+* @ashwinstar
+
+# The `docs/*` or CI changes can be excluded from this requirement
+# using some other address or rule
+#
+#docs/*  docs@example.com
