@@ -1,3 +1,5 @@
+TESTING
+
 **Concourse Pipeline** [![Concourse Build Status](https://gpdb.data.pivotal.ci/api/v1/teams/gpdb/pipelines/gpdb_master/jobs/gpdb_rc_packaging_centos/badge)](https://gpdb.data.pivotal.ci/teams/gpdb) |
 **Travis Build** [![Travis Build Status](https://travis-ci.org/greenplum-db/gpdb.svg?branch=master)](https://travis-ci.org/greenplum-db/gpdb)
 
