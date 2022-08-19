@@ -514,6 +514,9 @@ compresstype_is_valid(char *comptype)
 #ifdef USE_ZSTD
 			"zstd",
 #endif
+#ifdef USE_LZ4
+			"lz4",
+#endif
 			"rle_type", "none"};
 
 	/*

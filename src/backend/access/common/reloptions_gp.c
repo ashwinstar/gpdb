@@ -1014,6 +1014,27 @@ validate_and_adjust_options(StdRdOptions *result,
 		}
 
 		if (result->compresstype[0] &&
+			(pg_strcasecmp(result->compresstype, "lz4") == 0))
+		{
+#ifndef USE_LZ4
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("LZ4 library is not supported by this build"),
+					 errhint("Compile with --with-lz4 to use LZ4 compression.")));
+#endif
+			if (result->compresslevel > 12)
+			{
+				if (validate)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("compresslevel=%d is out of range for lz4 (should be in the range 1 to 12)",
+									result->compresslevel)));
+
+				result->compresslevel = setDefaultCompressionLevel(result->compresstype);
+			}
+		}
+
+		if (result->compresstype[0] &&
 			(pg_strcasecmp(result->compresstype, "rle_type") == 0) &&
 			(result->compresslevel > RLE_MAX_LEVEL))
 		{
@@ -1078,7 +1099,7 @@ validateOrientationRelOptions(char *comptype,
 
 /*
  * if no compressor type was specified, we set to no compression (level 0)
- * otherwise default for both zlib, quicklz, zstd and RLE to level 1.
+ * otherwise default for all zlib, quicklz, zstd, lz4 and RLE to level 1.
  */
 static int
 setDefaultCompressionLevel(char *compresstype)
