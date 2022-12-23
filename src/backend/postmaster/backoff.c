@@ -906,10 +906,9 @@ BackoffSweeper()
 						 * 200000 - 100000/1 - 100000/1 - 100000/2 which is less than zero.
 						 *
 						 * We can stop sweeping for such race condition because current
-						 * backoff mechanism dose not ask for accurate control.
+						 * backoff mechanism does not ask for accurate control.
 						 */
 						backoffSingleton->sweeperInProgress = false;
-						elog(LOG, "activeWeight underflow!");
 						return;
 					}
 				}
