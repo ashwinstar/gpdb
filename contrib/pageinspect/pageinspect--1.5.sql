@@ -216,9 +216,11 @@ LANGUAGE C STRICT PARALLEL SAFE;
 --
 -- brin_upper_data()
 --
-CREATE FUNCTION brin_upper_data(IN page bytea,
-    OUT pages tid)
-    RETURNS SETOF tid
+CREATE FUNCTION brin_upper_data(IN page bytea, IN upperpagenum int, IN pages_per_range int,
+    OUT revblocknum integer,
+    OUT startpage integer,
+    OUT endpage integer)
+    RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'brin_upper_data'
 LANGUAGE C STRICT PARALLEL SAFE;
 

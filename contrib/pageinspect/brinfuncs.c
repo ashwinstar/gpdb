@@ -452,13 +452,15 @@ brin_revmap_data(PG_FUNCTION_ARGS)
 Datum
 brin_upper_data(PG_FUNCTION_ARGS)
 {
+	uint32 upper_blkno = PG_GETARG_UINT32(1);
+	uint32 pages_per_range = PG_GETARG_UINT32(2);
+	FuncCallContext *fctx;
+
 	struct
 	{
-		BlockNumber *blks;
+		RevmapUpperBlockContents *blks;
 		int			idx;
-	}		   *state;
-	FuncCallContext *fctx;
-	ItemPointerData *tid;
+	} *state;
 
 	if (!superuser())
 		ereport(ERROR,
@@ -470,6 +472,7 @@ brin_upper_data(PG_FUNCTION_ARGS)
 		bytea	   *raw_page = PG_GETARG_BYTEA_P(0);
 		MemoryContext mctx;
 		Page		page;
+		TupleDesc   tupdesc;
 
 		/* minimally verify the page we got */
 		page = verify_brin_page(raw_page, BRIN_PAGETYPE_UPPER, "upper");
@@ -481,10 +484,16 @@ brin_upper_data(PG_FUNCTION_ARGS)
 		mctx = MemoryContextSwitchTo(fctx->multi_call_memory_ctx);
 
 		state = palloc(sizeof(*state));
-		state->blks = ((RevmapUpperBlockContents *) PageGetContents(page))->rm_blocks;
+		state->blks = ((RevmapUpperBlockContents *) PageGetContents(page));
 		state->idx = 0;
 
 		fctx->user_fctx = state;
+
+		/* Build a tuple descriptor for our result type */
+		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+			elog(ERROR, "return type must be a row type");
+
+		fctx->attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
 		MemoryContextSwitchTo(mctx);
 	}
@@ -492,15 +501,31 @@ brin_upper_data(PG_FUNCTION_ARGS)
 	fctx = SRF_PERCALL_SETUP();
 	state = fctx->user_fctx;
 
-
-	if (state->idx < REVMAP_UPPER_PAGE_MAXITEMS)
+	while (state->idx < REVMAP_UPPER_PAGE_MAXITEMS)
 	{
-		tid = (ItemPointerData*) palloc(sizeof(ItemPointerData));
-		ItemPointerSetBlockNumber(tid, (BlockNumber) state->blks[state->idx++]);
-		ItemPointerSetOffsetNumber(tid, (OffsetNumber) 0);
-		SRF_RETURN_NEXT(fctx, PointerGetDatum(tid));
+		BlockNumber blknum = state->blks->rm_blocks[state->idx];
+		int idx = state->idx++;
+
+		if (blknum)
+		{
+			char *values[3];
+			HeapTuple tuple;
+			int per_rpage_reference_nblocks = REVMAP_PAGE_MAXITEMS * pages_per_range;
+
+			/* -1 as upper_block starts from block=1, 0th is meta-page */
+			BlockNumber startblk = ((upper_blkno-1) * REVMAP_UPPER_PAGE_MAXITEMS * per_rpage_reference_nblocks) + (idx * per_rpage_reference_nblocks);
+			BlockNumber endblk = startblk + per_rpage_reference_nblocks;
+
+			values[0] = psprintf("%d", blknum);
+			/* starting block offset */
+			values[1] = psprintf("%d", startblk);
+			/* ending block offset */
+			values[2] = psprintf("%d", endblk);
+
+			tuple = BuildTupleFromCStrings(fctx->attinmeta, values);
+			SRF_RETURN_NEXT(fctx, HeapTupleGetDatum(tuple));
+		}
 	}
 
 	SRF_RETURN_DONE(fctx);
 }
-
