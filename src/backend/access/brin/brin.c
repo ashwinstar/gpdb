@@ -519,7 +519,7 @@ bringetbitmap(IndexScanDesc scan, Node **bmNodeP)
 	segno = 0;
 	for (int i = 0; i < size; i++)
 	{
-		for (heapBlk = startblknum[i]; heapBlk < nblocks[i]; heapBlk += opaque->bo_pagesPerRange)
+		for (heapBlk = startblknum[i]; heapBlk < (startblknum[i] + nblocks[i]); heapBlk += opaque->bo_pagesPerRange)
 		{
 			bool		addrange;
 			bool		gottuple = false;
@@ -629,7 +629,7 @@ bringetbitmap(IndexScanDesc scan, Node **bmNodeP)
 				BlockNumber pageno;
 
 				for (pageno = heapBlk;
-					 pageno <= Min(nblocks[i], heapBlk + opaque->bo_pagesPerRange) - 1;
+					 pageno <= Min(startblknum[i] + nblocks[i], heapBlk + opaque->bo_pagesPerRange) - 1;
 					 pageno++)
 				{
 					MemoryContextSwitchTo(oldcxt);

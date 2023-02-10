@@ -1900,6 +1900,67 @@ appendonly_relation_size(Relation rel, ForkNumber forkNumber)
 }
 
 /*
+ * Get the start block number of the current aoseg by seg number.
+ *
+ * append-optimized table logically has 128 segment files. The highest 7 bits
+ * of the logical Tid represent the segment file number. So, segment file number
+ * with zero after is the start block number in a segment file.
+ */
+static BlockNumber
+segnoGetCurrentAosegStart(int segno)
+{
+	BlockNumber blk;
+	blk = segno;
+	return blk << 25;
+}
+
+static void
+appendonly_relation_get_block_ranges(Relation rel, int *size, BlockNumber **startblknum, BlockNumber **nblocks)
+{
+	Snapshot	snapshot;
+    Oid			segrelid;
+	int			segnos[AOTupleId_MaxSegmentFileNum] = {0};
+    int			nsegs;
+
+	Assert(RelationIsValid(rel));
+
+	snapshot = RegisterSnapshot(GetCatalogSnapshot(InvalidOid));
+
+	{
+		FileSegInfo **seginfos = GetAllFileSegInfo(rel, snapshot, &nsegs, &segrelid);
+
+		Assert(nsegs <= AOTupleId_MaxSegmentFileNum);
+
+		for (int i = 0; i < nsegs; i++)
+			segnos[i] = seginfos[i]->segno;
+
+		if (seginfos != NULL)
+		{
+			FreeAllSegFileInfo(seginfos, nsegs);
+			pfree(seginfos);
+		}
+	}
+
+	*size = nsegs;
+	*startblknum = (BlockNumber *) palloc(sizeof(BlockNumber) * nsegs);
+	*nblocks = (BlockNumber *) palloc(sizeof(BlockNumber) * nsegs);
+
+	/* call ReadLastSequence() only for segnos corresponding to the target relation */
+    for (int i = 0; i < nsegs; i++)
+    {
+        int segno = segnos[i];
+        int64 lastSequence = ReadLastSequence(segrelid, segno);
+
+        *startblknum[i] = segnoGetCurrentAosegStart(segno);
+        *nblocks[i] = lastSequence / 32768;
+        if (lastSequence % 32768 > 0)
+            *nblocks[i] += 1;
+    }
+
+    UnregisterSnapshot(snapshot);
+}
+
+/*
  * Check to see whether the table needs a TOAST table.  It does only if
  * (1) there are any toastable attributes, and (2) the maximum length
  * of a tuple could exceed TOAST_TUPLE_THRESHOLD.  (We don't want to
@@ -2181,6 +2242,7 @@ static const TableAmRoutine ao_row_methods = {
 	.index_validate_scan = appendonly_index_validate_scan,
 
 	.relation_size = appendonly_relation_size,
+	.relation_get_block_ranges = appendonly_relation_get_block_ranges,
 	.relation_needs_toast_table = appendonly_relation_needs_toast_table,
 
 	.relation_estimate_size = appendonly_estimate_rel_size,
