@@ -609,6 +609,7 @@ typedef struct TableAmRoutine
 	 */
 	uint64		(*relation_size) (Relation rel, ForkNumber forkNumber);
 
+	void		(*relation_get_block_ranges) (Relation rel, int *size, BlockNumber **startblknum, BlockNumber **numblks);
 
 	/*
 	 * This callback should return true if the relation requires a TOAST table
@@ -1736,6 +1737,12 @@ static inline uint64
 table_relation_size(Relation rel, ForkNumber forkNumber)
 {
 	return rel->rd_tableam->relation_size(rel, forkNumber);
+}
+
+static inline void
+table_relation_get_block_ranges(Relation rel, int *size, BlockNumber **startblknum, BlockNumber **numblks)
+{
+	return rel->rd_tableam->relation_get_block_ranges(rel, size, startblknum, numblks);
 }
 
 /*

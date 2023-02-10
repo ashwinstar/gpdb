@@ -448,8 +448,6 @@ bringetbitmap(IndexScanDesc scan, Node **bmNodeP)
 	Oid			heapOid;
 	Relation	heapRel;
 	BrinOpaque *opaque;
-	BlockNumber nblocks = 0;
-	BlockNumber aoBlocks[AOTupleId_MaxSegmentFileNum];
 	BlockNumber heapBlk;
 	int			totalpages = 0;
 	FmgrInfo   *consistentFn;
@@ -460,6 +458,9 @@ bringetbitmap(IndexScanDesc scan, Node **bmNodeP)
 	Size		btupsz = 0;
 	int			segno;
 	BlockNumber seg_start_blk;
+	int size;
+	BlockNumber *startblknum = NULL;
+	BlockNumber *nblocks = NULL;
 
 	opaque = (BrinOpaque *) scan->opaque;
 	bdesc = opaque->bo_bdesc;
@@ -488,16 +489,7 @@ bringetbitmap(IndexScanDesc scan, Node **bmNodeP)
 	 */
 	heapOid = IndexGetRelation(RelationGetRelid(idxRel), false);
 	heapRel = table_open(heapOid, AccessShareLock);
-
-	/*
-	 * If the data table is append only table, we need to calculate the range
-	 * of tid in each aoseg.
-	 */
-	if (RelationIsAppendOptimized(heapRel))
-		nblocks = brin_ao_tid_ranges(heapRel, aoBlocks);
-	else
-		nblocks = RelationGetNumberOfBlocks(heapRel);
-
+	table_relation_get_block_ranges(heapRel, &size, &startblknum, &nblocks);
 	table_close(heapRel, AccessShareLock);
 
 	/*
@@ -525,140 +517,126 @@ bringetbitmap(IndexScanDesc scan, Node **bmNodeP)
 	 * view of the table.
 	 */
 	segno = 0;
-	for (heapBlk = 0; heapBlk < nblocks; heapBlk += opaque->bo_pagesPerRange)
+	for (int i = 0; i < size; i++)
 	{
-		bool		addrange;
-		bool		gottuple = false;
-		BrinTuple  *tup;
-		OffsetNumber off;
-		Size		size;
-
-		CHECK_FOR_INTERRUPTS();
-
-		/*
-		 * If the largest row number of the current aoseg is scanned, switch to
-		 * the next aoseg.
-		 */
-		if (RelationIsAppendOptimized(heapRel))
+		for (heapBlk = startblknum[i]; heapBlk < nblocks[i]; heapBlk += opaque->bo_pagesPerRange)
 		{
-			seg_start_blk = segnoGetCurrentAosegStart(segno);
+			bool		addrange;
+			bool		gottuple = false;
+			BrinTuple  *tup;
+			OffsetNumber off;
+			Size		size;
 
-			if (heapBlk >= seg_start_blk + aoBlocks[segno])
+			CHECK_FOR_INTERRUPTS();
+
+			MemoryContextResetAndDeleteChildren(perRangeCxt);
+
+			tup = brinGetTupleForHeapBlock(opaque->bo_rmAccess, heapBlk, &buf,
+										   &off, &size, BUFFER_LOCK_SHARE,
+										   scan->xs_snapshot);
+			if (tup)
 			{
-				segno++;
-				continue;
+				gottuple = true;
+				btup = brin_copy_tuple(tup, size, btup, &btupsz);
+				LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 			}
-			if (heapBlk < seg_start_blk)
-				heapBlk = seg_start_blk;
-		}
 
-		MemoryContextResetAndDeleteChildren(perRangeCxt);
-
-		tup = brinGetTupleForHeapBlock(opaque->bo_rmAccess, heapBlk, &buf,
-									   &off, &size, BUFFER_LOCK_SHARE,
-									   scan->xs_snapshot);
-		if (tup)
-		{
-			gottuple = true;
-			btup = brin_copy_tuple(tup, size, btup, &btupsz);
-			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
-		}
-
-		/*
-		 * For page ranges with no indexed tuple, we must return the whole
-		 * range; otherwise, compare it to the scan keys.
-		 */
-		if (!gottuple)
-		{
-			addrange = true;
-		}
-		else
-		{
-			dtup = brin_deform_tuple(bdesc, btup, dtup);
-			if (dtup->bt_placeholder)
+			/*
+			 * For page ranges with no indexed tuple, we must return the whole
+			 * range; otherwise, compare it to the scan keys.
+			 */
+			if (!gottuple)
 			{
-				/*
-				 * Placeholder tuples are always returned, regardless of the
-				 * values stored in them.
-				 */
 				addrange = true;
 			}
 			else
 			{
-				int			keyno;
-
-				/*
-				 * Compare scan keys with summary values stored for the range.
-				 * If scan keys are matched, the page range must be added to
-				 * the bitmap.  We initially assume the range needs to be
-				 * added; in particular this serves the case where there are
-				 * no keys.
-				 */
-				addrange = true;
-				for (keyno = 0; keyno < scan->numberOfKeys; keyno++)
+				dtup = brin_deform_tuple(bdesc, btup, dtup);
+				if (dtup->bt_placeholder)
 				{
-					ScanKey		key = &scan->keyData[keyno];
-					AttrNumber	keyattno = key->sk_attno;
-					BrinValues *bval = &dtup->bt_columns[keyattno - 1];
-					Datum		add;
+					/*
+					 * Placeholder tuples are always returned, regardless of the
+					 * values stored in them.
+					 */
+					addrange = true;
+				}
+				else
+				{
+					int			keyno;
 
 					/*
-					 * The collation of the scan key must match the collation
-					 * used in the index column (but only if the search is not
-					 * IS NULL/ IS NOT NULL).  Otherwise we shouldn't be using
-					 * this index ...
+					 * Compare scan keys with summary values stored for the range.
+					 * If scan keys are matched, the page range must be added to
+					 * the bitmap.  We initially assume the range needs to be
+					 * added; in particular this serves the case where there are
+					 * no keys.
 					 */
-					Assert((key->sk_flags & SK_ISNULL) ||
-						   (key->sk_collation ==
-							TupleDescAttr(bdesc->bd_tupdesc,
-										  keyattno - 1)->attcollation));
-
-					/* First time this column? look up consistent function */
-					if (consistentFn[keyattno - 1].fn_oid == InvalidOid)
+					addrange = true;
+					for (keyno = 0; keyno < scan->numberOfKeys; keyno++)
 					{
-						FmgrInfo   *tmp;
+						ScanKey		key = &scan->keyData[keyno];
+						AttrNumber	keyattno = key->sk_attno;
+						BrinValues *bval = &dtup->bt_columns[keyattno - 1];
+						Datum		add;
 
-						tmp = index_getprocinfo(idxRel, keyattno,
-												BRIN_PROCNUM_CONSISTENT);
-						fmgr_info_copy(&consistentFn[keyattno - 1], tmp,
-									   CurrentMemoryContext);
+						/*
+						 * The collation of the scan key must match the collation
+						 * used in the index column (but only if the search is not
+						 * IS NULL/ IS NOT NULL).  Otherwise we shouldn't be using
+						 * this index ...
+						 */
+						Assert((key->sk_flags & SK_ISNULL) ||
+							   (key->sk_collation ==
+								TupleDescAttr(bdesc->bd_tupdesc,
+											  keyattno - 1)->attcollation));
+
+						/* First time this column? look up consistent function */
+						if (consistentFn[keyattno - 1].fn_oid == InvalidOid)
+						{
+							FmgrInfo   *tmp;
+
+							tmp = index_getprocinfo(idxRel, keyattno,
+													BRIN_PROCNUM_CONSISTENT);
+							fmgr_info_copy(&consistentFn[keyattno - 1], tmp,
+										   CurrentMemoryContext);
+						}
+
+						/*
+						 * Check whether the scan key is consistent with the page
+						 * range values; if so, have the pages in the range added
+						 * to the output bitmap.
+						 *
+						 * When there are multiple scan keys, failure to meet the
+						 * criteria for a single one of them is enough to discard
+						 * the range as a whole, so break out of the loop as soon
+						 * as a false return value is obtained.
+						 */
+						add = FunctionCall3Coll(&consistentFn[keyattno - 1],
+												key->sk_collation,
+												PointerGetDatum(bdesc),
+												PointerGetDatum(bval),
+												PointerGetDatum(key));
+						addrange = DatumGetBool(add);
+						if (!addrange)
+							break;
 					}
-
-					/*
-					 * Check whether the scan key is consistent with the page
-					 * range values; if so, have the pages in the range added
-					 * to the output bitmap.
-					 *
-					 * When there are multiple scan keys, failure to meet the
-					 * criteria for a single one of them is enough to discard
-					 * the range as a whole, so break out of the loop as soon
-					 * as a false return value is obtained.
-					 */
-					add = FunctionCall3Coll(&consistentFn[keyattno - 1],
-											key->sk_collation,
-											PointerGetDatum(bdesc),
-											PointerGetDatum(bval),
-											PointerGetDatum(key));
-					addrange = DatumGetBool(add);
-					if (!addrange)
-						break;
 				}
 			}
-		}
 
-		/* add the pages in the range to the output bitmap, if needed */
-		if (addrange)
-		{
-			BlockNumber pageno;
-
-			for (pageno = heapBlk;
-				 pageno <= Min(nblocks, heapBlk + opaque->bo_pagesPerRange) - 1;
-				 pageno++)
+			/* add the pages in the range to the output bitmap, if needed */
+			if (addrange)
 			{
-				MemoryContextSwitchTo(oldcxt);
-				tbm_add_page(tbm, pageno);
-				totalpages++;
-				MemoryContextSwitchTo(perRangeCxt);
+				BlockNumber pageno;
+
+				for (pageno = heapBlk;
+					 pageno <= Min(nblocks[i], heapBlk + opaque->bo_pagesPerRange) - 1;
+					 pageno++)
+				{
+					MemoryContextSwitchTo(oldcxt);
+					tbm_add_page(tbm, pageno);
+					totalpages++;
+					MemoryContextSwitchTo(perRangeCxt);
+				}
 			}
 		}
 	}

@@ -2094,6 +2094,17 @@ heapam_relation_size(Relation rel, ForkNumber forkNumber)
 	return nblocks * BLCKSZ;
 }
 
+static void
+heap_relation_get_block_ranges(Relation rel, int *size, BlockNumber **startblknum, BlockNumber **nblocks)
+{
+	*size = 1;
+	*startblknum = (BlockNumber *) palloc(sizeof(BlockNumber));
+	*nblocks = (BlockNumber *) palloc(sizeof(BlockNumber));
+
+	*startblknum[0] = 0;
+	*nblocks[0] = RelationGetNumberOfBlocks(rel);
+}
+
 /*
  * Check to see whether the table needs a TOAST table.  It does only if
  * (1) there are any toastable attributes, and (2) the maximum length
@@ -2731,6 +2742,7 @@ static const TableAmRoutine heapam_methods = {
 	.index_validate_scan = heapam_index_validate_scan,
 
 	.relation_size = heapam_relation_size,
+	.relation_get_block_ranges = heap_relation_get_block_ranges,
 	.relation_needs_toast_table = heapam_relation_needs_toast_table,
 
 	.relation_estimate_size = heapam_estimate_rel_size,
