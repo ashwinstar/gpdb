@@ -811,6 +811,22 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 		case T_AlterSystemStmt:
 			PreventInTransactionBlock(isTopLevel, "ALTER SYSTEM");
+			/*
+			 * Given mirrors in GPDB do not accept connections and dispatch of
+			 * the SQL only connects to current primaries, values changed via
+			 * ALTER SYSTEM do not get applied on mirrors which is suboptimal
+			 * behavior for production environments. gpconfig on other hand
+			 * doesn't have such limitation hence ALTER SYSTEM remains
+			 * unsupported command for GPDB.
+			 *
+			 * It's still convenient to use ALTER SYSTEM when writing tests
+			 * hence usage is allowed for non-production builds.
+			 */
+			#ifndef FAULT_INJECTOR
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("ALTER SYSTEM command not supported")));
+			#endif
 			AlterSystemSetConfigFile((AlterSystemStmt *) parsetree);
 			if (Gp_role == GP_ROLE_DISPATCH)
 				CdbDispatchUtilityStatement((Node *) parsetree,
