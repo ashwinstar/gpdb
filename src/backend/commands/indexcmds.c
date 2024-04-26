@@ -1353,9 +1353,10 @@ DefineIndex(Oid relationId,
 
 	/*
 	 * Create block directory if this is an appendoptimized
-	 * relation
+	 * relation and one not present currently
 	 */
-	AlterTableCreateAoBlkdirTable(RelationGetRelid(rel));
+	if (!OidIsValid(blkdirrelid))
+		AlterTableCreateAoBlkdirTable(RelationGetRelid(rel));
 
 	/*
 	 * Make the catalog entries for the index, including constraints. This
