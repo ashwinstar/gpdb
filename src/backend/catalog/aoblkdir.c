@@ -39,8 +39,6 @@ AlterTableCreateAoBlkdirTable(Oid relOid)
 	List	   *indexColNames;
 	bool	   isAO;
 
-	SIMPLE_FAULT_INJECTOR("before_acquire_lock_during_create_ao_blkdir_table");
-
 	/*
 	 * Check if this is an appendoptimized table, without acquiring any lock.
 	 */

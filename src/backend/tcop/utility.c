@@ -1742,11 +1742,67 @@ ProcessUtilitySlow(ParseState *pstate,
 					if (stmt->relationOid)
 						relid = stmt->relationOid;
 					else
+					{
+						Relation rel;
+						Oid bblkdirrelid = InvalidOid;
+
 						relid =
 							RangeVarGetRelidExtended(stmt->relation, lockmode,
 												 0,
 												 RangeVarCallbackOwnsRelation,
 												 NULL);
+						/*
+						 * Appendoptimized tables need block directory
+						 * relation for index access. Creating and maintaining
+						 * block directory is expensive, because it needs to
+						 * be kept up to date whenever new data is inserted in
+						 * the table. We delay the block directory creation
+						 * until it is really needed - the first index
+						 * creation. Once created, all indexes share the same
+						 * block directory. We need stronger lock
+						 * (ShareRowExclusiveLock) that blocks index creation
+						 * from another transaction (not to be confused with
+						 * create index concurrently) as well as concurrent
+						 * insert for appendoptimized tables, if the block
+						 * directory needs to be created. If the block
+						 * directory already exists, we can use the same lock
+						 * as heap tables. To avoid lock upgrade hazards, it's
+						 * important that we take the strongest lock that will
+						 * eventually be needed here, so the lockmode
+						 * calculation needs to match what DefineIndex() does.
+						 */
+						rel = table_open(relid, NoLock);
+						if (RelationStorageIsAO(rel))
+						{
+							GetAppendOnlyEntryAuxOids(rel, NULL, &blkdirrelid, NULL);
+
+							if (!OidIsValid(blkdirrelid))
+							{
+								bool isao;
+								/* release all the references and locks */
+								table_close(rel, NoLock);
+								UnlockRelation(lockmode);
+
+								/* start fresh with the most restrictive lock */
+								relid =
+									RangeVarGetRelidExtended(stmt->relation, ShareRowExclusiveLock,
+															 0,
+															 RangeVarCallbackOwnsRelation,
+															 NULL);
+
+								rel = table_open(relationId, NoLock);
+								if ((isao = RelationStorageIsAO(rel)))
+									GetAppendOnlyEntryAuxOids(rel, NULL, &blkdirrelid, NULL);
+
+								if (!isao || OidIsValid(blkdirrelid))
+								{
+									LockRelation(rel, lockmode);
+									UnlockRelation(rel, ShareRowExclusiveLock);
+								}
+							}
+						}
+						table_close(rel, NoLock);
+					}
 
 					/*
 					 * CREATE INDEX on partitioned tables (but not regular
